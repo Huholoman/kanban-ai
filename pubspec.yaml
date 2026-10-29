@@ -1,0 +1,14 @@
+name: kanban_ai_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+
+workspace:
+  - packages/backlog_core
+  - packages/backlog_cli
+  - packages/backlog_api
+  - packages/backlog_server
+
+dev_dependencies:
+  lints: ^6.0.0

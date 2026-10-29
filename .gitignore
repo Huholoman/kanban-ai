@@ -1,0 +1,6 @@
+.dart_tool/
+build/
+*.exe
+playground/
+result
+result-*

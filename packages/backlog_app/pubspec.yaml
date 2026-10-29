@@ -1,0 +1,23 @@
+name: backlog_app
+description: Board for a file-based backlog — kanban, lists, item details. Talks to backlog_server.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  backlog_api:
+    path: ../backlog_api
+  flutter:
+    sdk: flutter
+  flutter_markdown_plus: ^1.0.7
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

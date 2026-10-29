@@ -1,0 +1,16 @@
+name: backlog_api
+description: HTTP contract of the backlog server — data transfer objects and a client. Pure Dart, runs on the VM and on the web.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  http: ^1.2.0
+  web_socket_channel: ^3.0.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.0

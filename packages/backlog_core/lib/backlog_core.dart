@@ -1,0 +1,29 @@
+/// File-based backlog: Markdown items with YAML front matter, saved views and
+/// claim locks that let several coding agents work in parallel.
+library;
+
+export 'src/backlog.dart';
+export 'src/claims/application/claim_service.dart';
+export 'src/claims/domain/claim.dart';
+export 'src/infrastructure/backlog_layout.dart' show BacklogLayout;
+export 'src/items/application/field_change.dart';
+export 'src/items/application/item_service.dart';
+export 'src/items/domain/checklist.dart';
+export 'src/items/domain/item.dart';
+export 'src/items/domain/item_id.dart';
+export 'src/items/domain/item_repository.dart';
+export 'src/items/infrastructure/markdown_item_codec.dart';
+export 'src/planning/application/planning_service.dart';
+export 'src/planning/domain/backlog_snapshot.dart';
+export 'src/planning/domain/planned_item.dart';
+export 'src/shared/clock.dart';
+export 'src/shared/errors.dart';
+export 'src/validation/application/linter.dart';
+export 'src/validation/domain/lint_issue.dart';
+export 'src/views/application/view_service.dart';
+export 'src/views/domain/filter.dart';
+export 'src/views/domain/item_fields.dart';
+export 'src/views/domain/view.dart';
+export 'src/views/infrastructure/yaml_views.dart' show parseFilter, parseViewYaml;
+export 'src/workflow/domain/workflow.dart';
+export 'src/workflow/infrastructure/yaml_workflow.dart' show parseWorkflowYaml;

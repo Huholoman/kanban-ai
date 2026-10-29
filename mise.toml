@@ -1,0 +1,59 @@
+# Development tools: `mise install`, then `mise run <task>` (`mise tasks` lists them).
+# Nix is expected at the system level; the flake builds with the same Flutter version.
+
+[tools]
+flutter = "3.32.8" # bundles Dart 3.8.1; matches flutter332 in flake.nix
+jq = "1.8.1"       # tool/playground.sh
+
+[tasks.get]
+description = "Fetch dependencies of the workspace and the app"
+run = ["dart pub get", "cd packages/backlog_app && flutter pub get"]
+
+[tasks.analyze]
+description = "Static analysis of all packages"
+run = [
+  "dart analyze packages/backlog_core packages/backlog_cli packages/backlog_api packages/backlog_server",
+  "cd packages/backlog_app && flutter analyze",
+]
+
+[tasks.test]
+description = "All tests"
+run = [
+  "dart test packages/backlog_core packages/backlog_cli packages/backlog_api packages/backlog_server",
+  "cd packages/backlog_app && flutter test",
+]
+
+[tasks.format]
+description = "Format the code (page width 120)"
+run = "dart format packages"
+
+[tasks.check]
+description = "Format check, analysis and tests — run before committing"
+run = ["dart format --output=none --set-exit-if-changed packages"]
+depends = ["analyze", "test"]
+
+[tasks.build-web]
+description = "Build the web app into packages/backlog_app/build/web"
+dir = "packages/backlog_app"
+run = "flutter build web --release"
+
+[tasks.build]
+description = "Compile `backlog` and `backlog-server` into build/"
+depends = ["build-web"]
+run = [
+  "mkdir -p build",
+  "dart compile exe packages/backlog_cli/bin/backlog.dart -o build/backlog",
+  "dart compile exe packages/backlog_server/bin/backlog_server.dart -o build/backlog-server",
+]
+
+[tasks.playground]
+description = "(Re)generate playground/ with demo data"
+run = [
+  "mkdir -p build",
+  "dart compile exe packages/backlog_cli/bin/backlog.dart -o build/backlog",
+  "BACKLOG=$PWD/build/backlog tool/playground.sh",
+]
+
+[tasks.serve]
+description = "Serve the playground (or BACKLOG_DIR) with the built web app"
+run = "dart run packages/backlog_server/bin/backlog_server.dart -C ${BACKLOG_DIR:-playground/backlog} --web packages/backlog_app/build/web"

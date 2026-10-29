@@ -1,0 +1,129 @@
+import '../../claims/domain/claim.dart';
+import '../../items/domain/item.dart';
+import '../../items/domain/item_id.dart';
+import '../../workflow/domain/workflow.dart';
+import 'planned_item.dart';
+
+/// The whole backlog at one moment: items, their relations and claims.
+///
+/// Everything derived (blocked, ready, cycles, …) is computed here, in one
+/// place, so that the CLI, a server and the app all agree on it.
+final class BacklogSnapshot {
+  BacklogSnapshot._(this.workflow, this.takenAt, this._byId, this.items, this._children, this._dependents);
+
+  /// With duplicate ids the first item wins; the linter reports the rest.
+  factory BacklogSnapshot.build({
+    required Iterable<Item> items,
+    required Workflow workflow,
+    Iterable<Claim> claims = const [],
+    required DateTime now,
+  }) {
+    final byId = <ItemId, Item>{};
+    for (final item in items) {
+      byId.putIfAbsent(item.id, () => item);
+    }
+    final claimsById = {for (final claim in claims) claim.itemId: claim};
+    final children = <ItemId, List<ItemId>>{};
+    final dependents = <ItemId, List<ItemId>>{};
+    for (final item in byId.values) {
+      if (item.parent != null) (children[item.parent!] ??= []).add(item.id);
+      for (final dependency in item.dependsOn) {
+        (dependents[dependency] ??= []).add(item.id);
+      }
+    }
+
+    bool isDone(ItemId id) => workflow.categoryOf(byId[id]!.status) == StatusCategory.done;
+
+    final planned = <ItemId, PlannedItem>{};
+    for (final item in byId.values) {
+      final category = workflow.categoryOf(item.status);
+      final open = item.dependsOn.where((d) => byId.containsKey(d) && !isDone(d)).toList();
+      final missing = item.dependsOn.where((d) => !byId.containsKey(d)).toList();
+      final kids = children[item.id] ?? const [];
+      final openKids = kids.where((k) => !isDone(k)).length;
+      final claim = claimsById[item.id];
+      final expired = claim != null && claim.isExpiredAt(now);
+      final blocked = category != StatusCategory.done && (open.isNotEmpty || missing.isNotEmpty);
+      final pickable = workflow.status(item.status)?.pickable ?? false;
+      planned[item.id] = PlannedItem(
+        item: item,
+        category: category,
+        openDependencies: open,
+        missingDependencies: missing,
+        childCount: kids.length,
+        openChildCount: openKids,
+        claim: claim,
+        isClaimExpired: expired,
+        isReady: pickable && !blocked && openKids == 0 && (claim == null || expired),
+      );
+    }
+
+    final ordered = planned.values.toList()..sort((a, b) => compareDefault(workflow, a, b));
+    return BacklogSnapshot._(workflow, now, planned, List.unmodifiable(ordered), children, dependents);
+  }
+
+  final Workflow workflow;
+  final DateTime takenAt;
+  final Map<ItemId, PlannedItem> _byId;
+  final Map<ItemId, List<ItemId>> _children;
+  final Map<ItemId, List<ItemId>> _dependents;
+
+  /// In default order: priority, then age, then id.
+  final List<PlannedItem> items;
+
+  Iterable<ItemId> get ids => _byId.keys;
+
+  PlannedItem? operator [](ItemId id) => _byId[id];
+
+  List<PlannedItem> get ready => items.where((i) => i.isReady).toList();
+
+  List<PlannedItem> get blocked => items.where((i) => i.isBlocked).toList();
+
+  List<PlannedItem> childrenOf(ItemId id) => _resolve(_children[id]);
+
+  /// Items that wait for [id].
+  List<PlannedItem> dependentsOf(ItemId id) => _resolve(_dependents[id]);
+
+  List<List<ItemId>> dependencyCycles() => _cycles((item) => item.dependsOn);
+
+  List<List<ItemId>> parentCycles() => _cycles((item) => [?item.parent]);
+
+  List<PlannedItem> _resolve(List<ItemId>? ids) =>
+      (ids ?? const <ItemId>[]).map((id) => _byId[id]!).toList()..sort((a, b) => compareDefault(workflow, a, b));
+
+  List<List<ItemId>> _cycles(Iterable<ItemId> Function(Item item) edges) {
+    const visiting = 1, finished = 2;
+    final state = <ItemId, int>{};
+    final path = <ItemId>[];
+    final found = <String, List<ItemId>>{};
+
+    void visit(ItemId id) {
+      state[id] = visiting;
+      path.add(id);
+      for (final next in edges(_byId[id]!.item)) {
+        if (!_byId.containsKey(next)) continue;
+        if (state[next] == visiting) {
+          final cycle = path.sublist(path.indexOf(next));
+          found.putIfAbsent((cycle.map((i) => i.value).toList()..sort()).join(','), () => cycle);
+        } else if (state[next] == null) {
+          visit(next);
+        }
+      }
+      path.removeLast();
+      state[id] = finished;
+    }
+
+    for (final id in _byId.keys) {
+      if (state[id] == null) visit(id);
+    }
+    return found.values.toList();
+  }
+
+  static int compareDefault(Workflow workflow, PlannedItem a, PlannedItem b) {
+    final byPriority = workflow.priorityRank(a.item.priority).compareTo(workflow.priorityRank(b.item.priority));
+    if (byPriority != 0) return byPriority;
+    final byCreated = (a.item.created ?? '9999').compareTo(b.item.created ?? '9999');
+    if (byCreated != 0) return byCreated;
+    return a.id.compareTo(b.id);
+  }
+}
