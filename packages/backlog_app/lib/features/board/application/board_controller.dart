@@ -52,7 +52,7 @@ class BoardController extends ChangeNotifier {
   /// The current view after [filter].
   ViewResultDto? get visible {
     final current = result;
-    return current == null ? null : filter.apply(current);
+    return current == null ? null : filter.apply(current, index);
   }
 
   /// Items of the current view before and after [filter].
@@ -62,8 +62,12 @@ class BoardController extends ChangeNotifier {
   }
 
   /// What the filter can offer for the current view.
-  Map<FilterFacet, List<String>> get filterOptions =>
-      BoardFilter.options(result?.groups.expand((group) => group.items) ?? const [], workflow, current: filter);
+  Map<FilterFacet, List<String>> get filterOptions => BoardFilter.options(
+    result?.groups.expand((group) => group.items) ?? const [],
+    workflow,
+    current: filter,
+    index: index,
+  );
 
   /// Views grouped for the side panel: those without a section first (key
   /// null), then the sections alphabetically; views keep their order inside.

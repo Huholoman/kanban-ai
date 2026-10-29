@@ -29,6 +29,7 @@ have not claimed; if `claim` reports a conflict, someone else has it.
     backlog heartbeat T-7f3a     # renew the claim (expires after the lease)
     backlog set T-7f3a branch=feat/reports
     backlog set T-7f3a status=review
+    backlog set T-7f3a pr=https://github.com/org/repo/pull/42   # once the PR exists
 
 Edit the body of your item file directly (context, plan, checklist with
 `- [ ]` / `- [x]`, notes). Do not edit `status`, `assignee` or `id` by hand.

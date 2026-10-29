@@ -1,3 +1,4 @@
+import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 
 import '../application/board_filter.dart';
@@ -11,6 +12,7 @@ class FilterBar extends StatefulWidget {
     required this.shown,
     required this.total,
     required this.onChanged,
+    this.index = const {},
   });
 
   final BoardFilter filter;
@@ -18,6 +20,9 @@ class FilterBar extends StatefulWidget {
   final int shown;
   final int total;
   final ValueChanged<BoardFilter> onChanged;
+
+  /// All items by id, for showing epics by title.
+  final Map<String, ItemDto> index;
 
   @override
   State<FilterBar> createState() => _FilterBarState();
@@ -74,6 +79,7 @@ class _FilterBarState extends State<FilterBar> {
           for (final facet in FilterFacet.values)
             if (widget.options[facet]?.isNotEmpty ?? false)
               _FacetMenu(
+                index: widget.index,
                 facet: facet,
                 options: widget.options[facet]!,
                 selected: filter.valuesFor(facet),
@@ -83,6 +89,7 @@ class _FilterBarState extends State<FilterBar> {
             FilterChip(
               key: ValueKey('filter-flag-${flag.name}'),
               label: Text(flag.title),
+              tooltip: flag.description,
               selected: filter.flags.contains(flag),
               onSelected: (_) => widget.onChanged(filter.toggleFlag(flag)),
             ),
@@ -107,7 +114,15 @@ class _FilterBarState extends State<FilterBar> {
 /// A chip that opens a checklist of one facet's values and sums up the
 /// selection in its label.
 class _FacetMenu extends StatelessWidget {
-  const _FacetMenu({required this.facet, required this.options, required this.selected, required this.onToggle});
+  const _FacetMenu({
+    required this.facet,
+    required this.options,
+    required this.selected,
+    required this.onToggle,
+    this.index = const {},
+  });
+
+  final Map<String, ItemDto> index;
 
   final FilterFacet facet;
   final List<String> options;
@@ -116,7 +131,7 @@ class _FacetMenu extends StatelessWidget {
 
   String get _label => switch (selected.length) {
     0 => facet.title,
-    1 || 2 => '${facet.title}: ${selected.join(', ')}',
+    1 || 2 => '${facet.title}: ${selected.map((value) => facet.describe(value, index)).join(', ')}',
     _ => '${facet.title}: ${selected.length}',
   };
 
@@ -129,7 +144,7 @@ class _FacetMenu extends StatelessWidget {
           value: selected.contains(option),
           closeOnActivate: false,
           onChanged: (_) => onToggle(option),
-          child: Text(facet == FilterFacet.label ? '#$option' : option),
+          child: Text(facet.describe(option, index)),
         ),
     ],
     builder: (context, menu, _) => FilterChip(

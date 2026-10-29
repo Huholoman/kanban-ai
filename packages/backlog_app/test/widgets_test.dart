@@ -1,6 +1,8 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/backlog_app.dart';
 import 'package:backlog_app/features/board/presentation/view_layouts.dart';
+import 'package:backlog_app/features/item/presentation/item_page.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -148,7 +150,7 @@ void main() {
     expect(find.text('Item T-1'), findsOneWidget);
     expect(find.text('Item T-3'), findsOneWidget);
     expect(find.text('Item T-2'), findsNothing);
-    expect(find.text('Labels: ui'), findsOneWidget);
+    expect(find.text('Labels: #ui'), findsOneWidget);
     expect(find.text('2 of 3'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('filter-clear')));
@@ -217,5 +219,99 @@ void main() {
     await tester.pump();
     expect(copied, 'T-1');
     expect(find.text('Copied T-1'), findsOneWidget);
+  });
+
+  testWidgets('the board scrollbar can be dragged with the mouse', (tester) async {
+    await pumpApp(tester, items: [for (var i = 1; i <= 30; i++) item('T-$i')]);
+    final scrollable = find.descendant(of: find.byType(KanbanBoard), matching: find.byType(Scrollable)).first;
+    final position = tester.state<ScrollableState>(scrollable).position;
+    expect(position.pixels, 0);
+    expect(position.maxScrollExtent, greaterThan(0));
+
+    final board = tester.getRect(find.byType(KanbanBoard));
+    final gesture = await tester.startGesture(Offset(board.right - 3, board.top + 20), kind: PointerDeviceKind.mouse);
+    await gesture.moveBy(const Offset(0, 200));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(position.pixels, greaterThan(0));
+  });
+
+  testWidgets('children open in panels to the right, the board gives way when they do not fit', (tester) async {
+    await pumpApp(
+      tester,
+      width: 1900,
+      items: [
+        item('E-1', type: 'epic'),
+        item('S-1', type: 'story', parent: 'E-1'),
+        item('T-1', parent: 'S-1'),
+      ],
+    );
+    await tester.tap(find.text('Item E-1'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ItemDetailView), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('link-S-1')).first);
+    await tester.pumpAndSettle();
+    expect(find.byType(ItemDetailView), findsNWidgets(2));
+    expect(find.byType(KanbanBoard), findsOneWidget, reason: 'two panels still fit next to the board');
+
+    await tester.tap(find.byKey(const ValueKey('link-T-1')).first);
+    await tester.pumpAndSettle();
+    expect(find.byType(ItemDetailView), findsNWidgets(3));
+    expect(find.byType(KanbanBoard), findsNothing);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byType(ItemDetailView), findsNWidgets(2));
+    expect(find.byType(KanbanBoard), findsOneWidget);
+  });
+
+  testWidgets('the breadcrumb leads back to the board', (tester) async {
+    await pumpApp(
+      tester,
+      width: 1300,
+      items: [
+        item('E-1', type: 'epic'),
+        item('S-1', type: 'story', parent: 'E-1'),
+        item('T-1', parent: 'S-1'),
+      ],
+    );
+    await tester.tap(find.text('Item E-1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('link-S-1')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('link-T-1')).first);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ItemDetailView), findsNWidgets(2), reason: 'only two panels fit');
+    expect(find.byKey(const ValueKey('crumb-E-1')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('crumb-board')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ItemDetailView), findsNothing);
+    expect(find.byType(KanbanBoard), findsOneWidget);
+  });
+
+  testWidgets('relations fold, show counts and hide when empty', (tester) async {
+    await pumpApp(
+      tester,
+      items: [
+        item('S-1', type: 'story'),
+        item('T-1', parent: 'S-1'),
+        item('T-2', parent: 'S-1', status: 'done'),
+      ],
+    );
+    await tester.tap(find.byKey(const ValueKey('card-S-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Children (2)'), findsOneWidget);
+    expect(find.text('1/2 done'), findsOneWidget);
+    expect(find.text('Parent (0)'), findsNothing);
+    expect(find.byKey(const ValueKey('relation-dependencies')), findsNothing);
+    expect(find.byKey(const ValueKey('add-dependencies')), findsOneWidget);
+
+    expect(find.byKey(const ValueKey('link-T-1')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('relation-children')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('link-T-1')), findsNothing);
+    expect(find.text('Children (2)'), findsOneWidget);
   });
 }

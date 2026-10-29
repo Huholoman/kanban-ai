@@ -35,6 +35,7 @@ abstract final class DtoMapper {
       related: [for (final id in item.related) id.value],
       assignee: item.assignee,
       branch: item.branch,
+      pr: item.pr,
       labels: item.labels,
       docs: item.docs,
       created: item.created,

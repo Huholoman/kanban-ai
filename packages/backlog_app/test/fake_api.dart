@@ -67,7 +67,14 @@ final class FakeBacklogApi implements BacklogApi {
   Future<ItemDetailDto> item(String reference) async {
     final found = items_[reference];
     if (found == null) throw BacklogApiException(404, 'not_found', 'No item "$reference".');
-    return ItemDetailDto(item: found);
+    ItemLinkDto link(ItemDto item) =>
+        ItemLinkDto(id: item.id, title: item.title, status: item.status, category: item.category);
+    final children = items_.values.where((i) => i.parent == found.id).toList();
+    return ItemDetailDto(
+      item: _with(found, children: Progress(children.where((c) => c.isDone).length, children.length)),
+      parent: found.parent == null ? null : link(items_[found.parent]!),
+      children: [for (final child in children) link(child)],
+    );
   }
 
   @override
@@ -167,7 +174,7 @@ final class FakeBacklogApi implements BacklogApi {
   @override
   Stream<BacklogChangeEvent> changes() => _changes.stream;
 
-  static ItemDto _with(ItemDto item, {String? status, String? priority, String? body}) => ItemDto(
+  static ItemDto _with(ItemDto item, {String? status, String? priority, String? body, Progress? children}) => ItemDto(
     id: item.id,
     title: item.title,
     type: item.type,
@@ -175,6 +182,9 @@ final class FakeBacklogApi implements BacklogApi {
     category: _workflow.categoryOf(status ?? item.status),
     priority: priority ?? item.priority,
     labels: item.labels,
+    parent: item.parent,
+    dependsOn: item.dependsOn,
+    children: children ?? item.children,
     body: body ?? item.body,
   );
 }

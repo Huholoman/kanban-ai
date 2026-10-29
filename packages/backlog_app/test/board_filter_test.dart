@@ -1,5 +1,6 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/features/board/application/board_filter.dart';
+import 'package:backlog_app/shared/pr_link.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_api.dart';
@@ -84,5 +85,32 @@ void main() {
     expect(options[FilterFacet.label], ['backend', 'gone', 'ui', 'web']);
     expect(options[FilterFacet.person], ['alice', 'monorepo-2']);
     expect(options[FilterFacet.milestone], isEmpty);
+  });
+
+  test('the epic facet keeps everything under the chosen epic', () {
+    final epic = item('E-1', type: 'epic');
+    final story = item('S-1', type: 'story', parent: 'E-1');
+    final task = item('T-9', parent: 'S-1');
+    final other = item('T-8');
+    final index = {
+      for (final i in [epic, story, task, other]) i.id: i,
+    };
+    final filter = BoardFilter.none.toggle(FilterFacet.epic, 'E-1');
+
+    expect([epic, story, task, other].where((i) => filter.matches(i, index)).map((i) => i.id), ['E-1', 'S-1', 'T-9']);
+    expect(BoardFilter.options([story, task, other], null, index: index)[FilterFacet.epic], ['E-1']);
+    expect(FilterFacet.epic.describe('E-1', index), 'Item E-1');
+  });
+
+  test('a parent cycle does not hang the epic lookup', () {
+    final a = item('A', parent: 'B');
+    final b = item('B', parent: 'A', type: 'epic');
+    expect(FilterFacet.epic.valuesOf(a, {'A': a, 'B': b}), ['B']);
+  });
+
+  test('PR links are labelled with their number', () {
+    expect(PrLink.label('https://github.com/o/r/pull/42'), 'PR #42');
+    expect(PrLink.label('https://gitlab.com/g/p/-/merge_requests/7'), 'PR #7');
+    expect(PrLink.label('https://example.com/review'), 'PR');
   });
 }

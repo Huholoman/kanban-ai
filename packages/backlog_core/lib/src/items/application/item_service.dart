@@ -22,6 +22,7 @@ final class NewItem {
     this.docs = const [],
     this.assignee,
     this.branch,
+    this.pr,
     this.body = '',
   });
 
@@ -37,6 +38,7 @@ final class NewItem {
   final List<String> docs;
   final String? assignee;
   final String? branch;
+  final String? pr;
   final String body;
 }
 
@@ -82,6 +84,7 @@ final class ItemService {
       docs: _distinct(draft.docs),
       assignee: draft.assignee,
       branch: draft.branch,
+      pr: draft.pr,
       created: today,
       updated: today,
       body: draft.body,
@@ -141,6 +144,7 @@ final class ItemService {
       'docs' => item.copyWith(docs: _applyList(item.docs, change, (v) => v)),
       'assignee' => item.copyWith(assignee: () => optional((v) => v)),
       'branch' => item.copyWith(branch: () => optional((v) => v)),
+      'pr' => item.copyWith(pr: () => optional((v) => v)),
       'created' => item.copyWith(created: () => optional((v) => v)),
       'updated' => item.copyWith(updated: () => optional((v) => v)),
       _ => item.copyWith(extra: _applyExtra(item.extra, change)),

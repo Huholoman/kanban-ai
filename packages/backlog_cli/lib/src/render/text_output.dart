@@ -62,6 +62,7 @@ abstract final class TextOutput {
             '${planned.isClaimExpired ? 'expired' : 'until'} ${time(planned.claim!.expiresAt)}',
       if (item.assignee != null) 'assignee: ${item.assignee}',
       if (item.branch != null) 'branch: ${item.branch}',
+      if (item.pr != null) 'pr: ${item.pr}',
       if (item.labels.isNotEmpty) 'labels: ${item.labels.join(', ')}',
       if (item.docs.isNotEmpty) 'docs: ${item.docs.join(', ')}',
       for (final MapEntry(:key, :value) in item.extra.entries) '$key: $value',

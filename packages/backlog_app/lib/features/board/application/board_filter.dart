@@ -4,6 +4,7 @@ import 'package:backlog_api/backlog_api.dart';
 /// views show it as columns or groups.
 enum FilterFacet {
   label('Labels'),
+  epic('Epic'),
   type('Type'),
   priority('Priority'),
   milestone('Milestone'),
@@ -14,25 +15,48 @@ enum FilterFacet {
   final String title;
 
   /// Values of this facet on [item]; people are the assignee and whoever
-  /// holds the claim.
-  Iterable<String> valuesOf(ItemDto item) => switch (this) {
+  /// holds the claim, epics are the epics above the item (or the item itself),
+  /// looked up in [index].
+  Iterable<String> valuesOf(ItemDto item, [Map<String, ItemDto> index = const {}]) => switch (this) {
     label => item.labels,
+    epic => _epicsAbove(item, index),
     type => [item.type],
     priority => [item.priority],
     milestone => [?item.milestone],
     person => {?item.assignee, ?item.claim?.agent},
   };
+
+  /// How a value is shown in the menu: epics by title, labels with `#`.
+  String describe(String value, Map<String, ItemDto> index) => switch (this) {
+    epic => index[value]?.title ?? value,
+    label => '#$value',
+    _ => value,
+  };
+
+  static List<String> _epicsAbove(ItemDto item, Map<String, ItemDto> index) {
+    final epics = <String>[];
+    final seen = <String>{};
+    for (ItemDto? current = item; current != null && seen.add(current.id); current = index[current.parent]) {
+      if (current.type == 'epic') epics.add(current.id);
+    }
+    return epics;
+  }
 }
 
 /// Planning state an item can be required to have.
 enum ItemFlag {
-  ready('Ready'),
-  blocked('Blocked'),
-  claimed('Claimed');
+  ready(
+    'Ready',
+    'Can be picked up now: in a pickable status (todo), all dependencies done, '
+        'no open children, nobody holds it.',
+  ),
+  blocked('Blocked', 'Waits for a dependency that is not done yet.'),
+  claimed('Claimed', 'An agent (or someone in the app) holds it: work is in progress.');
 
-  const ItemFlag(this.title);
+  const ItemFlag(this.title, this.description);
 
   final String title;
+  final String description;
 
   bool of(ItemDto item) => switch (this) {
     ready => item.ready,
@@ -72,20 +96,20 @@ final class BoardFilter {
     return BoardFilter(text: text, selected: selected, flags: next);
   }
 
-  bool matches(ItemDto item) {
+  bool matches(ItemDto item, [Map<String, ItemDto> index = const {}]) {
     final query = text.trim().toLowerCase();
     if (query.isNotEmpty && ![item.id, item.title, ?item.branch].any((field) => field.toLowerCase().contains(query))) {
       return false;
     }
     for (final MapEntry(key: facet, value: wanted) in selected.entries) {
-      if (wanted.isNotEmpty && !facet.valuesOf(item).any(wanted.contains)) return false;
+      if (wanted.isNotEmpty && !facet.valuesOf(item, index).any(wanted.contains)) return false;
     }
     return flags.every((flag) => flag.of(item));
   }
 
   /// [result] with the non-matching items left out; groups stay, even empty
-  /// ones, so kanban columns do not jump around.
-  ViewResultDto apply(ViewResultDto result) {
+  /// ones, so kanban columns do not jump around. [index] resolves parents.
+  ViewResultDto apply(ViewResultDto result, [Map<String, ItemDto> index = const {}]) {
     if (isEmpty) return result;
     return ViewResultDto(
       id: result.id,
@@ -94,23 +118,40 @@ final class BoardFilter {
       groupBy: result.groupBy,
       fields: result.fields,
       hidden: result.hidden,
-      groups: [for (final group in result.groups) ViewGroupDto(group.key, group.items.where(matches).toList())],
+      groups: [
+        for (final group in result.groups)
+          ViewGroupDto(group.key, [
+            for (final item in group.items)
+              if (matches(item, index)) item,
+          ]),
+      ],
     );
   }
 
   /// Values to offer per facet, taken from [items] (and the current selection,
   /// so nothing selected disappears). Priorities and types keep the workflow
-  /// order, the rest is alphabetical.
+  /// order, the rest is alphabetical (epics by title).
   static Map<FilterFacet, List<String>> options(
     Iterable<ItemDto> items,
     WorkflowDto? workflow, {
     BoardFilter current = none,
+    Map<String, ItemDto> index = const {},
   }) => {
     for (final facet in FilterFacet.values)
-      facet: _ordered(facet, {...items.expand(facet.valuesOf), ...current.valuesFor(facet)}, workflow),
+      facet: _ordered(
+        facet,
+        {...items.expand((item) => facet.valuesOf(item, index)), ...current.valuesFor(facet)},
+        workflow,
+        index,
+      ),
   };
 
-  static List<String> _ordered(FilterFacet facet, Set<String> values, WorkflowDto? workflow) {
+  static List<String> _ordered(
+    FilterFacet facet,
+    Set<String> values,
+    WorkflowDto? workflow,
+    Map<String, ItemDto> index,
+  ) {
     final order = switch (facet) {
       FilterFacet.priority => workflow?.priorities,
       FilterFacet.type => workflow?.types,
@@ -124,7 +165,7 @@ final class BoardFilter {
 
     return values.toList()..sort((a, b) {
       final byRank = rank(a).compareTo(rank(b));
-      return byRank != 0 ? byRank : a.compareTo(b);
+      return byRank != 0 ? byRank : facet.describe(a, index).compareTo(facet.describe(b, index));
     });
   }
 }

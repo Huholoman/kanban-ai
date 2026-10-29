@@ -20,6 +20,7 @@ final class Item {
     List<ItemId> related = const [],
     this.assignee,
     this.branch,
+    this.pr,
     List<String> labels = const [],
     List<String> docs = const [],
     this.created,
@@ -49,6 +50,7 @@ final class Item {
     'related',
     'assignee',
     'branch',
+    'pr',
     'labels',
     'docs',
     'created',
@@ -72,6 +74,9 @@ final class Item {
   final List<ItemId> related;
   final String? assignee;
   final String? branch;
+
+  /// Link to the pull/merge request that delivers the item.
+  final String? pr;
   final List<String> labels;
 
   /// Names of documents in the backlog's `docs/` folder.
@@ -100,6 +105,7 @@ final class Item {
     List<ItemId>? related,
     String? Function()? assignee,
     String? Function()? branch,
+    String? Function()? pr,
     List<String>? labels,
     List<String>? docs,
     String? Function()? created,
@@ -118,6 +124,7 @@ final class Item {
     related: related ?? this.related,
     assignee: assignee == null ? this.assignee : assignee(),
     branch: branch == null ? this.branch : branch(),
+    pr: pr == null ? this.pr : pr(),
     labels: labels ?? this.labels,
     docs: docs ?? this.docs,
     created: created == null ? this.created : created(),

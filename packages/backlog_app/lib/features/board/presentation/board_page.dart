@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
@@ -7,12 +8,16 @@ import 'package:flutter/services.dart';
 import '../../../app/app_scope.dart';
 import '../../item/presentation/item_page.dart';
 import '../application/board_controller.dart';
+import '../application/detail_trail.dart';
 import 'filter_bar.dart';
 import 'new_item_dialog.dart';
 import 'view_layouts.dart';
 
 /// Main screen. On a wide window: saved views on the left, the board in the
-/// middle and the open item in a panel on the right. Narrow windows pick the
+/// middle and the open item in a panel on the right. Children opened from
+/// that panel get further panels to the right (an epic, its story, the
+/// story's task, …); when they do not fit, the board and the oldest panels
+/// give way to a breadcrumb. Narrow windows pick the
 /// view from the app bar and open items as a full page.
 class BoardPage extends StatefulWidget {
   const BoardPage({super.key});
@@ -23,6 +28,12 @@ class BoardPage extends StatefulWidget {
   /// From this width items open next to the board instead of over it.
   static const detailPanelWidth = 1200.0;
 
+  /// Narrowest detail panel when several are open.
+  static const minPanelWidth = 440.0;
+
+  /// Narrowest board still shown next to several panels.
+  static const minBoardWidth = 480.0;
+
   @override
   State<BoardPage> createState() => _BoardPageState();
 }
@@ -31,8 +42,8 @@ class _BoardPageState extends State<BoardPage> {
   BoardController? _controller;
   StreamSubscription<String>? _notices;
 
-  /// Item open in the right panel.
-  String? _selectedId;
+  /// Items open in panels on the right, left to right.
+  DetailTrail _trail = DetailTrail.empty;
 
   @override
   void didChangeDependencies() {
@@ -57,16 +68,17 @@ class _BoardPageState extends State<BoardPage> {
 
   bool get _hasDetailPanel => MediaQuery.sizeOf(context).width >= BoardPage.detailPanelWidth;
 
-  Future<void> _open(String id) async {
+  /// Opens [id] from the board (a new trail) or from the panel at [from].
+  Future<void> _open(String id, {int? from}) async {
     if (_hasDetailPanel) {
-      setState(() => _selectedId = id);
+      setState(() => _trail = from == null ? _trail.open(id) : _trail.openFrom(from, id));
       return;
     }
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ItemPage(reference: id)));
     unawaited(_controller?.refresh(quiet: true));
   }
 
-  void _closeDetail() => setState(() => _selectedId = null);
+  void _closeLast() => setState(() => _trail = _trail.pop());
 
   Future<void> _create(BoardController controller) async {
     final workflow = controller.workflow;
@@ -82,9 +94,10 @@ class _BoardPageState extends State<BoardPage> {
     final controller = _controller!;
     final width = MediaQuery.sizeOf(context).width;
     final sideNavigation = width >= BoardPage.sideNavigationWidth;
-    final selectedId = width >= BoardPage.detailPanelWidth ? _selectedId : null;
+    final trail = width >= BoardPage.detailPanelWidth ? _trail : DetailTrail.empty;
+    final selectedId = trail.ids.firstOrNull;
     return CallbackShortcuts(
-      bindings: {const SingleActivator(LogicalKeyboardKey.escape): _closeDetail},
+      bindings: {const SingleActivator(LogicalKeyboardKey.escape): _closeLast},
       child: Focus(
         autofocus: true,
         child: ListenableBuilder(
@@ -121,24 +134,82 @@ class _BoardPageState extends State<BoardPage> {
                   _ViewsPanel(controller: controller, onCreate: () => _create(controller)),
                   const VerticalDivider(width: 1),
                 ],
-                Expanded(child: _body(controller, selectedId)),
-                if (selectedId != null) ...[
-                  const VerticalDivider(width: 1),
-                  SizedBox(
-                    width: (width * 0.36).clamp(440, 640),
-                    child: ItemDetailView(
-                      key: ValueKey(selectedId),
-                      reference: selectedId,
-                      onOpen: _open,
-                      onClose: _closeDetail,
-                    ),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => _content(controller, trail, selectedId, constraints.maxWidth),
                   ),
-                ],
+                ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  /// The board and the detail panels in [available] width.
+  Widget _content(BoardController controller, DetailTrail trail, String? selectedId, double available) {
+    final count = trail.ids.length;
+    if (count == 0) return _body(controller, selectedId);
+    if (count == 1) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: _body(controller, selectedId)),
+          const VerticalDivider(width: 1),
+          SizedBox(width: (available * 0.4).clamp(BoardPage.minPanelWidth, 640), child: _panel(trail, 0)),
+        ],
+      );
+    }
+    final besideBoard = ((available - BoardPage.minBoardWidth) / BoardPage.minPanelWidth).floor();
+    if (besideBoard >= count) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: _body(controller, selectedId)),
+          for (var i = 0; i < count; i++) ...[
+            const VerticalDivider(width: 1),
+            SizedBox(width: BoardPage.minPanelWidth, child: _panel(trail, i)),
+          ],
+        ],
+      );
+    }
+    // Panels only; what does not fit goes to the breadcrumb.
+    final first = trail.firstShown(max(1, (available / BoardPage.minPanelWidth).floor()));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Breadcrumb(
+          trail: trail,
+          hidden: first,
+          index: controller.index,
+          onBoard: () => setState(() => _trail = DetailTrail.empty),
+          onOpen: (i) => setState(() => _trail = trail.closeFrom(i + 1)),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = first; i < count; i++) ...[
+                if (i > first) const VerticalDivider(width: 1),
+                Expanded(child: _panel(trail, i)),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _panel(DetailTrail trail, int index) {
+    final id = trail.ids[index];
+    return ItemDetailView(
+      key: ValueKey('panel-$index-$id'),
+      reference: id,
+      openChildId: trail.nextAfter(index),
+      onOpen: (target) => _open(target, from: index),
+      onClose: () => setState(() => _trail = trail.closeFrom(index)),
     );
   }
 
@@ -165,6 +236,7 @@ class _BoardPageState extends State<BoardPage> {
           shown: controller.counts.shown,
           total: controller.counts.total,
           onChanged: controller.setFilter,
+          index: controller.index,
         ),
         const Divider(height: 1),
         Expanded(
@@ -194,6 +266,56 @@ class _BoardPageState extends State<BoardPage> {
             child: Text('${result.hidden} more item(s) outside the shown columns.'),
           ),
       ],
+    );
+  }
+}
+
+/// Way back when the board and earlier panels have no room: the board, then
+/// the hidden items of the trail.
+class _Breadcrumb extends StatelessWidget {
+  const _Breadcrumb({
+    required this.trail,
+    required this.hidden,
+    required this.index,
+    required this.onBoard,
+    required this.onOpen,
+  });
+
+  final DetailTrail trail;
+
+  /// How many panels from the left are not shown.
+  final int hidden;
+  final Map<String, ItemDto> index;
+  final VoidCallback onBoard;
+
+  /// Shows the trail up to the item at this position.
+  final ValueChanged<int> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final separator = Icon(Icons.chevron_right, size: 18, color: muted);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          TextButton.icon(
+            key: const ValueKey('crumb-board'),
+            onPressed: onBoard,
+            icon: const Icon(Icons.view_kanban_outlined, size: 18),
+            label: const Text('Board'),
+          ),
+          for (var i = 0; i < hidden; i++) ...[
+            separator,
+            TextButton(
+              key: ValueKey('crumb-${trail.ids[i]}'),
+              onPressed: () => onOpen(i),
+              child: Text(index[trail.ids[i]]?.title ?? trail.ids[i], overflow: TextOverflow.ellipsis),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

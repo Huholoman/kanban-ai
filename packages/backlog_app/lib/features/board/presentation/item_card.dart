@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../shared/copyable_id.dart';
 import '../../../shared/item_style.dart';
+import '../../../shared/pr_link.dart';
 
 /// Compact summary of an item for boards and lists.
 class ItemCard extends StatelessWidget {
@@ -100,6 +101,7 @@ class ItemCard extends StatelessWidget {
     return [
       if (showStatus) Tag(item.status, color: ItemStyle.category(item.category, scheme)),
       if (item.milestone != null) Tag(item.milestone!, icon: Icons.outlined_flag, color: scheme.tertiary),
+      if (item.pr case final pr?) PrLink(pr),
       for (final label in item.labels) Tag('#$label'),
       if (item.blocked) Tag('blocked by ${item.blockedBy.join(', ')}', icon: Icons.block, color: scheme.error),
       if (item.ready) Tag('ready', icon: Icons.play_arrow, color: Colors.green.shade700),

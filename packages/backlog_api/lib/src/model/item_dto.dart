@@ -68,6 +68,7 @@ final class ItemDto {
     this.related = const [],
     this.assignee,
     this.branch,
+    this.pr,
     this.labels = const [],
     this.docs = const [],
     this.created,
@@ -102,6 +103,7 @@ final class ItemDto {
       related: json.strings('related'),
       assignee: json.optionalString('assignee'),
       branch: json.optionalString('branch'),
+      pr: json.optionalString('pr'),
       labels: json.strings('labels'),
       docs: json.strings('docs'),
       created: json.optionalString('created'),
@@ -130,6 +132,9 @@ final class ItemDto {
   final List<String> related;
   final String? assignee;
   final String? branch;
+
+  /// Link to the pull request, if one is open or merged.
+  final String? pr;
   final List<String> labels;
   final List<String> docs;
   final String? created;
@@ -166,6 +171,7 @@ final class ItemDto {
     'related': related,
     'assignee': assignee,
     'branch': branch,
+    'pr': pr,
     'labels': labels,
     'docs': docs,
     'created': created,

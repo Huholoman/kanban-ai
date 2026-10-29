@@ -7,6 +7,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../../../app/app_scope.dart';
 import '../../../shared/copyable_id.dart';
 import '../../../shared/item_style.dart';
+import '../../../shared/pr_link.dart';
 import '../application/item_controller.dart';
 
 /// The item detail as a full screen, for narrow windows.
@@ -38,9 +39,13 @@ class ItemDetailView extends StatefulWidget {
     required this.onOpen,
     this.onClose,
     this.closeIcon = Icons.close,
+    this.openChildId,
   });
 
   final String reference;
+
+  /// Child shown in the panel to the right, highlighted in the list.
+  final String? openChildId;
 
   /// Opens a related item.
   final void Function(String id) onOpen;
@@ -120,6 +125,7 @@ class _ItemDetailViewState extends State<ItemDetailView> {
                   controller: controller,
                   detail: detail,
                   onOpen: widget.onOpen,
+                  openChildId: widget.openChildId,
                 ),
                 (null, final Object error) => Center(child: Text('$error')),
                 _ => const Center(child: CircularProgressIndicator()),
@@ -156,11 +162,12 @@ class _ItemDetailViewState extends State<ItemDetailView> {
 }
 
 class _Detail extends StatelessWidget {
-  const _Detail({required this.controller, required this.detail, required this.onOpen});
+  const _Detail({required this.controller, required this.detail, required this.onOpen, this.openChildId});
 
   final ItemController controller;
   final ItemDetailDto detail;
   final void Function(String id) onOpen;
+  final String? openChildId;
 
   @override
   Widget build(BuildContext context) {
@@ -191,7 +198,7 @@ class _Detail extends StatelessWidget {
               _Status(item: item),
               _Labels(item: item, controller: controller),
               const SizedBox(height: 8),
-              _Relations(detail: detail, controller: controller, onOpen: onOpen),
+              _Relations(detail: detail, controller: controller, onOpen: onOpen, openChildId: openChildId),
               if (item.extra.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 for (final MapEntry(:key, :value) in item.extra.entries)
@@ -276,6 +283,7 @@ class _Fields extends StatelessWidget {
           picker('milestone', 'Milestone', item.milestone, [for (final m in workflow.milestones) m.id], optional: true),
         _TextField(label: 'Assignee', value: item.assignee, onSave: (v) => controller.set('assignee', v)),
         _TextField(label: 'Branch', value: item.branch, onSave: (v) => controller.set('branch', v)),
+        _TextField(label: 'Pull request', value: item.pr, onSave: (v) => controller.set('pr', v)),
       ],
     );
   }
@@ -315,6 +323,7 @@ class _Status extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final claim = item.claim;
     final tags = [
+      if (item.pr case final pr?) PrLink(pr),
       if (item.ready) Tag('ready to pick', icon: Icons.play_arrow, color: Colors.green.shade700),
       if (item.blocked) Tag('blocked by ${item.blockedBy.join(', ')}', icon: Icons.block, color: scheme.error),
       if (claim != null)
@@ -373,78 +382,136 @@ class _Labels extends StatelessWidget {
   );
 }
 
-class _Relations extends StatelessWidget {
-  const _Relations({required this.detail, required this.controller, required this.onOpen});
+/// Kinds of links of an item, each a foldable section with its count.
+enum _Relation {
+  children('Children'),
+  parent('Parent', field: 'parent'),
+  dependencies('Depends on', field: 'depends_on'),
+  dependents('Blocks'),
+  related('Related', field: 'related');
+
+  const _Relation(this.title, {this.field});
+
+  final String title;
+
+  /// Front-matter field edited by adding and removing links; null for links
+  /// that are derived from other items.
+  final String? field;
+
+  List<ItemLinkDto> of(ItemDetailDto detail) => switch (this) {
+    children => detail.children,
+    parent => [?detail.parent],
+    dependencies => detail.dependencies,
+    dependents => detail.dependents,
+    related => detail.related,
+  };
+}
+
+/// Links of the item as foldable sections ("Children (19) · 7/19 done");
+/// empty ones are left out, and links are added from the row below them.
+class _Relations extends StatefulWidget {
+  const _Relations({required this.detail, required this.controller, required this.onOpen, this.openChildId});
 
   final ItemDetailDto detail;
   final ItemController controller;
   final void Function(String id) onOpen;
+  final String? openChildId;
+
+  @override
+  State<_Relations> createState() => _RelationsState();
+}
+
+class _RelationsState extends State<_Relations> {
+  final _folded = <_Relation>{};
+
+  Future<void> _add(_Relation relation) async {
+    final field = relation.field!;
+    final id = (await _askText(context, '${relation.title} — item id'))?.trim();
+    if (id == null || id.isEmpty) return;
+    await widget.controller.change([
+      field == 'parent' ? ItemUpdateRequest.set(field, id) : ItemUpdateRequest.add(field, id),
+    ]);
+  }
+
+  Future<void> _remove(_Relation relation, ItemLinkDto link) => widget.controller.change([
+    relation.field == 'parent'
+        ? ItemUpdateRequest.set('parent', null)
+        : ItemUpdateRequest.remove(relation.field!, link.id),
+  ]);
 
   @override
   Widget build(BuildContext context) {
+    final detail = widget.detail;
     final theme = Theme.of(context);
-    Widget section(String title, List<ItemLinkDto> links, {String? field}) {
-      if (links.isEmpty && field == null) return const SizedBox.shrink();
-      return Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(title, style: theme.textTheme.titleSmall),
-                if (field != null && !(field == 'parent' && links.isNotEmpty))
-                  IconButton(
-                    tooltip: 'Add',
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.add, size: 18),
-                    onPressed: () async {
-                      final id = await _askText(context, '$title — item id');
-                      if (id != null && id.trim().isNotEmpty) {
-                        await controller.change([
-                          field == 'parent'
-                              ? ItemUpdateRequest.set(field, id.trim())
-                              : ItemUpdateRequest.add(field, id.trim()),
-                        ]);
-                      }
-                    },
-                  ),
-              ],
-            ),
-            for (final link in links)
-              _LinkTile(
-                link: link,
-                onOpen: link.isMissing ? null : () => onOpen(link.id),
-                onRemove: field == null
-                    ? null
-                    : () => controller.change([
-                        field == 'parent'
-                            ? ItemUpdateRequest.set(field, null)
-                            : ItemUpdateRequest.remove(field, link.id),
-                      ]),
-              ),
-          ],
-        ),
-      );
-    }
-
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final addable = [
+      for (final relation in _Relation.values)
+        if (relation.field != null && !(relation == _Relation.parent && detail.parent != null)) relation,
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        section('Parent', [?detail.parent], field: 'parent'),
-        section('Children', detail.children),
-        section('Depends on', detail.dependencies, field: 'depends_on'),
-        section('Blocks', detail.dependents),
-        section('Related', detail.related, field: 'related'),
+        for (final relation in _Relation.values)
+          if (relation.of(detail) case final links when links.isNotEmpty) ...[
+            InkWell(
+              key: ValueKey('relation-${relation.name}'),
+              borderRadius: BorderRadius.circular(6),
+              onTap: () =>
+                  setState(() => _folded.contains(relation) ? _folded.remove(relation) : _folded.add(relation)),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 2),
+                child: Row(
+                  children: [
+                    Icon(_folded.contains(relation) ? Icons.chevron_right : Icons.expand_more, size: 18),
+                    const SizedBox(width: 2),
+                    Text('${relation.title} (${links.length})', style: theme.textTheme.titleSmall),
+                    if (relation == _Relation.children && !detail.item.children.isEmpty) ...[
+                      const SizedBox(width: 8),
+                      Text('${detail.item.children} done', style: muted),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            if (!_folded.contains(relation))
+              for (final link in links)
+                _LinkTile(
+                  link: link,
+                  selected: link.id == widget.openChildId,
+                  onOpen: link.isMissing ? null : () => widget.onOpen(link.id),
+                  onRemove: relation.field == null ? null : () => _remove(relation, link),
+                ),
+          ],
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Wrap(
+            spacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text('Link:', style: muted),
+              for (final relation in addable)
+                TextButton.icon(
+                  key: ValueKey('add-${relation.name}'),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  onPressed: () => _add(relation),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: Text(relation.title),
+                ),
+            ],
+          ),
+        ),
       ],
     );
   }
 }
 
 class _LinkTile extends StatelessWidget {
-  const _LinkTile({required this.link, this.onOpen, this.onRemove});
+  const _LinkTile({required this.link, this.onOpen, this.onRemove, this.selected = false});
 
   final ItemLinkDto link;
+
+  /// Open in the next panel.
+  final bool selected;
   final VoidCallback? onOpen;
   final VoidCallback? onRemove;
 
@@ -452,8 +519,12 @@ class _LinkTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return ListTile(
+      key: ValueKey('link-${link.id}'),
       dense: true,
-      contentPadding: EdgeInsets.zero,
+      selected: selected,
+      selectedTileColor: scheme.secondaryContainer,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
       visualDensity: VisualDensity.compact,
       leading: Icon(
         link.category == StatusCategoryDto.done ? Icons.check_circle : Icons.radio_button_unchecked,

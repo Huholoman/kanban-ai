@@ -44,6 +44,7 @@ final class NewCommand extends BacklogCommand {
       ..addMultiOption('doc')
       ..addOption('assignee')
       ..addOption('branch')
+      ..addOption('pr', help: 'Link to the pull request.')
       ..addOption('body', help: 'Markdown body.')
       ..addOption('body-file', help: 'Read the Markdown body from a file.');
   }
@@ -81,6 +82,7 @@ final class NewCommand extends BacklogCommand {
         docs: args.multiOption('doc'),
         assignee: args.option('assignee'),
         branch: args.option('branch'),
+        pr: args.option('pr'),
         body: body,
       ),
     );

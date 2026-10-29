@@ -325,4 +325,17 @@ void main() {
       expect(() => backlog.views.setSection('nope', 'X'), throwsA(isA<NotFoundException>()));
     });
   });
+
+  test('pr is a regular field: set, saved and cleared', () async {
+    final (backlog, _) = await tempBacklog();
+    final created = await backlog.items.create(const NewItem(title: 'Ship it', pr: 'https://github.com/o/r/pull/1'));
+    expect(created.pr, 'https://github.com/o/r/pull/1');
+    final updated = await backlog.items.update(created.id.value, [
+      FieldChange.parse('pr=https://github.com/o/r/pull/2'),
+    ]);
+    expect((await backlog.items.get(updated.id.value)).pr, 'https://github.com/o/r/pull/2');
+    final cleared = await backlog.items.update(created.id.value, [FieldChange.parse('pr=')]);
+    expect(cleared.pr, isNull);
+    expect(cleared.extra, isEmpty);
+  });
 }

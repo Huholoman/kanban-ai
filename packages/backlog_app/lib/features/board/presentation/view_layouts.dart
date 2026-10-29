@@ -48,22 +48,16 @@ class KanbanBoard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, constraints) => Scrollbar(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(12),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final group in result.groups)
-                  ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: max(0, constraints.maxHeight - 24)),
-                    child: _column(context, group),
-                  ),
-              ],
-            ),
-          ),
+      builder: (context, constraints) => _PageScroll(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final group in result.groups)
+              ConstrainedBox(
+                constraints: BoxConstraints(minHeight: max(0, constraints.maxHeight - 24)),
+                child: _column(context, group),
+              ),
+          ],
         ),
       ),
     );
@@ -205,6 +199,46 @@ class ParentHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Scrolls [child] both ways with draggable scrollbars: vertically like a
+/// page, horizontally when the columns are wider than the window. Scrollbars
+/// need their own controllers to be draggable with the mouse.
+class _PageScroll extends StatefulWidget {
+  const _PageScroll({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_PageScroll> createState() => _PageScrollState();
+}
+
+class _PageScrollState extends State<_PageScroll> {
+  final _vertical = ScrollController();
+  final _horizontal = ScrollController();
+
+  @override
+  void dispose() {
+    _vertical.dispose();
+    _horizontal.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scrollbar(
+    controller: _vertical,
+    thumbVisibility: true,
+    interactive: true,
+    child: SingleChildScrollView(
+      controller: _vertical,
+      padding: const EdgeInsets.all(12),
+      child: Scrollbar(
+        controller: _horizontal,
+        interactive: true,
+        child: SingleChildScrollView(controller: _horizontal, scrollDirection: Axis.horizontal, child: widget.child),
+      ),
+    ),
+  );
 }
 
 /// Folds or unfolds the items nested under a parent in a column.
