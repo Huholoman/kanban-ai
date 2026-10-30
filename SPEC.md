@@ -284,10 +284,13 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - Items grouped by the view's `group_by` (headers like column headers, rows are the same cards); the graph layout shows each item with an expandable tree of its dependencies (titles, statuses, cycle-safe), clickable.
 
 **Detail**
-- Header: type, id (click copies), Claim / Release / Done actions.
+- Header: back (when the detail has history), breadcrumb of the parent chain (*Epic › Story › X-2c91 Title*, ancestors clickable), close; below it "Story 2 of 5" with ‹ 2 / 5 › stepping through the parent's children (disabled at the ends, hidden without a parent; no history entry), or "Task · X-7f3a" without a parent; id (click copies), Claim / Release / Done actions.
+- **Navigation inside the detail:** every link (ancestor, sibling, child, relation, blocker) shows the item in the same panel or page; ← walks back the way taken. The board resets it when another card is opened.
+- "Blocked by X-7f3a Title" warning line when blocked.
 - Editable title, status, priority, type, milestone, assignee, branch, pull request, labels, Markdown body (rendered, with an editor).
 - PR shown as "PR #42", opens in a new tab (http/https only).
-- Relations as foldable sections with counts — Children (with "x/y done"), Parent, Depends on, Blocks, Related; empty ones hidden; links added from the *Link:* row and removed with ×.
+- Children ("Tasks" for a story) with "x of y done": each row (▸ id, title, status) expands in place to the first lines of the child's body, its own children ("Subtasks x of y done") and *Open X →*.
+- Parent, Depends on, Blocks, Related as folded rows with counts ("Depends on 1 ▸"); empty ones hidden; links added from the *Link:* row and removed with ×.
 - **One detail panel:** 480 px (520 px from 2000 px) right of the board from 1200 px; from 840 px a bottom sheet over the board (about 45 % of the height, drag handle, ⤢ opens it as a full page); narrower windows use a full page. Esc closes it.
 
 **Other**

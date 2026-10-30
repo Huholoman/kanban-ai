@@ -1,6 +1,7 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/backlog_app.dart';
 import 'package:backlog_app/features/board/presentation/view_layouts.dart';
+import 'package:backlog_app/features/item/presentation/item_page.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -100,7 +101,7 @@ void main() {
     await tester.tap(find.text('Item T-2'));
     await tester.pumpAndSettle();
     expect(find.text('Item T-1'), findsNothing);
-    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    expect(find.byTooltip('Close'), findsOneWidget);
   });
 
   testWidgets('views are switched in the left panel', (tester) async {
@@ -235,6 +236,33 @@ void main() {
     expect(position.pixels, greaterThan(0));
   });
 
+  testWidgets('children open inside the panel next to the board, Esc closes it', (tester) async {
+    await pumpApp(
+      tester,
+      width: 1900,
+      items: [
+        item('E-1', type: 'epic'),
+        item('S-1', type: 'story', parent: 'E-1'),
+        item('T-1', parent: 'S-1'),
+      ],
+    );
+    await tester.tap(find.text('Item E-1'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ItemDetailView), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('link-S-1')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('open-S-1')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ItemDetailView), findsOneWidget);
+    expect(find.byKey(const ValueKey('ancestor-E-1')), findsOneWidget);
+    expect(find.byType(KanbanBoard), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byType(ItemDetailView), findsNothing);
+  });
+
   testWidgets('relations fold, show counts and hide when empty', (tester) async {
     await pumpApp(
       tester,
@@ -246,8 +274,8 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('card-S-1')));
     await tester.pumpAndSettle();
-    expect(find.text('Children (2)'), findsOneWidget);
-    expect(find.text('1/2 done'), findsOneWidget);
+    expect(find.text('Tasks'), findsOneWidget);
+    expect(find.text('1 of 2 done'), findsOneWidget);
     expect(find.text('Parent (0)'), findsNothing);
     expect(find.byKey(const ValueKey('relation-dependencies')), findsNothing);
     expect(find.byKey(const ValueKey('add-dependencies')), findsOneWidget);
@@ -256,7 +284,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('relation-children')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('link-T-1')), findsNothing);
-    expect(find.text('Children (2)'), findsOneWidget);
+    expect(find.text('Tasks'), findsOneWidget);
   });
 
   testWidgets('colours from backlog.yaml reach cards and the theme switch works', (tester) async {
