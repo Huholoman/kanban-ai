@@ -2,6 +2,7 @@ import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 
 import '../../../shared/tokens.dart';
+import '../../../shared/ui/ui.dart';
 import '../application/board_filter.dart';
 
 /// The board's filter toolbar: search, a Filters popover with a section per
@@ -85,10 +86,27 @@ class _FilterBarState extends State<FilterBar> {
             onChanged: widget.onChanged,
             onSaveAsView: widget.onSaveAsView,
           ),
-          _Segments(filter: filter, onChanged: widget.onChanged),
+          SegmentedChoice<ItemFlag>(
+            segments: [
+              for (final flag in ItemFlag.values)
+                ChoiceSegment(
+                  value: flag,
+                  label: flag.title,
+                  tooltip: flag.description,
+                  key: ValueKey('filter-flag-${flag.name}'),
+                ),
+            ],
+            selected: filter.flags,
+            onToggle: (flag) => widget.onChanged(filter.toggleFlag(flag)),
+          ),
           for (final facet in FilterFacet.values)
             if (filter.valuesFor(facet).isNotEmpty)
-              _FacetChip(facet: facet, text: _summary(facet), onRemove: () => widget.onChanged(_without(facet))),
+              RemovableChip(
+                key: ValueKey('chip-${facet.name}'),
+                removeKey: ValueKey('chip-${facet.name}-remove'),
+                text: _summary(facet),
+                onRemove: () => widget.onChanged(_without(facet)),
+              ),
         ];
         if (!wide) {
           return Wrap(
@@ -254,38 +272,15 @@ class _FiltersButton extends StatelessWidget {
           ),
         ),
       ],
-      builder: (context, menu, _) => OutlinedButton.icon(
+      builder: (context, menu, _) => SecondaryButton(
         key: const ValueKey('filter-button'),
+        label: 'Filters',
+        icon: Icons.filter_list,
+        trailing: active > 0 ? CountBadge(active, key: const ValueKey('filter-badge')) : null,
         onPressed: () => menu.isOpen ? menu.close() : menu.open(),
-        icon: const Icon(Icons.filter_list, size: 16),
-        label: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Filters'),
-            if (active > 0) ...[const SizedBox(width: 6), _Badge(count: active, tokens: tokens)],
-          ],
-        ),
       ),
     );
   }
-}
-
-class _Badge extends StatelessWidget {
-  const _Badge({required this.count, required this.tokens});
-
-  final int count;
-  final BoardTokens tokens;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    key: const ValueKey('filter-badge'),
-    padding: const EdgeInsets.symmetric(horizontal: 6),
-    decoration: BoxDecoration(color: tokens.accent, borderRadius: BorderRadius.circular(9)),
-    child: Text(
-      '$count',
-      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: tokens.onAccent),
-    ),
-  );
 }
 
 /// The popover: a section per facet that has options, then the tally and
@@ -339,12 +334,12 @@ class _FiltersPanelState extends State<_FiltersPanel> {
                   const Expanded(
                     child: Text('Filters', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                   ),
-                  TextButton(
+                  LinkButton(
                     key: const ValueKey('filter-clear-all'),
+                    label: 'Clear all',
                     onPressed: filter.selected.values.every((values) => values.isEmpty)
                         ? null
                         : () => widget.onChanged(BoardFilter(text: filter.text, flags: filter.flags)),
-                    child: const Text('Clear all'),
                   ),
                 ],
               ),
@@ -374,10 +369,10 @@ class _FiltersPanelState extends State<_FiltersPanel> {
                     ),
                   ),
                   if (widget.onSaveAsView != null && !filter.isEmpty)
-                    OutlinedButton(
+                    SecondaryButton(
                       key: const ValueKey('filter-save'),
+                      label: 'Save as view…',
                       onPressed: widget.onSaveAsView,
-                      child: const Text('Save as view…'),
                     ),
                 ],
               ),
@@ -389,7 +384,6 @@ class _FiltersPanelState extends State<_FiltersPanel> {
   }
 
   Widget _section(FilterFacet facet) {
-    final tokens = BoardTokens.of(context);
     var values = widget.options[facet]!;
     final searchable = facet == FilterFacet.label && values.length >= _searchableFrom;
     final query = _labelQuery.trim().toLowerCase();
@@ -403,13 +397,7 @@ class _FiltersPanelState extends State<_FiltersPanel> {
       key: ValueKey('filter-${facet.name}'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 8, bottom: 4),
-          child: Text(
-            facet.title.toUpperCase(),
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.5, color: tokens.muted),
-          ),
-        ),
+        SectionLabel(facet.title, padding: const EdgeInsets.only(top: 8, bottom: 4)),
         if (searchable)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
@@ -464,112 +452,6 @@ class _FiltersPanelState extends State<_FiltersPanel> {
   }
 }
 
-/// Ready | Blocked | Claimed as one bordered group.
-class _Segments extends StatelessWidget {
-  const _Segments({required this.filter, required this.onChanged});
-
-  final BoardFilter filter;
-  final ValueChanged<BoardFilter> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = BoardTokens.of(context);
-    final radius = BorderRadius.circular(BoardTokens.radiusSmall);
-    return Container(
-      height: BoardTokens.controlHeight,
-      decoration: BoxDecoration(
-        border: Border.all(color: tokens.borderStrong),
-        borderRadius: radius,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (position, flag) in ItemFlag.values.indexed) ...[
-            if (position > 0) VerticalDivider(width: 1, color: tokens.borderStrong),
-            _Segment(flag: flag, pressed: filter.flags.contains(flag), onTap: () => onChanged(filter.toggleFlag(flag))),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _Segment extends StatelessWidget {
-  const _Segment({required this.flag, required this.pressed, required this.onTap});
-
-  final ItemFlag flag;
-  final bool pressed;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = BoardTokens.of(context);
-    return Tooltip(
-      message: flag.description,
-      waitDuration: const Duration(milliseconds: 500),
-      child: Material(
-        color: pressed ? tokens.accentSoft : tokens.surface,
-        child: InkWell(
-          key: ValueKey('filter-flag-${flag.name}'),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Center(
-              child: Text(
-                flag.title,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: pressed ? FontWeight.w600 : FontWeight.w400,
-                  color: pressed ? tokens.accent : tokens.text,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A removable chip for one facet, e.g. "label: infra".
-class _FacetChip extends StatelessWidget {
-  const _FacetChip({required this.facet, required this.text, required this.onRemove});
-
-  final FilterFacet facet;
-  final String text;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = BoardTokens.of(context);
-    return Container(
-      key: ValueKey('chip-${facet.name}'),
-      constraints: const BoxConstraints(maxWidth: 240),
-      padding: const EdgeInsets.only(left: 10),
-      decoration: BoxDecoration(color: tokens.chip, borderRadius: BorderRadius.circular(BoardTokens.controlHeight)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Flexible(
-            child: Text(text, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-          ),
-          IconButton(
-            key: ValueKey('chip-${facet.name}-remove'),
-            tooltip: 'Remove',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-            iconSize: 12,
-            color: tokens.muted,
-            icon: const Icon(Icons.close),
-            onPressed: onRemove,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// "14 of 41 shown · Clear".
 class _Tally extends StatelessWidget {
   const _Tally({required this.shown, required this.total, required this.onClear});
@@ -585,16 +467,12 @@ class _Tally extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text('$shown of $total shown ·', style: TextStyle(color: tokens.muted)),
-        TextButton(
+        LinkButton(
           key: const ValueKey('filter-clear'),
-          style: TextButton.styleFrom(
-            foregroundColor: tokens.accent,
-            minimumSize: Size.zero,
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
+          label: 'Clear',
+          accent: true,
+          compact: true,
           onPressed: onClear,
-          child: const Text('Clear'),
         ),
       ],
     );
