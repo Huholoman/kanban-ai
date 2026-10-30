@@ -39,6 +39,8 @@ class PrimaryButton extends StatelessWidget {
         foregroundColor: tokens.onAccent,
         disabledForegroundColor: tokens.faint,
         minimumSize: const Size(0, BoardTokens.controlHeight),
+        // The theme is compact, which would take 8 px off the minimum height.
+        visualDensity: VisualDensity.standard,
         padding: _padding,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
@@ -70,6 +72,8 @@ class SecondaryButton extends StatelessWidget {
         disabledForegroundColor: tokens.faint,
         side: BorderSide(color: tokens.borderStrong),
         minimumSize: const Size(0, BoardTokens.controlHeight),
+        // The theme is compact, which would take 8 px off the minimum height.
+        visualDensity: VisualDensity.standard,
         padding: _padding,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
@@ -110,6 +114,7 @@ class LinkButton extends StatelessWidget {
         foregroundColor: base,
         disabledForegroundColor: tokens.faint,
         minimumSize: compact ? Size.zero : const Size(0, BoardTokens.controlHeight),
+        visualDensity: compact ? null : VisualDensity.standard,
         padding: compact ? const EdgeInsets.symmetric(horizontal: 6, vertical: 4) : _padding,
         tapTargetSize: compact ? MaterialTapTargetSize.shrinkWrap : null,
       ),

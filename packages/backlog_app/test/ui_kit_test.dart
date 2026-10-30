@@ -8,7 +8,8 @@ void main() {
 
   Future<void> pump(WidgetTester tester, Widget child) => tester.pumpWidget(
     MaterialApp(
-      theme: ThemeData(extensions: const [tokens]),
+      // The app's real (compact) theme, so sizes are what users get.
+      theme: tokens.toTheme(Brightness.light),
       home: Scaffold(body: Center(child: child)),
     ),
   );
