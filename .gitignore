@@ -4,3 +4,4 @@ build/
 playground/
 result
 result-*
+.claude/worktrees/
