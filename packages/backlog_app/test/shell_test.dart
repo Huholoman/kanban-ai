@@ -1,3 +1,4 @@
+import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/backlog_app.dart';
 import 'package:backlog_app/features/board/presentation/view_layouts.dart';
 import 'package:backlog_app/features/item/presentation/item_page.dart';
@@ -180,5 +181,36 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('group-by-default')));
     await tester.pumpAndSettle();
     expect(find.text('Group: status'), findsOneWidget);
+  });
+
+  testWidgets('People lists agents with claims and narrows the board to one', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    ItemDto claimed(String id, String agent) => ItemDto(
+      id: id,
+      title: 'Item $id',
+      type: 'task',
+      status: 'in-progress',
+      priority: 'p2',
+      claim: ClaimDto(
+        item: id,
+        agent: agent,
+        claimedAt: DateTime.utc(2026),
+        heartbeatAt: DateTime.utc(2026),
+        expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+      ),
+    );
+    await tester.pumpWidget(
+      BacklogApp(api: FakeBacklogApi([claimed('T-1', 'bob'), claimed('T-2', 'alice'), item('T-3')])),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('PEOPLE'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('person-bob')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('card-T-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('card-T-2')), findsNothing);
+    expect(find.byKey(const ValueKey('card-T-3')), findsNothing);
   });
 }

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../../shared/tokens.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../application/board_controller.dart';
+import '../../application/board_filter.dart';
 import 'lint_dialog.dart';
 
 /// Icon of a view's layout.
@@ -83,6 +84,11 @@ class ViewNavigation extends StatelessWidget {
                     if (!controller.collapsedSections.contains(name))
                       for (final view in members) _ViewRow(controller: controller, view: view, onNavigate: onNavigate),
                   ],
+                if (controller.people case final people when people.isNotEmpty) ...[
+                  const SectionLabel('People'),
+                  for (final (agent, count) in people)
+                    _PersonRow(controller: controller, agent: agent, count: count, onNavigate: onNavigate),
+                ],
               ],
             ),
           ),
@@ -139,6 +145,56 @@ class _ViewRow extends StatelessWidget {
                 ),
                 if (count != null) CountText(count),
                 _ViewMenu(controller: controller, view: view),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// An agent holding claims; a tap narrows the board to their items.
+class _PersonRow extends StatelessWidget {
+  const _PersonRow({required this.controller, required this.agent, required this.count, this.onNavigate});
+
+  final BoardController controller;
+  final String agent;
+  final int count;
+  final VoidCallback? onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    final selected = controller.filter.valuesFor(FilterFacet.person).contains(agent);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Material(
+        color: selected ? tokens.accentSoft : Colors.transparent,
+        borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
+        child: InkWell(
+          key: ValueKey('person-$agent'),
+          borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
+          onTap: () {
+            controller.showPerson(agent);
+            onNavigate?.call();
+          },
+          child: SizedBox(
+            height: 32,
+            child: Row(
+              children: [
+                const SizedBox(width: 10),
+                Icon(Icons.smart_toy_outlined, size: 16, color: tokens.muted),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    agent,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: selected ? tokens.accent : tokens.text),
+                  ),
+                ),
+                CountText(count),
+                const SizedBox(width: 12),
               ],
             ),
           ),
