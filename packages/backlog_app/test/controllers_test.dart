@@ -115,6 +115,28 @@ void main() {
       expect(controller.item!.isDone, isTrue);
     });
 
+    test('loads the parent chain, the siblings and previews of children', () async {
+      final api = FakeBacklogApi([
+        item('E-1', type: 'epic'),
+        item('S-1', type: 'story', parent: 'E-1'),
+        item('S-2', type: 'story', parent: 'E-1'),
+        item('T-1', parent: 'S-2', body: 'first'),
+      ]);
+      final controller = ItemController(api, 'S-2', refreshDelay: Duration.zero);
+      addTearDown(controller.dispose);
+      await controller.start();
+      expect(controller.ancestors.map((a) => a.item.id), ['E-1']);
+      expect(controller.siblings.map((s) => s.id), ['S-1', 'S-2']);
+      expect('${controller.position}', '2 / 2');
+
+      expect(controller.preview('T-1'), isNull);
+      await controller.loadPreview('T-1');
+      expect(controller.preview('T-1')!.item.body, 'first');
+      api.externalChange(item('T-1', parent: 'S-2', body: 'second'));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(controller.preview('T-1')!.item.body, 'second', reason: 'previews follow changes');
+    });
+
     test('a missing item shows an error', () async {
       final controller = ItemController(FakeBacklogApi([]), 'T-9');
       addTearDown(controller.dispose);

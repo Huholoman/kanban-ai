@@ -83,11 +83,18 @@ final class FakeBacklogApi implements BacklogApi {
     if (found == null) throw BacklogApiException(404, 'not_found', 'No item "$reference".');
     ItemLinkDto link(ItemDto item) =>
         ItemLinkDto(id: item.id, title: item.title, status: item.status, category: item.category);
+    ItemLinkDto linkTo(String id) => items_[id] == null ? ItemLinkDto(id: id) : link(items_[id]!);
     final children = items_.values.where((i) => i.parent == found.id).toList();
     return ItemDetailDto(
       item: _with(found, children: Progress(children.where((c) => c.isDone).length, children.length)),
       parent: found.parent == null ? null : link(items_[found.parent]!),
       children: [for (final child in children) link(child)],
+      dependencies: [for (final id in found.dependsOn) linkTo(id)],
+      dependents: [
+        for (final other in items_.values)
+          if (other.dependsOn.contains(found.id)) link(other),
+      ],
+      related: [for (final id in found.related) linkTo(id)],
     );
   }
 
