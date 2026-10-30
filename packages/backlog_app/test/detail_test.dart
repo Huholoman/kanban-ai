@@ -209,4 +209,12 @@ void main() {
       expect(api.updates.single.$2.changes, ['title=Renamed']);
     });
   });
+
+  testWidgets('a checklist checkbox rewrites its line and saves the body', (tester) async {
+    final api = await _pumpDetail(tester, 'S-2');
+    expect(tester.widget<Checkbox>(_key('checklist-0')).value, isFalse);
+    await _tap(tester, _key('checklist-0'));
+    expect(api.updates.single.$2.body, '## Plan\nTime the restore.\n- [x] script\n');
+    expect(tester.widget<Checkbox>(_key('checklist-0')).value, isTrue);
+  });
 }

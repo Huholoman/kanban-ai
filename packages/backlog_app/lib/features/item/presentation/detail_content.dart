@@ -7,6 +7,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../../../shared/item_style.dart';
 import '../../../shared/pr_link.dart';
 import '../../../shared/tokens.dart';
+import '../application/item_body.dart';
 import '../application/item_controller.dart';
 import 'ask_text.dart';
 import 'detail_relations.dart';
@@ -65,7 +66,7 @@ class DetailContent extends StatelessWidget {
               DetailChildren(controller: controller, onOpen: onOpen),
               DetailRelations(controller: controller, onOpen: onOpen),
               const SizedBox(height: 16),
-              _Body(body: item.body ?? '', onSave: controller.saveBody),
+              _Body(body: item.body ?? '', onSave: controller.saveBody, enabled: !controller.busy),
               const SizedBox(height: 12),
               Text(
                 [
@@ -545,12 +546,16 @@ class _Labels extends StatelessWidget {
   );
 }
 
-/// Markdown body with an edit mode.
+/// The Markdown body in a card, with an edit mode; its checklist items are
+/// checkboxes that rewrite their line and save the body.
 class _Body extends StatefulWidget {
-  const _Body({required this.body, required this.onSave});
+  const _Body({required this.body, required this.onSave, required this.enabled});
 
   final String body;
   final Future<bool> Function(String body) onSave;
+
+  /// False while a change is being saved.
+  final bool enabled;
 
   @override
   State<_Body> createState() => _BodyState();
@@ -608,25 +613,86 @@ class _BodyState extends State<_Body> {
         ],
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text('Description', style: Theme.of(context).textTheme.titleSmall),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: () => setState(() => _editor = TextEditingController(text: widget.body)),
-              icon: const Icon(Icons.edit_note),
-              label: const Text('Edit'),
+    final tokens = BoardTokens.of(context);
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 4, 8, 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: tokens.border),
+        borderRadius: BorderRadius.circular(BoardTokens.radius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('Description', style: theme.textTheme.bodySmall),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () => setState(() => _editor = TextEditingController(text: widget.body)),
+                icon: const Icon(Icons.edit_note, size: 18),
+                label: const Text('Edit'),
+              ),
+            ],
+          ),
+          if (widget.body.trim().isEmpty)
+            Text('No description.', style: TextStyle(color: tokens.faint))
+          else
+            for (final segment in splitChecklist(widget.body))
+              switch (segment) {
+                MarkdownSegment(:final markdown) => MarkdownBody(data: markdown, selectable: true),
+                final ChecklistSegment item => _ChecklistItem(
+                  item: item,
+                  onChanged: widget.enabled
+                      ? () => unawaited(widget.onSave(toggleChecklistItem(widget.body, item.index)))
+                      : null,
+                ),
+              },
+        ],
+      ),
+    );
+  }
+}
+
+/// One checklist line: a checkbox and the text, struck through when done.
+class _ChecklistItem extends StatelessWidget {
+  const _ChecklistItem({required this.item, required this.onChanged});
+
+  final ChecklistSegment item;
+
+  /// Null disables the checkbox.
+  final VoidCallback? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    final style = Theme.of(context).textTheme.bodyMedium?.copyWith(
+      color: item.checked ? tokens.muted : tokens.text,
+      decoration: item.checked ? TextDecoration.lineThrough : null,
+    );
+    return Padding(
+      padding: EdgeInsets.only(left: 20.0 * item.depth, top: 2, bottom: 2),
+      child: Row(
+        children: [
+          SizedBox.square(
+            dimension: 24,
+            child: Checkbox(
+              key: ValueKey('checklist-${item.index}'),
+              value: item.checked,
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              onChanged: onChanged == null ? null : (_) => onChanged!(),
             ),
-          ],
-        ),
-        if (widget.body.trim().isEmpty)
-          const Text('No description.')
-        else
-          MarkdownBody(data: widget.body, selectable: true),
-      ],
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: MarkdownBody(
+              data: item.text,
+              styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(p: style),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
