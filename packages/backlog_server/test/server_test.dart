@@ -131,6 +131,29 @@ void main() {
       expect(response.body, contains('app'));
     });
 
+    test('the web app is revalidated by ETag, never by a fixed date', () async {
+      final uri = server.uri.replace(path: '/index.html');
+      final first = await http.get(uri);
+      final tag = first.headers['etag'];
+      expect(tag, isNotNull);
+      expect(first.headers['cache-control'], 'no-cache');
+      expect(first.headers.containsKey('last-modified'), isFalse);
+
+      final same = await http.get(uri, headers: {'if-none-match': tag!});
+      expect(same.statusCode, 304);
+      // A date validator alone no longer short-circuits (Nix store files all
+      // carry the same date).
+      final dated = await http.get(uri, headers: {'if-modified-since': 'Thu, 01 Jan 2099 00:00:00 GMT'});
+      expect(dated.statusCode, 200);
+
+      File(p.join(dir.path, '_web', 'index.html')).writeAsStringSync('<p>new app build</p>');
+      final rebuilt = await http.get(uri, headers: {'if-none-match': tag});
+      expect(rebuilt.statusCode, 200);
+      expect(rebuilt.body, contains('new app build'));
+      expect(rebuilt.headers['etag'], isNot(tag));
+      expect((await http.get(server.uri.replace(path: '/'))).headers['etag'], rebuilt.headers['etag']);
+    });
+
     test('pushes changes made by anyone — the API or an agent on disk', () async {
       final events = StreamIterator(api.changes());
       addTearDown(events.cancel);

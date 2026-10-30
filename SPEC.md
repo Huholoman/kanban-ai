@@ -230,7 +230,7 @@ Errors and warnings with a code, item and location:
 | `--web` | `BACKLOG_WEB` | built app next to the sources / bundled in Nix | static web app |
 | `-q` | | | no request log |
 
-At start it prints the board URLs (with the token). It watches the folder (debounced, ignoring `.git`, temp and editor files) and pushes change events; edits from agents, `git pull` or an editor appear on the board immediately. `backlog.yaml` changes reload the workflow.
+At start it prints the board URLs (with the token). The web app is served with `Cache-Control: no-cache` and an ETag per file (derived from the build's location, size and time — files in the Nix store all share one date), so browsers revalidate and never keep files of an older build. It watches the folder (debounced, ignoring `.git`, temp and editor files) and pushes change events; edits from agents, `git pull` or an editor appear on the board immediately. `backlog.yaml` changes reload the workflow.
 
 ### 8.1 REST API
 

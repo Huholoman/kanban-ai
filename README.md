@@ -191,7 +191,7 @@ backlog-server --allow 127.0.0.1,10.77.11.22,10.77.0.0/16  # answer only these c
 | `-p`, `--port` | `8640` | |
 | `--token` | `BACKLOG_TOKEN` | when set, `/api/` requires it |
 | `--generate-token` | | require a random token; it is printed at start, inside the URLs |
-| `--web` | `BACKLOG_WEB`, else `packages/backlog_app/build/web` | the built web app |
+| `--web` | `BACKLOG_WEB`, else `packages/backlog_app/build/web` | the built web app (served with ETags and `no-cache`, so browsers pick up a new build at once) |
 | `-q` | | do not log requests |
 
 URL parameters of the app: `?token=…`, `&as=name` (who claims items from the UI) and `&server=http://…` (another API server, handy with `flutter run -d web-server`).
