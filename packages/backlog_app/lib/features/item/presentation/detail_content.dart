@@ -35,13 +35,32 @@ class DetailContent extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _EditableTitle(title: item.title, onSave: (title) => controller.set('title', title)),
+              _TitleField(title: item.title, onSave: (title) => controller.set('title', title)),
               if (item.blocked) ...[const SizedBox(height: 8), _BlockedBy(detail: detail, onOpen: onOpen)],
               const SizedBox(height: 12),
               _Status(item: item),
-              if (workflow != null) _Fields(controller: controller, item: item, workflow: workflow),
-              const SizedBox(height: 12),
-              _Labels(item: item, controller: controller),
+              if (workflow != null) ...[
+                _Pills(
+                  field: 'status',
+                  label: 'Status',
+                  options: [for (final status in workflow.statuses) status.id],
+                  selected: item.status,
+                  enabled: !controller.busy,
+                  onSelect: (status) => controller.set('status', status),
+                ),
+                const SizedBox(height: 10),
+                _Pills(
+                  field: 'priority',
+                  label: 'Priority',
+                  options: workflow.priorities,
+                  selected: item.priority,
+                  color: (priority) => ItemStyle.priority(priority, workflow),
+                  enabled: !controller.busy,
+                  onSelect: (priority) => controller.set('priority', priority),
+                ),
+                const SizedBox(height: 16),
+                _Fields(controller: controller, item: item, workflow: workflow),
+              ],
               const SizedBox(height: 16),
               DetailChildren(controller: controller, onOpen: onOpen),
               DetailRelations(controller: controller, onOpen: onOpen),
@@ -66,25 +85,79 @@ class DetailContent extends StatelessWidget {
   }
 }
 
-class _EditableTitle extends StatelessWidget {
-  const _EditableTitle({required this.title, required this.onSave});
+/// The title as a borderless text field; saved on Enter and when it loses
+/// focus, an empty title goes back to the saved one.
+class _TitleField extends StatefulWidget {
+  const _TitleField({required this.title, required this.onSave});
 
   final String title;
   final Future<bool> Function(String title) onSave;
 
   @override
+  State<_TitleField> createState() => _TitleFieldState();
+}
+
+class _TitleFieldState extends State<_TitleField> {
+  late final _text = TextEditingController(text: widget.title);
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _commit();
+    });
+  }
+
+  @override
+  void didUpdateWidget(_TitleField old) {
+    super.didUpdateWidget(old);
+    if (widget.title != old.title && !_focus.hasFocus) _text.text = widget.title;
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _commit() {
+    final value = _text.text.replaceAll('\n', ' ').trim();
+    if (value.isEmpty) {
+      _text.text = widget.title;
+    } else if (value != widget.title) {
+      unawaited(widget.onSave(value));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final tokens = BoardTokens.of(context);
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(child: SelectableText(title, style: Theme.of(context).textTheme.headlineSmall)),
-        IconButton(
-          tooltip: 'Rename',
-          icon: const Icon(Icons.edit_outlined, size: 20),
-          onPressed: () async {
-            final value = await askText(context, 'Title', initial: title);
-            if (value != null && value.trim().isNotEmpty && value != title) await onSave(value.trim());
+        Text('Title', style: theme.textTheme.labelSmall),
+        TextField(
+          key: const ValueKey('title-field'),
+          controller: _text,
+          focusNode: _focus,
+          maxLines: null,
+          textInputAction: TextInputAction.done,
+          style: theme.textTheme.titleLarge?.copyWith(fontSize: 20, fontWeight: FontWeight.w600, color: tokens.text),
+          decoration: InputDecoration(
+            filled: false,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 4),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: tokens.accent)),
+          ),
+          onChanged: (value) {
+            if (value.contains('\n')) _focus.unfocus(); // Enter in a multi-line field
           },
+          onSubmitted: (_) => _focus.unfocus(),
         ),
       ],
     );
@@ -125,6 +198,87 @@ class _BlockedBy extends StatelessWidget {
   }
 }
 
+/// A labelled row of radio pills, one per option (statuses, priorities); a
+/// tap on another one sets the field.
+class _Pills extends StatelessWidget {
+  const _Pills({
+    required this.field,
+    required this.label,
+    required this.options,
+    required this.selected,
+    required this.enabled,
+    required this.onSelect,
+    this.color,
+  });
+
+  final String field;
+  final String label;
+  final List<String> options;
+  final String selected;
+  final bool enabled;
+  final Future<bool> Function(String value) onSelect;
+
+  /// Colour of the selected pill; the accent when null.
+  final Color Function(String value)? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    final theme = Theme.of(context);
+    final all = [...options, if (!options.contains(selected)) selected];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: theme.textTheme.labelSmall),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final option in all)
+              Builder(
+                builder: (context) {
+                  final isSelected = option == selected;
+                  final accent = color?.call(option) ?? tokens.accent;
+                  return Semantics(
+                    inMutuallyExclusiveGroup: true,
+                    checked: isSelected,
+                    child: Material(
+                      key: ValueKey('$field-$option'),
+                      color: isSelected
+                          ? (color == null ? tokens.accentSoft : accent.withValues(alpha: 0.10))
+                          : tokens.surface,
+                      shape: StadiumBorder(side: BorderSide(color: isSelected ? accent : tokens.borderStrong)),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: !enabled || isSelected ? null : () => unawaited(onSelect(option)),
+                        child: Container(
+                          height: 26,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          alignment: Alignment.center,
+                          child: Text(
+                            option,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isSelected ? accent : tokens.text,
+                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// The other fields as a definition list: milestone, type, assignee, branch,
+/// pull request and labels, each edited in place.
 class _Fields extends StatelessWidget {
   const _Fields({required this.controller, required this.item, required this.workflow});
 
@@ -134,72 +288,187 @@ class _Fields extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget picker(String field, String label, String? value, List<String> options, {bool optional = false}) {
-      final all = [if (optional) null, ...options, if (value != null && !options.contains(value)) value];
-      return SizedBox(
-        width: 170,
-        child: DropdownButtonFormField<String?>(
-          key: ValueKey('field-$field-$value'),
-          value: value,
-          isDense: true,
-          isExpanded: true,
-          decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), isDense: true),
-          items: [
-            for (final option in all)
-              DropdownMenuItem(
-                value: option,
-                child: Text(option ?? '—', overflow: TextOverflow.ellipsis),
-              ),
-          ],
-          onChanged: controller.busy
-              ? null
-              : (selected) => selected == value ? null : unawaited(controller.set(field, selected)),
-        ),
-      );
+    Future<void> editText(String field, String label, String? value) async {
+      final edited = await askText(context, label, initial: value ?? '');
+      if (edited != null && edited.trim() != (value ?? '')) await controller.set(field, edited.trim());
     }
 
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
+    return Column(
       children: [
-        picker('status', 'Status', item.status, [for (final s in workflow.statuses) s.id]),
-        picker('priority', 'Priority', item.priority, workflow.priorities),
-        picker('type', 'Type', item.type, workflow.types),
         if (workflow.milestones.isNotEmpty || item.milestone != null)
-          picker('milestone', 'Milestone', item.milestone, [for (final m in workflow.milestones) m.id], optional: true),
-        _TextField(label: 'Assignee', value: item.assignee, onSave: (v) => controller.set('assignee', v)),
-        _TextField(label: 'Branch', value: item.branch, onSave: (v) => controller.set('branch', v)),
-        _TextField(label: 'Pull request', value: item.pr, onSave: (v) => controller.set('pr', v)),
+          _Row(
+            label: 'Milestone',
+            child: _Choice(
+              field: 'milestone',
+              value: item.milestone,
+              options: [for (final milestone in workflow.milestones) milestone.id],
+              optional: true,
+              onSelect: (value) => controller.set('milestone', value),
+            ),
+          ),
+        _Row(
+          label: 'Type',
+          child: _Choice(
+            field: 'type',
+            value: item.type,
+            options: workflow.types,
+            onSelect: (value) => controller.set('type', value),
+          ),
+        ),
+        _Row(
+          label: 'Assignee',
+          child: _Value(
+            field: 'assignee',
+            text: item.assignee,
+            onTap: () => editText('assignee', 'Assignee', item.assignee),
+          ),
+        ),
+        _Row(
+          label: 'Branch',
+          child: _Value(
+            field: 'branch',
+            text: item.branch,
+            monospace: true,
+            onTap: () => editText('branch', 'Branch', item.branch),
+          ),
+        ),
+        _Row(
+          label: 'Pull request',
+          child: switch (item.pr) {
+            final pr? => Row(
+              children: [
+                PrLink(pr),
+                IconButton(
+                  key: const ValueKey('field-pr'),
+                  tooltip: 'Edit pull request',
+                  iconSize: 14,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: () => editText('pr', 'Pull request', pr),
+                ),
+              ],
+            ),
+            null => _Value(field: 'pr', text: null, onTap: () => editText('pr', 'Pull request', null)),
+          },
+        ),
+        _Row(
+          label: 'Labels',
+          child: _Labels(item: item, workflow: workflow, controller: controller),
+        ),
       ],
     );
   }
 }
 
-class _TextField extends StatelessWidget {
-  const _TextField({required this.label, required this.value, required this.onSave});
+/// One `label  value` line of the definition list.
+class _Row extends StatelessWidget {
+  const _Row({required this.label, required this.child});
 
   final String label;
-  final String? value;
-  final Future<bool> Function(String value) onSave;
+  final Widget child;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 200,
-    child: InkWell(
-      borderRadius: BorderRadius.circular(4),
-      onTap: () async {
-        final edited = await askText(context, label, initial: value ?? '');
-        if (edited != null && edited.trim() != (value ?? '')) await onSave(edited.trim());
-      },
-      child: InputDecorator(
-        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), isDense: true),
-        child: Text(value ?? '—', overflow: TextOverflow.ellipsis),
-      ),
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(minHeight: 30),
+    child: Row(
+      children: [
+        SizedBox(width: 96, child: Text(label, style: Theme.of(context).textTheme.bodySmall)),
+        Expanded(
+          child: Align(alignment: Alignment.centerLeft, child: child),
+        ),
+      ],
     ),
   );
 }
 
-/// Tags for the PR, readiness, the claim and the checklist progress.
+/// A text value that opens an editor when tapped; `—` when empty.
+class _Value extends StatelessWidget {
+  const _Value({required this.field, required this.text, required this.onTap, this.monospace = false});
+
+  final String field;
+  final String? text;
+  final VoidCallback onTap;
+  final bool monospace;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    return InkWell(
+      key: ValueKey('field-$field'),
+      borderRadius: BorderRadius.circular(4),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+        child: Text(
+          text ?? '—',
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12,
+            color: text == null ? tokens.faint : tokens.text,
+            fontFamily: monospace ? 'monospace' : null,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A value picked from a menu of [options].
+class _Choice extends StatelessWidget {
+  const _Choice({
+    required this.field,
+    required this.value,
+    required this.options,
+    required this.onSelect,
+    this.optional = false,
+  });
+
+  /// Stands for "no value" in the menu, which cannot return null.
+  static const _none = '';
+
+  final String field;
+  final String? value;
+  final List<String> options;
+
+  /// Offers `—` to clear the field.
+  final bool optional;
+  final Future<bool> Function(String? value) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    final all = [if (optional) _none, ...options, if (value != null && !options.contains(value)) value!];
+    return PopupMenuButton<String>(
+      key: ValueKey('field-$field'),
+      tooltip: 'Change $field',
+      position: PopupMenuPosition.under,
+      onSelected: (selected) {
+        final chosen = selected == _none ? null : selected;
+        if (chosen != value) unawaited(onSelect(chosen));
+      },
+      itemBuilder: (_) => [
+        for (final option in all)
+          CheckedPopupMenuItem(
+            value: option,
+            checked: option == (value ?? _none),
+            child: Text(option == _none ? '—' : option),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(value ?? '—', style: TextStyle(fontSize: 12, color: value == null ? tokens.faint : tokens.text)),
+            Icon(Icons.arrow_drop_down, size: 16, color: tokens.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tags for readiness, the claim and the checklist progress.
 class _Status extends StatelessWidget {
   const _Status({required this.item});
 
@@ -210,7 +479,6 @@ class _Status extends StatelessWidget {
     final tokens = BoardTokens.of(context);
     final claim = item.claim;
     final tags = [
-      if (item.pr case final pr?) PrLink(pr),
       if (item.ready) Tag('ready to pick', icon: Icons.play_arrow, color: tokens.success),
       if (claim != null)
         Tag(
@@ -234,10 +502,12 @@ class _Status extends StatelessWidget {
   }
 }
 
+/// Label chips, removable, and a chip that adds more.
 class _Labels extends StatelessWidget {
-  const _Labels({required this.item, required this.controller});
+  const _Labels({required this.item, required this.workflow, required this.controller});
 
   final ItemDto item;
+  final WorkflowDto workflow;
   final ItemController controller;
 
   @override
@@ -248,14 +518,22 @@ class _Labels extends StatelessWidget {
     children: [
       for (final label in item.labels)
         InputChip(
-          label: Text('#$label'),
+          key: ValueKey('label-$label'),
+          label: Text(label),
+          avatar: switch (ItemStyle.label(label, workflow)) {
+            final color? => CircleAvatar(backgroundColor: color, radius: 4),
+            null => null,
+          },
           visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           onDeleted: () => controller.change([ItemUpdateRequest.remove('labels', label)]),
         ),
       ActionChip(
-        avatar: const Icon(Icons.add, size: 16),
+        key: const ValueKey('add-label'),
+        avatar: const Icon(Icons.add, size: 14),
         label: const Text('label'),
         visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         onPressed: () async {
           final label = await askText(context, 'Add labels (comma separated)');
           if (label != null && label.trim().isNotEmpty) {

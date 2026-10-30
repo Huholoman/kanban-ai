@@ -185,4 +185,28 @@ void main() {
       expect(_key('relation-dependents'), findsOneWidget, reason: 'S-1 blocks S-2');
     });
   });
+
+  group('ItemDetailView fields', () {
+    testWidgets('status and priority pills set the field', (tester) async {
+      final api = await _pumpDetail(tester, 'T-2');
+      final selected = tester.widget<Semantics>(
+        find.ancestor(of: _key('status-todo'), matching: find.byType(Semantics)).first,
+      );
+      expect(selected.properties.checked, isTrue);
+      await _tap(tester, _key('status-in-progress'));
+      await _tap(tester, _key('priority-p0'));
+      expect(api.updates.map((u) => u.$2.changes), [
+        ['status=in-progress'],
+        ['priority=p0'],
+      ]);
+    });
+
+    testWidgets('the title is saved on Enter', (tester) async {
+      final api = await _pumpDetail(tester, 'T-2');
+      await tester.enterText(_key('title-field'), 'Renamed');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(api.updates.single.$2.changes, ['title=Renamed']);
+    });
+  });
 }

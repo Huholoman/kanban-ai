@@ -287,7 +287,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - Header: back (when the detail has history), breadcrumb of the parent chain (*Epic › Story › X-2c91 Title*, ancestors clickable), close; below it "Story 2 of 5" with ‹ 2 / 5 › stepping through the parent's children (disabled at the ends, hidden without a parent; no history entry), or "Task · X-7f3a" without a parent; id (click copies), Claim / Release / Done actions.
 - **Navigation inside the detail:** every link (ancestor, sibling, child, relation, blocker) shows the item in the same panel or page; ← walks back the way taken. The board resets it when another card is opened.
 - "Blocked by X-7f3a Title" warning line when blocked.
-- Editable title, status, priority, type, milestone, assignee, branch, pull request, labels, Markdown body (rendered, with an editor).
+- Title edited in place (saved on Enter or when the field loses focus); status and priority as rows of radio pills (the selected status in the accent, the selected priority in its colour); milestone, type, assignee, branch (monospace), pull request and labels (chips with × and *+ label*) as a definition list, each edited in place; Markdown body (rendered, with an editor).
 - PR shown as "PR #42", opens in a new tab (http/https only).
 - Children ("Tasks" for a story) with "x of y done": each row (▸ id, title, status) expands in place to the first lines of the child's body, its own children ("Subtasks x of y done") and *Open X →*.
 - Parent, Depends on, Blocks, Related as folded rows with counts ("Depends on 1 ▸"); empty ones hidden; links added from the *Link:* row and removed with ×.
