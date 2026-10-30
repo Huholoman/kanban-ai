@@ -1,5 +1,6 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/features/board/presentation/item_card.dart';
+import 'package:backlog_app/features/board/presentation/view_layouts.dart';
 import 'package:backlog_app/shared/tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -100,5 +101,55 @@ void main() {
     final border = borderOf(tester);
     expect(border.width, 2);
     expect(border.color, BoardTokens.light.accent);
+  });
+
+  group('kanban board', () {
+    ViewResultDto board() => ViewResultDto(
+      id: 'board',
+      name: 'Board',
+      layout: ViewLayoutDto.kanban,
+      groupBy: 'status',
+      groups: [
+        ViewGroupDto('todo', [item('A'), item('B')]),
+        const ViewGroupDto('in-progress', []),
+        ViewGroupDto('done', [item('C', status: 'done')]),
+      ],
+    );
+
+    Future<void> pumpBoard(WidgetTester tester, double width, {bool stacked = false}) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: BoardTokens.light.toTheme(Brightness.light),
+          home: Scaffold(
+            body: KanbanBoard(result: board(), onOpen: (_) {}, stacked: stacked),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('columns share a wide window up to the maximum width', (tester) async {
+      await pumpBoard(tester, 1900);
+      expect(tester.getSize(find.byKey(const ValueKey('card-A'))).width, KanbanBoard.maxColumnWidth - 16);
+    });
+
+    testWidgets('columns shrink to the minimum width on narrow windows', (tester) async {
+      await pumpBoard(tester, 600);
+      expect(tester.getSize(find.byKey(const ValueKey('card-A'))).width, KanbanBoard.minColumnWidth - 16);
+      expect(KanbanBoard.columnWidthFor(1000, 3), inInclusiveRange(196, 280));
+    });
+
+    testWidgets('stacked mode shows sections one under another and hides empty ones', (tester) async {
+      await pumpBoard(tester, 400, stacked: true);
+      expect(find.text('todo'), findsOneWidget);
+      expect(find.text('done'), findsOneWidget);
+      expect(find.text('in-progress'), findsNothing);
+      final a = tester.getRect(find.byKey(const ValueKey('card-A')));
+      final c = tester.getRect(find.byKey(const ValueKey('card-C')));
+      expect(c.top, greaterThan(a.bottom));
+      expect(a.width, greaterThan(300), reason: 'cards use the full width');
+    });
   });
 }

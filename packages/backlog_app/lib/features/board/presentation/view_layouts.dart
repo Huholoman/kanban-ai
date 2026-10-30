@@ -4,6 +4,7 @@ import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 
 import '../../../shared/item_style.dart';
+import '../../../shared/tokens.dart';
 import '../application/column_arrangement.dart';
 import 'item_card.dart';
 
@@ -12,7 +13,8 @@ typedef MoveItem = void Function(ItemDto item, String key);
 
 /// Columns side by side; cards can be dragged between them when [onMove] is
 /// set. Inside a column, children are indented under their parent (see
-/// [ColumnArrangement]).
+/// [ColumnArrangement]). With [stacked] (phones) the columns become status
+/// sections one under another, without drag and drop.
 class KanbanBoard extends StatelessWidget {
   const KanbanBoard({
     super.key,
@@ -24,10 +26,14 @@ class KanbanBoard extends StatelessWidget {
     this.onMove,
     this.collapsed = const {},
     this.onToggleCollapsed,
+    this.stacked = false,
   });
 
-  static const columnWidth = 300.0;
-  static const indent = 14.0;
+  static const minColumnWidth = 196.0;
+  static const maxColumnWidth = 280.0;
+  static const columnGap = 12.0;
+  static const pagePadding = 16.0;
+  static const indent = 10.0;
 
   final ViewResultDto result;
   final WorkflowDto? workflow;
@@ -42,75 +48,107 @@ class KanbanBoard extends StatelessWidget {
   final Set<String> collapsed;
   final ValueChanged<String>? onToggleCollapsed;
 
+  /// Phone layout: sections one under another instead of columns.
+  final bool stacked;
+
+  /// Column width for [count] columns in [available] pixels: they share the
+  /// width, within [minColumnWidth] and [maxColumnWidth].
+  static double columnWidthFor(double available, int count) {
+    if (count <= 0) return minColumnWidth;
+    final share = (available - 2 * pagePadding - columnGap * (count - 1)) / count;
+    return share.clamp(minColumnWidth, maxColumnWidth);
+  }
+
   /// The whole board scrolls vertically like a page; columns grow with
   /// their cards and reach at least the bottom of the window, so there is
   /// always room to drop a card.
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, constraints) => _PageScroll(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final group in result.groups)
-              ConstrainedBox(
-                constraints: BoxConstraints(minHeight: max(0, constraints.maxHeight - 24)),
-                child: _column(context, group),
-              ),
-          ],
+      builder: (context, constraints) {
+        if (stacked) return _stacked(context, constraints);
+        final width = columnWidthFor(constraints.maxWidth, result.groups.length);
+        return _PageScroll(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final (i, group) in result.groups.indexed) ...[
+                if (i > 0) const SizedBox(width: columnGap),
+                _column(context, group, width, max(0, constraints.maxHeight - 2 * pagePadding)),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _stacked(BuildContext context, BoxConstraints constraints) {
+    final sections = result.groups.where((g) => g.items.isNotEmpty);
+    return _PageScroll(
+      horizontal: false,
+      child: SizedBox(
+        width: max(0, constraints.maxWidth - 2 * pagePadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [for (final group in sections) _section(context, group)],
         ),
       ),
     );
   }
 
-  Widget _column(BuildContext context, ViewGroupDto group) {
-    final theme = Theme.of(context);
-    final accent = ItemStyle.group(result.groupBy, group.key, workflow, theme.colorScheme);
+  Widget _section(BuildContext context, ViewGroupDto group) => Padding(
+    padding: const EdgeInsets.only(bottom: 16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _GroupHeader(result: result, group: group, workflow: workflow),
+        for (final entry in ColumnArrangement.arrange(group.items, index, collapsed: collapsed))
+          Padding(padding: const EdgeInsets.only(bottom: 8), child: _entry(context, entry, 0, draggable: false)),
+      ],
+    ),
+  );
+
+  Widget _column(BuildContext context, ViewGroupDto group, double width, double minHeight) {
+    final tokens = BoardTokens.of(context);
     final entries = ColumnArrangement.arrange(group.items, index, collapsed: collapsed);
 
-    Widget cards(bool highlighted) => AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
-      width: columnWidth,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: highlighted ? theme.colorScheme.primaryContainer : theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
-      ),
+    Widget column(bool highlighted) => SizedBox(
+      width: width,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 2, 4, 6),
-            child: Row(
+          _GroupHeader(result: result, group: group, workflow: workflow),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            constraints: BoxConstraints(minHeight: max(0, minHeight - 30)),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: highlighted ? tokens.accentSoft : tokens.well,
+              borderRadius: BorderRadius.circular(BoardTokens.radius),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 6),
-                Text(group.key.isEmpty ? '(none)' : group.key, style: theme.textTheme.titleSmall),
-                const SizedBox(width: 6),
-                Text('${group.items.length}', style: theme.textTheme.labelMedium?.copyWith(color: accent)),
+                for (final entry in entries)
+                  Padding(padding: const EdgeInsets.only(bottom: 8), child: _entry(context, entry, width)),
               ],
             ),
           ),
-          for (final entry in entries) _entry(context, entry),
         ],
       ),
     );
 
     final move = onMove;
-    if (move == null) return cards(false);
+    if (move == null) return column(false);
     return DragTarget<ItemDto>(
       onWillAcceptWithDetails: (details) => !group.items.any((i) => i.id == details.data.id),
       onAcceptWithDetails: (details) => move(details.data, group.key),
-      builder: (context, candidates, _) => cards(candidates.isNotEmpty),
+      builder: (context, candidates, _) => column(candidates.isNotEmpty),
     );
   }
 
-  Widget _entry(BuildContext context, ColumnEntry entry) {
+  Widget _entry(BuildContext context, ColumnEntry entry, double columnWidth, {bool draggable = true}) {
     final item = entry.item;
     final Widget content;
     final toggle = entry.descendants > 0 && onToggleCollapsed != null
@@ -131,7 +169,7 @@ class KanbanBoard extends StatelessWidget {
         onTap: () => onOpen(item.id),
         footer: toggle,
       );
-      content = onMove == null
+      content = onMove == null || !draggable
           ? card
           : Draggable<ItemDto>(
               data: item,
@@ -151,8 +189,46 @@ class KanbanBoard extends StatelessWidget {
   }
 }
 
+/// Title of a column or section with the number of items, e.g. `Backlog  4`.
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({required this.result, required this.group, required this.workflow});
+
+  final ViewResultDto result;
+  final ViewGroupDto group;
+  final WorkflowDto? workflow;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = BoardTokens.of(context);
+    final accent = ItemStyle.group(result.groupBy, group.key, workflow, theme.colorScheme);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 0, 2, 8),
+      child: Row(
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              group.key.isEmpty ? '(none)' : group.key,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          const Spacer(),
+          Text('${group.items.length}', style: theme.textTheme.bodySmall?.copyWith(color: tokens.muted)),
+        ],
+      ),
+    );
+  }
+}
+
 /// A parent shown above its children in a column it is not in itself: a
-/// slim header, so that the children read as its part.
+/// muted line `↑ Title`, so that the children read as its part.
 class ParentHeader extends StatelessWidget {
   const ParentHeader({super.key, required this.item, this.workflow, this.onTap, this.trailing});
 
@@ -164,49 +240,39 @@ class ParentHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Padding(
+    final tokens = BoardTokens.of(context);
+    return Row(
       key: ValueKey('parent-${item.id}'),
-      padding: const EdgeInsets.only(top: 6, bottom: 2),
-      child: Material(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: Row(
-              children: [
-                Icon(ItemStyle.type(item.type), size: 14, color: ItemStyle.priority(item.priority, workflow)),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelLarge,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(item.status, style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
-                ?trailing,
-              ],
+      children: [
+        Expanded(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              child: Text(
+                '↑ ${item.title}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(color: tokens.muted, fontSize: 11),
+              ),
             ),
           ),
         ),
-      ),
+        ?trailing,
+      ],
     );
   }
 }
 
-/// Scrolls [child] both ways with draggable scrollbars: vertically like a
-/// page, horizontally when the columns are wider than the window. Scrollbars
-/// need their own controllers to be draggable with the mouse.
+/// Scrolls [child] with draggable scrollbars: vertically like a page, and
+/// horizontally when the columns are wider than the window. Scrollbars need
+/// their own controllers to be draggable with the mouse.
 class _PageScroll extends StatefulWidget {
-  const _PageScroll({required this.child});
+  const _PageScroll({required this.child, this.horizontal = true});
 
   final Widget child;
+  final bool horizontal;
 
   @override
   State<_PageScroll> createState() => _PageScrollState();
@@ -230,12 +296,18 @@ class _PageScrollState extends State<_PageScroll> {
     interactive: true,
     child: SingleChildScrollView(
       controller: _vertical,
-      padding: const EdgeInsets.all(12),
-      child: Scrollbar(
-        controller: _horizontal,
-        interactive: true,
-        child: SingleChildScrollView(controller: _horizontal, scrollDirection: Axis.horizontal, child: widget.child),
-      ),
+      padding: const EdgeInsets.all(KanbanBoard.pagePadding),
+      child: widget.horizontal
+          ? Scrollbar(
+              controller: _horizontal,
+              interactive: true,
+              child: SingleChildScrollView(
+                controller: _horizontal,
+                scrollDirection: Axis.horizontal,
+                child: widget.child,
+              ),
+            )
+          : widget.child,
     ),
   );
 }
@@ -251,20 +323,21 @@ class FoldToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = BoardTokens.of(context);
     return Tooltip(
       message: collapsed ? 'Show nested items' : 'Hide nested items',
       child: InkWell(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
         onTap: onPressed,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 16),
+              Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 16, color: tokens.muted),
               Text(
                 collapsed ? '$count hidden' : '$count',
-                style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.labelSmall?.copyWith(color: tokens.muted),
               ),
             ],
           ),
@@ -274,7 +347,7 @@ class FoldToggle extends StatelessWidget {
   }
 }
 
-/// Indents a child under its parent and draws a guide line on the left.
+/// Indents a child under its parent.
 class _Indented extends StatelessWidget {
   const _Indented({required this.depth, required this.child});
 
@@ -283,15 +356,8 @@ class _Indented extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(left: KanbanBoard.indent * (depth - 1)),
-    child: Container(
-      padding: const EdgeInsets.only(left: KanbanBoard.indent - 2),
-      margin: const EdgeInsets.only(left: 2),
-      decoration: BoxDecoration(
-        border: Border(left: BorderSide(color: Theme.of(context).colorScheme.outlineVariant, width: 2)),
-      ),
-      child: child,
-    ),
+    padding: EdgeInsets.only(left: KanbanBoard.indent * depth),
+    child: child,
   );
 }
 
@@ -315,45 +381,45 @@ class GroupedItemList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final grouped = result.groupBy != null;
     final showDependencies = result.layout == ViewLayoutDto.graph;
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(KanbanBoard.pagePadding),
       children: [
-        for (final group in result.groups) ...[
-          if (grouped)
-            Padding(
-              padding: const EdgeInsets.only(top: 16, bottom: 4),
-              child: Text(
-                '${group.key.isEmpty ? '(none)' : group.key} · ${group.items.length}',
-                style: theme.textTheme.titleSmall,
-              ),
-            ),
-          for (final item in group.items)
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 900),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ItemCard(
-                      item: item,
-                      workflow: workflow,
-                      showStatus: result.groupBy != 'status',
-                      selected: item.id == selectedId,
-                      onTap: () => onOpen(item.id),
-                    ),
-                    if (showDependencies && item.dependsOn.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 16, bottom: 6),
-                        child: DependencyTree(ids: item.dependsOn, index: index, onOpen: onOpen, path: {item.id}),
+        for (final group in result.groups)
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 900),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (grouped) _GroupHeader(result: result, group: group, workflow: workflow),
+                  for (final item in group.items)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ItemCard(
+                            item: item,
+                            workflow: workflow,
+                            showStatus: result.groupBy != 'status',
+                            selected: item.id == selectedId,
+                            onTap: () => onOpen(item.id),
+                          ),
+                          if (showDependencies && item.dependsOn.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 16, top: 4),
+                              child: DependencyTree(ids: item.dependsOn, index: index, onOpen: onOpen, path: {item.id}),
+                            ),
+                        ],
                       ),
-                  ],
-                ),
+                    ),
+                  SizedBox(height: grouped ? 8 : 0),
+                ],
               ),
             ),
-        ],
+          ),
         if (result.items.isEmpty)
           const Padding(
             padding: EdgeInsets.all(48),
@@ -402,6 +468,7 @@ class _DependencyRowState extends State<_DependencyRow> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final tokens = BoardTokens.of(context);
     final item = widget.index[widget.id];
     final cycle = widget.path.contains(widget.id);
     final nested = item?.dependsOn ?? const <String>[];
@@ -411,7 +478,7 @@ class _DependencyRowState extends State<_DependencyRow> {
       children: [
         InkWell(
           key: ValueKey('dependency-${widget.id}'),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
           onTap: item == null ? null : () => widget.onOpen(widget.id),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 3),
@@ -424,19 +491,22 @@ class _DependencyRowState extends State<_DependencyRow> {
                           padding: EdgeInsets.zero,
                           visualDensity: VisualDensity.compact,
                           iconSize: 18,
+                          color: tokens.muted,
                           tooltip: _expanded ? 'Collapse' : 'Show what it needs',
                           icon: Icon(_expanded ? Icons.expand_more : Icons.chevron_right),
                           onPressed: () => setState(() => _expanded = !_expanded),
                         )
-                      : const Center(child: Text('└', style: TextStyle(height: 1))),
+                      : Center(
+                          child: Text('└', style: TextStyle(height: 1, color: tokens.faint)),
+                        ),
                 ),
                 Icon(
                   item?.isDone ?? false ? Icons.check_circle : Icons.radio_button_unchecked,
-                  size: 16,
-                  color: item == null ? scheme.error : ItemStyle.category(item.category, scheme),
+                  size: 14,
+                  color: item == null ? tokens.danger : ItemStyle.category(item.category, scheme),
                 ),
                 const SizedBox(width: 6),
-                Text(widget.id, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                Text(widget.id, style: theme.textTheme.bodySmall?.copyWith(color: tokens.muted, fontSize: 11)),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -445,11 +515,11 @@ class _DependencyRowState extends State<_DependencyRow> {
                     style: theme.textTheme.bodyMedium,
                   ),
                 ),
-                if (cycle) Tag('cycle', color: scheme.error),
+                if (cycle) Tag('cycle', color: tokens.danger),
                 if (item != null) ...[const SizedBox(width: 8), Tag(item.status)],
                 if (item?.blocked ?? false) ...[
                   const SizedBox(width: 4),
-                  Tag('blocked', icon: Icons.block, color: scheme.error),
+                  Tag('blocked', icon: Icons.block, color: tokens.warning),
                 ],
               ],
             ),
