@@ -95,7 +95,7 @@ void main() {
   });
 
   testWidgets('on a narrow screen the detail is a page and views are in a dropdown', (tester) async {
-    await pumpApp(tester, width: 800);
+    await pumpApp(tester, width: 500);
     expect(find.byKey(const ValueKey('view-picker')), findsOneWidget);
     await tester.tap(find.text('Item T-2'));
     await tester.pumpAndSettle();

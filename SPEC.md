@@ -256,7 +256,7 @@ Errors: `{"error": {"type", "message", "candidates"?}}` with `not_found` 404, `a
 
 URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from the UI, default `web`), `&server=http://…` (another API server).
 
-**Layout** (responsive): from 900 px a left panel with views (208 px, 240 px from 2000 px); the open item is a panel from 1200 px, a bottom sheet from 840 px and a full page below; narrower windows use a view dropdown.
+**Layout** (responsive): from 1200 px a left panel with views (208 px, 240 px from 2000 px) and the open item as a panel on the right; 840–1199 px view tabs under the header (☰ opens a drawer with the full navigation) and the open item as a bottom sheet; below 840 px the open item is a full page; below 600 px the header has ☰ and a view dropdown and a bottom bar shows the pinned views (up to three; the first two views when none are pinned) plus *More* (the drawer). *New item* is a floating button outside the left panel.
 
 **Left panel**
 - *New item* button (dialog: title, type, status, priority, milestone, parent, labels, body).

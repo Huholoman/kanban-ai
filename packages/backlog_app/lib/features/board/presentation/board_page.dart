@@ -17,13 +17,19 @@ import 'shell/view_navigation.dart';
 import 'view_layouts.dart';
 
 /// Main screen. On a wide window: saved views on the left, the board in the
-/// middle and the open item in a panel on the right. Medium windows show the
-/// open item in a bottom sheet over the board; narrow ones as a full page.
+/// middle and the open item in a panel on the right. Medium windows have the
+/// views as tabs and show the open item in a bottom sheet over the board;
+/// phones have a bottom bar with the pinned views and open items as a page.
 class BoardPage extends StatefulWidget {
   const BoardPage({super.key});
 
-  /// From this width the views get a side panel.
-  static const sideNavigationWidth = 900.0;
+  /// From this width the views get a side panel; below it they are tabs
+  /// (and a drawer with the full navigation).
+  static const sideNavigationWidth = 1200.0;
+
+  /// Below this width the phone layout applies: a bottom bar with the pinned
+  /// views and the board stacked by status.
+  static const phoneWidth = 600.0;
 
   /// From this width items open next to the board.
   static const detailPanelWidth = 1200.0;
@@ -45,6 +51,7 @@ class _BoardPageState extends State<BoardPage> {
 
   /// Focus of the search field in the header; the `/` key moves it there.
   final _searchFocus = FocusNode();
+  final _scaffold = GlobalKey<ScaffoldState>();
 
   /// The item shown in the detail panel or sheet.
   String? _openId;
@@ -136,6 +143,7 @@ class _BoardPageState extends State<BoardPage> {
     final controller = _controller!;
     final width = MediaQuery.sizeOf(context).width;
     final sideNavigation = width >= BoardPage.sideNavigationWidth;
+    final phone = width < BoardPage.phoneWidth;
     final panel = width >= BoardPage.detailPanelWidth;
     final sheet = !panel && width >= BoardPage.detailSheetWidth;
     final veryWide = width >= BoardPage.veryWideWidth;
@@ -148,6 +156,26 @@ class _BoardPageState extends State<BoardPage> {
         child: ListenableBuilder(
           listenable: controller,
           builder: (context, _) => Scaffold(
+            key: _scaffold,
+            drawer: sideNavigation
+                ? null
+                : Drawer(
+                    child: ViewNavigation(
+                      controller: controller,
+                      onCreate: () {
+                        _scaffold.currentState?.closeDrawer();
+                        unawaited(_create(controller));
+                      },
+                      onOpenItem: (id) {
+                        _scaffold.currentState?.closeDrawer();
+                        unawaited(_open(id));
+                      },
+                      onNavigate: () => _scaffold.currentState?.closeDrawer(),
+                    ),
+                  ),
+            bottomNavigationBar: phone
+                ? PinnedBottomBar(controller: controller, onMore: () => _scaffold.currentState?.openDrawer())
+                : null,
             floatingActionButton: controller.workflow == null || sideNavigation || openId != null
                 ? null
                 : FloatingActionButton.extended(
@@ -177,8 +205,10 @@ class _BoardPageState extends State<BoardPage> {
                         controller: controller,
                         filter: controller.visible == null ? null : _filterBar(controller),
                         onEditColumns: () => _editColumns(controller),
-                        compact: !sideNavigation,
+                        compact: phone,
+                        onMenu: sideNavigation ? null : () => _scaffold.currentState?.openDrawer(),
                       ),
+                      if (!sideNavigation && !phone) ViewTabs(controller: controller),
                       Expanded(child: _board(controller, openId, sheet: sheet)),
                     ],
                   ),
@@ -261,6 +291,7 @@ class _BoardPageState extends State<BoardPage> {
           ),
         Expanded(
           child: switch (result.layout) {
+            // TODO(lead): pass `stacked: width < BoardPage.phoneWidth` once KanbanBoard has the parameter.
             ViewLayoutDto.kanban => KanbanBoard(
               result: result,
               workflow: controller.workflow,
