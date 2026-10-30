@@ -29,7 +29,7 @@ class BoardPage extends StatefulWidget {
   static const sideNavigationWidth = 1200.0;
 
   /// Below this width the phone layout applies: a bottom bar with the pinned
-  /// views and the board stacked by status.
+  /// views and the board one column at a time.
   static const phoneWidth = 600.0;
 
   /// From this width items open next to the board.
@@ -290,7 +290,7 @@ class _BoardPageState extends State<BoardPage> {
         Expanded(
           child: switch (result.layout) {
             ViewLayoutDto.kanban => KanbanBoard(
-              stacked: MediaQuery.sizeOf(context).width < BoardPage.phoneWidth,
+              paged: MediaQuery.sizeOf(context).width < BoardPage.phoneWidth,
               result: result,
               workflow: controller.workflow,
               index: controller.index,

@@ -275,7 +275,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 
 **Kanban**
 - The whole board scrolls as a page (draggable scrollbars, horizontal scroll when columns overflow); columns grow with their cards. Each column has a header (name, count) above a grey well with the cards; columns share the width, 196–280 px each.
-- On a phone the columns become sections one under another (status header with count, full-width cards; empty sections hidden), without drag and drop.
+- On a phone the board shows one column at a time, full width: swipe sideways or use the switcher on top (‹ todo · 7 › and a scrollable row of all columns with counts; the current one scrolls into view). Empty columns stay as pages ("Nothing in …"). A long press on a card opens *Move X to* with the other columns, which sets the grouped field like a drop.
 - Drag a card to another column to set the field the view groups by (status, priority, type, milestone, assignee); optimistic update, rolled back with a message on failure.
 - Inside a column children are indented under their parent; a parent sitting in another column appears as a muted line "↑ Epic title", so a story in progress still shows its epic.
 - Parents with nested items have a fold toggle ("N hidden").

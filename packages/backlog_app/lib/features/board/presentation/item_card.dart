@@ -15,6 +15,7 @@ class ItemCard extends StatelessWidget {
     required this.item,
     this.workflow,
     this.onTap,
+    this.onLongPress,
     this.showStatus = false,
     this.selected = false,
     this.footer,
@@ -24,6 +25,9 @@ class ItemCard extends StatelessWidget {
   final ItemDto item;
   final WorkflowDto? workflow;
   final VoidCallback? onTap;
+
+  /// E.g. the phone's "Move to…" sheet, where dragging is not possible.
+  final VoidCallback? onLongPress;
 
   /// Shows the status too, for layouts that do not group by it.
   final bool showStatus;
@@ -66,6 +70,7 @@ class ItemCard extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
+            onLongPress: onLongPress,
             child: Padding(
               padding: const EdgeInsets.all(10),
               child: Column(

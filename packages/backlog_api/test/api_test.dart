@@ -142,5 +142,32 @@ void main() {
       );
       await expectLater(proxy.views(), throwsA(isA<BacklogApiException>().having((e) => e.statusCode, 'status', 502)));
     });
+
+    test('drops the query and fragment of the base address', () async {
+      // The app passes Uri.base with an emptied query and fragment (`/?#`).
+      final base = Uri.parse('http://server:8640/board?token=t0k#x').replace(path: '/', query: '', fragment: '');
+      final requested = <Uri>[];
+      final api = HttpBacklogApi(
+        base,
+        token: 't0k',
+        client: MockClient((request) async {
+          requested.add(request.url);
+          return http.Response('[]', 200, headers: {'content-type': 'application/json'});
+        }),
+        connectSocket: (uri) {
+          requested.add(uri);
+          throw StateError('no socket in tests');
+        },
+        reconnectDelay: const Duration(hours: 1),
+      );
+      await api.views();
+      final subscription = api.changes().listen(null);
+      await pumpEventQueue();
+      await subscription.cancel();
+      expect(requested.map((uri) => uri.toString()), [
+        'http://server:8640/api/views',
+        'ws://server:8640/api/events?token=t0k',
+      ]);
+    });
   });
 }

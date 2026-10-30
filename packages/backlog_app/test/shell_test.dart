@@ -119,6 +119,8 @@ void main() {
 
     testWidgets('is a full page on a phone', (tester) async {
       await pumpApp(tester, width: 500);
+      await tester.tap(find.byKey(const ValueKey('page-in-progress'))); // phones show one column at a time
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Item T-2'));
       await tester.pumpAndSettle();
       expect(find.byType(ItemPage), findsOneWidget);
@@ -138,9 +140,9 @@ void main() {
     expect(tester.widget<EditableText>(search).focusNode.hasFocus, isTrue);
   });
 
-  testWidgets('phones get the board as stacked sections', (tester) async {
+  testWidgets('phones get the board one column at a time', (tester) async {
     await pumpApp(tester, width: 400);
-    expect(tester.widget<KanbanBoard>(find.byType(KanbanBoard)).stacked, isTrue);
+    expect(tester.widget<KanbanBoard>(find.byType(KanbanBoard)).paged, isTrue);
   });
 
   testWidgets('Scope board narrows the board to the epic from its detail', (tester) async {

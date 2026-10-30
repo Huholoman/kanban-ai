@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:backlog_api/backlog_api.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../../shared/item_style.dart';
 import '../../../shared/tokens.dart';
+import '../../../shared/ui/ui.dart';
 import '../application/column_arrangement.dart';
 import 'item_card.dart';
 
@@ -26,7 +28,7 @@ class KanbanBoard extends StatelessWidget {
     this.onMove,
     this.collapsed = const {},
     this.onToggleCollapsed,
-    this.stacked = false,
+    this.paged = false,
   });
 
   static const minColumnWidth = 196.0;
@@ -48,8 +50,9 @@ class KanbanBoard extends StatelessWidget {
   final Set<String> collapsed;
   final ValueChanged<String>? onToggleCollapsed;
 
-  /// Phone layout: sections one under another instead of columns.
-  final bool stacked;
+  /// Phone layout: one column at a time, swiped sideways, with a column
+  /// switcher on top; cards move by long-press → "Move to…".
+  final bool paged;
 
   /// Column width for [count] columns in [available] pixels: they share the
   /// width, within [minColumnWidth] and [maxColumnWidth].
@@ -66,7 +69,7 @@ class KanbanBoard extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (stacked) return _stacked(context, constraints);
+        if (paged) return _PagedBoard(board: this);
         final width = columnWidthFor(constraints.maxWidth, result.groups.length);
         return _PageScroll(
           child: Row(
@@ -82,32 +85,6 @@ class KanbanBoard extends StatelessWidget {
       },
     );
   }
-
-  Widget _stacked(BuildContext context, BoxConstraints constraints) {
-    final sections = result.groups.where((g) => g.items.isNotEmpty);
-    return _PageScroll(
-      horizontal: false,
-      child: SizedBox(
-        width: max(0, constraints.maxWidth - 2 * pagePadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [for (final group in sections) _section(context, group)],
-        ),
-      ),
-    );
-  }
-
-  Widget _section(BuildContext context, ViewGroupDto group) => Padding(
-    padding: const EdgeInsets.only(bottom: 16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _GroupHeader(result: result, group: group, workflow: workflow),
-        for (final entry in ColumnArrangement.arrange(group.items, index, collapsed: collapsed))
-          Padding(padding: const EdgeInsets.only(bottom: 8), child: _entry(context, entry, 0, draggable: false)),
-      ],
-    ),
-  );
 
   Widget _column(BuildContext context, ViewGroupDto group, double width, double minHeight) {
     final tokens = BoardTokens.of(context);
@@ -148,7 +125,13 @@ class KanbanBoard extends StatelessWidget {
     );
   }
 
-  Widget _entry(BuildContext context, ColumnEntry entry, double columnWidth, {bool draggable = true}) {
+  Widget _entry(
+    BuildContext context,
+    ColumnEntry entry,
+    double columnWidth, {
+    bool draggable = true,
+    VoidCallback? onLongPress,
+  }) {
     final item = entry.item;
     final Widget content;
     final toggle = entry.descendants > 0 && onToggleCollapsed != null
@@ -167,6 +150,7 @@ class KanbanBoard extends StatelessWidget {
         workflow: workflow,
         selected: item.id == selectedId,
         onTap: () => onOpen(item.id),
+        onLongPress: onLongPress,
         footer: toggle,
       );
       content = onMove == null || !draggable
@@ -189,13 +173,218 @@ class KanbanBoard extends StatelessWidget {
   }
 }
 
+/// The phone board: one column per page, swiped sideways. A switcher on top
+/// shows the column (‹ todo · 7 ›) and a row of all columns to jump to.
+class _PagedBoard extends StatefulWidget {
+  const _PagedBoard({required this.board});
+
+  final KanbanBoard board;
+
+  @override
+  State<_PagedBoard> createState() => _PagedBoardState();
+}
+
+class _PagedBoardState extends State<_PagedBoard> {
+  final _pages = PageController();
+  int _page = 0;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  void _go(int page) {
+    setState(() => _page = page);
+    unawaited(_pages.animateToPage(page, duration: const Duration(milliseconds: 220), curve: Curves.easeOut));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final board = widget.board;
+    final groups = board.result.groups;
+    if (groups.isEmpty) return const SizedBox.shrink();
+    final page = _page.clamp(0, groups.length - 1);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _ColumnSwitcher(board: board, page: page, onSelect: _go),
+        Expanded(
+          child: PageView(
+            controller: _pages,
+            onPageChanged: (page) => setState(() => _page = page),
+            children: [for (final group in groups) _column(context, group)],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _column(BuildContext context, ViewGroupDto group) {
+    final board = widget.board;
+    final entries = ColumnArrangement.arrange(group.items, board.index, collapsed: board.collapsed);
+    if (entries.isEmpty) {
+      return Center(
+        child: Text(
+          'Nothing in ${group.key.isEmpty ? '(none)' : group.key}',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      );
+    }
+    return ListView(
+      key: PageStorageKey('page-${group.key}'),
+      padding: const EdgeInsets.all(KanbanBoard.pagePadding),
+      children: [
+        for (final entry in entries)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: board._entry(
+              context,
+              entry,
+              0,
+              draggable: false,
+              onLongPress: board.onMove == null || entry.isContext ? null : () => _moveSheet(entry.item, group.key),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// "Move X-7f3a to" with the other columns; picking one sets the field the
+  /// view groups by, like a drop on the desktop.
+  Future<void> _moveSheet(ItemDto item, String from) async {
+    final board = widget.board;
+    final target = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text('Move ${item.id} to', style: Theme.of(context).textTheme.titleSmall),
+            ),
+            for (final group in board.result.groups)
+              if (group.key != from)
+                ListTile(
+                  key: ValueKey('move-to-${group.key}'),
+                  title: Text(group.key.isEmpty ? '(none)' : group.key),
+                  trailing: Text('${group.items.length}'),
+                  onTap: () => Navigator.of(context).pop(group.key),
+                ),
+          ],
+        ),
+      ),
+    );
+    if (target != null) board.onMove?.call(item, target);
+  }
+}
+
+/// ‹ todo · 7 › above the phone board, and below it every column as a chip
+/// (name and count) to jump to.
+class _ColumnSwitcher extends StatelessWidget {
+  const _ColumnSwitcher({required this.board, required this.page, required this.onSelect});
+
+  final KanbanBoard board;
+  final int page;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    final groups = board.result.groups;
+    final current = groups[page];
+    return Container(
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        border: Border(bottom: BorderSide(color: tokens.border)),
+      ),
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              IconActionButton(
+                key: const ValueKey('page-previous'),
+                tooltip: 'Previous column',
+                icon: Icons.chevron_left,
+                onPressed: page > 0 ? () => onSelect(page - 1) : null,
+              ),
+              Expanded(
+                child: _GroupHeader(result: board.result, group: current, workflow: board.workflow, centered: true),
+              ),
+              IconActionButton(
+                key: const ValueKey('page-next'),
+                tooltip: 'Next column',
+                icon: Icons.chevron_right,
+                onPressed: page < groups.length - 1 ? () => onSelect(page + 1) : null,
+              ),
+            ],
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              children: [
+                for (final (index, group) in groups.indexed)
+                  _KeptVisible(
+                    visible: index == page,
+                    child: ChoiceChip(
+                      key: ValueKey('page-${group.key}'),
+                      label: Text('${group.key.isEmpty ? '(none)' : group.key}  ${group.items.length}'),
+                      selected: index == page,
+                      showCheckmark: false,
+                      onSelected: (_) => onSelect(index),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Scrolls [child] into view when it becomes [visible] (the current column's
+/// chip in the switcher row).
+class _KeptVisible extends StatefulWidget {
+  const _KeptVisible({required this.visible, required this.child});
+
+  final bool visible;
+  final Widget child;
+
+  @override
+  State<_KeptVisible> createState() => _KeptVisibleState();
+}
+
+class _KeptVisibleState extends State<_KeptVisible> {
+  @override
+  void didUpdateWidget(_KeptVisible oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.visible && !oldWidget.visible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(Scrollable.ensureVisible(context, duration: const Duration(milliseconds: 200)));
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(right: 6), child: widget.child);
+}
+
 /// Title of a column or section with the number of items, e.g. `Backlog  4`.
 class _GroupHeader extends StatelessWidget {
-  const _GroupHeader({required this.result, required this.group, required this.workflow});
+  const _GroupHeader({required this.result, required this.group, required this.workflow, this.centered = false});
 
   final ViewResultDto result;
   final ViewGroupDto group;
   final WorkflowDto? workflow;
+
+  /// In the phone's column switcher: name and count side by side, centred.
+  final bool centered;
 
   @override
   Widget build(BuildContext context) {
@@ -203,8 +392,9 @@ class _GroupHeader extends StatelessWidget {
     final tokens = BoardTokens.of(context);
     final accent = ItemStyle.group(result.groupBy, group.key, workflow, theme.colorScheme);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 0, 2, 8),
+      padding: centered ? EdgeInsets.zero : const EdgeInsets.fromLTRB(2, 0, 2, 8),
       child: Row(
+        mainAxisAlignment: centered ? MainAxisAlignment.center : MainAxisAlignment.start,
         children: [
           Container(
             width: 7,
@@ -219,7 +409,7 @@ class _GroupHeader extends StatelessWidget {
               style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
-          const Spacer(),
+          if (centered) const SizedBox(width: 8) else const Spacer(),
           Text('${group.items.length}', style: theme.textTheme.bodySmall?.copyWith(color: tokens.muted)),
         ],
       ),
@@ -269,10 +459,9 @@ class ParentHeader extends StatelessWidget {
 /// horizontally when the columns are wider than the window. Scrollbars need
 /// their own controllers to be draggable with the mouse.
 class _PageScroll extends StatefulWidget {
-  const _PageScroll({required this.child, this.horizontal = true});
+  const _PageScroll({required this.child});
 
   final Widget child;
-  final bool horizontal;
 
   @override
   State<_PageScroll> createState() => _PageScrollState();
@@ -297,17 +486,11 @@ class _PageScrollState extends State<_PageScroll> {
     child: SingleChildScrollView(
       controller: _vertical,
       padding: const EdgeInsets.all(KanbanBoard.pagePadding),
-      child: widget.horizontal
-          ? Scrollbar(
-              controller: _horizontal,
-              interactive: true,
-              child: SingleChildScrollView(
-                controller: _horizontal,
-                scrollDirection: Axis.horizontal,
-                child: widget.child,
-              ),
-            )
-          : widget.child,
+      child: Scrollbar(
+        controller: _horizontal,
+        interactive: true,
+        child: SingleChildScrollView(controller: _horizontal, scrollDirection: Axis.horizontal, child: widget.child),
+      ),
     ),
   );
 }

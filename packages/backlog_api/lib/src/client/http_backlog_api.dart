@@ -117,8 +117,17 @@ final class HttpBacklogApi implements BacklogApi {
     return uri.replace(scheme: uri.scheme == 'https' ? 'wss' : 'ws');
   }
 
-  Uri _uri(String path, [Map<String, String> query = const {}]) =>
-      baseUri.replace(path: path, queryParameters: query.isEmpty ? null : query);
+  /// Built from the origin only: a query or fragment left in [baseUri] (the
+  /// app's `Uri.base` ends in `?#`) must not leak into requests — browsers
+  /// refuse to open a WebSocket whose URL has a fragment, even an empty one.
+  Uri _uri(String path, [Map<String, String> query = const {}]) => Uri(
+    scheme: baseUri.scheme,
+    userInfo: baseUri.userInfo,
+    host: baseUri.host,
+    port: baseUri.port,
+    path: path,
+    queryParameters: query.isEmpty ? null : query,
+  );
 
   Map<String, String> get _headers => {
     'accept': 'application/json',

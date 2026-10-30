@@ -98,6 +98,8 @@ void main() {
   testWidgets('on a narrow screen the detail is a page and views are in a dropdown', (tester) async {
     await pumpApp(tester, width: 500);
     expect(find.byKey(const ValueKey('view-picker')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('page-in-progress'))); // one column at a time
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Item T-2'));
     await tester.pumpAndSettle();
     expect(find.text('Item T-1'), findsNothing);

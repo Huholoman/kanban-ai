@@ -116,7 +116,7 @@ void main() {
       ],
     );
 
-    Future<void> pumpBoard(WidgetTester tester, double width, {bool stacked = false}) async {
+    Future<void> pumpBoard(WidgetTester tester, double width, {bool paged = false, MoveItem? onMove}) async {
       tester.view.physicalSize = Size(width, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -124,7 +124,7 @@ void main() {
         MaterialApp(
           theme: BoardTokens.light.toTheme(Brightness.light),
           home: Scaffold(
-            body: KanbanBoard(result: board(), onOpen: (_) {}, stacked: stacked),
+            body: KanbanBoard(result: board(), onOpen: (_) {}, paged: paged, onMove: onMove),
           ),
         ),
       );
@@ -141,15 +141,35 @@ void main() {
       expect(KanbanBoard.columnWidthFor(1000, 3), inInclusiveRange(196, 280));
     });
 
-    testWidgets('stacked mode shows sections one under another and hides empty ones', (tester) async {
-      await pumpBoard(tester, 400, stacked: true);
-      expect(find.text('todo'), findsOneWidget);
-      expect(find.text('done'), findsOneWidget);
-      expect(find.text('in-progress'), findsNothing);
-      final a = tester.getRect(find.byKey(const ValueKey('card-A')));
-      final c = tester.getRect(find.byKey(const ValueKey('card-C')));
-      expect(c.top, greaterThan(a.bottom));
-      expect(a.width, greaterThan(300), reason: 'cards use the full width');
+    testWidgets('on a phone the board shows one column at a time and switches sideways', (tester) async {
+      await pumpBoard(tester, 400, paged: true);
+      expect(find.byKey(const ValueKey('card-A')), findsOneWidget);
+      expect(find.byKey(const ValueKey('card-C')), findsNothing);
+      expect(tester.getSize(find.byKey(const ValueKey('card-A'))).width, greaterThan(300), reason: 'full width');
+
+      await tester.tap(find.byKey(const ValueKey('page-next')));
+      await tester.pumpAndSettle();
+      expect(find.text('Nothing in in-progress'), findsOneWidget);
+
+      await tester.ensureVisible(find.byKey(const ValueKey('page-done')));
+      await tester.tap(find.byKey(const ValueKey('page-done')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('card-C')), findsOneWidget);
+
+      await tester.fling(find.byType(PageView), const Offset(400, 0), 1000);
+      await tester.pumpAndSettle();
+      expect(find.text('Nothing in in-progress'), findsOneWidget, reason: 'a swipe goes back one column');
+    });
+
+    testWidgets('on a phone a long press moves a card to another column', (tester) async {
+      final moves = <(String, String)>[];
+      await pumpBoard(tester, 400, paged: true, onMove: (item, key) => moves.add((item.id, key)));
+      await tester.longPress(find.byKey(const ValueKey('card-A')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('move-to-todo')), findsNothing, reason: 'not its own column');
+      await tester.tap(find.byKey(const ValueKey('move-to-done')));
+      await tester.pumpAndSettle();
+      expect(moves, [('A', 'done')]);
     });
   });
 }
