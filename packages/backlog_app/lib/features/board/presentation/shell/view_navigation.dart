@@ -55,10 +55,14 @@ class ViewNavigation extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: FilledButton.tonalIcon(
+            child: FilledButton.icon(
+              key: const ValueKey('new-item'),
+              style: FilledButton.styleFrom(backgroundColor: tokens.accent, foregroundColor: tokens.onAccent),
               onPressed: controller.workflow == null ? null : onCreate,
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('New item'),
+              // The label's colour is set explicitly: on the web it does not
+              // follow foregroundColor here.
+              label: Text('New item', style: TextStyle(color: tokens.onAccent)),
             ),
           ),
           Expanded(
