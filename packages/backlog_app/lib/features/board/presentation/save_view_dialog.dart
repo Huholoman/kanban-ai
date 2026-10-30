@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../shared/tokens.dart';
+import '../../../shared/ui/ui.dart';
 
 /// Asks for the name, section and pinning of a view saved from the filter.
 /// Pops `(name, section, pinned)`, or null when cancelled.
@@ -132,8 +133,8 @@ class _SaveViewDialogState extends State<_SaveViewDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        FilledButton(onPressed: _save, child: const Text('Save')),
+        LinkButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+        PrimaryButton(label: 'Save', onPressed: _save),
       ],
     );
   }

@@ -1,6 +1,8 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 
+import '../../../shared/ui/ui.dart';
+
 /// Asks for the fields of a new item; returns null when cancelled.
 Future<NewItemRequest?> showNewItemDialog(BuildContext context, WorkflowDto workflow) =>
     showDialog<NewItemRequest>(context: context, builder: (_) => _NewItemDialog(workflow));
@@ -108,8 +110,8 @@ class _NewItemDialogState extends State<_NewItemDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        FilledButton(onPressed: _submit, child: const Text('Create')),
+        LinkButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+        PrimaryButton(label: 'Create', onPressed: _submit),
       ],
     );
   }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../../app/app_scope.dart';
 import '../../../../app/appearance_controller.dart';
 import '../../../../shared/tokens.dart';
+import '../../../../shared/ui/ui.dart';
 import '../../application/board_controller.dart';
 import 'view_navigation.dart';
 
@@ -43,7 +44,7 @@ class BoardHeader extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  if (menu != null) _HeaderButton(tooltip: 'Menu', icon: Icons.menu, onPressed: menu),
+                  if (menu != null) IconActionButton(tooltip: 'Menu', icon: Icons.menu, onPressed: menu),
                   Expanded(child: _ViewPicker(controller: controller)),
                   ...actions,
                 ],
@@ -53,7 +54,7 @@ class BoardHeader extends StatelessWidget {
           )
         : Row(
             children: [
-              if (menu != null) _HeaderButton(tooltip: 'Menu', icon: Icons.menu, onPressed: menu),
+              if (menu != null) IconActionButton(tooltip: 'Menu', icon: Icons.menu, onPressed: menu),
               Expanded(child: filter ?? const SizedBox.shrink()),
               ...actions,
             ],
@@ -76,32 +77,15 @@ class BoardHeader extends StatelessWidget {
         child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
       ),
     if (controller.canEditColumns)
-      _HeaderButton(
+      IconActionButton(
         key: const ValueKey('edit-columns'),
         tooltip: 'Columns of this view',
         icon: Icons.view_week_outlined,
         onPressed: onEditColumns,
       ),
     if (AppScope.of(context).appearance case final appearance?) _ModeButton(appearance: appearance),
-    _HeaderButton(tooltip: 'Reload', icon: Icons.refresh, onPressed: () => unawaited(controller.refresh())),
+    IconActionButton(tooltip: 'Reload', icon: Icons.refresh, onPressed: () => unawaited(controller.refresh())),
   ];
-}
-
-class _HeaderButton extends StatelessWidget {
-  const _HeaderButton({super.key, required this.tooltip, required this.icon, required this.onPressed});
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) => IconButton(
-    tooltip: tooltip,
-    iconSize: 20,
-    color: BoardTokens.of(context).muted,
-    icon: Icon(icon),
-    onPressed: onPressed,
-  );
 }
 
 /// View dropdown of the phone header.
@@ -154,7 +138,7 @@ class _ModeButton extends StatelessWidget {
         ThemeMode.light => (Icons.light_mode_outlined, 'light'),
         ThemeMode.dark => (Icons.dark_mode_outlined, 'dark'),
       };
-      return _HeaderButton(
+      return IconActionButton(
         key: const ValueKey('theme-mode'),
         tooltip: 'Theme: $label (click to switch)',
         icon: icon,

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../../app/app_scope.dart';
 import '../../../shared/tokens.dart';
+import '../../../shared/ui/ui.dart';
 import '../../item/presentation/item_page.dart';
 import '../application/board_controller.dart';
 import 'columns_dialog.dart';
@@ -284,7 +285,7 @@ class _BoardPageState extends State<BoardPage> {
         if (controller.error != null)
           MaterialBanner(
             content: Text('Showing older data: ${controller.error}'),
-            actions: [TextButton(onPressed: controller.refresh, child: const Text('Retry'))],
+            actions: [LinkButton(label: 'Retry', onPressed: controller.refresh)],
           ),
         Expanded(
           child: switch (result.layout) {
@@ -394,7 +395,7 @@ class _ErrorView extends StatelessWidget {
             Text('$error', textAlign: TextAlign.center),
             if (unauthorized) const Text('Open the URL printed by the server, including ?token=…'),
             const SizedBox(height: 12),
-            FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            PrimaryButton(label: 'Retry', onPressed: onRetry),
           ],
         ),
       ),

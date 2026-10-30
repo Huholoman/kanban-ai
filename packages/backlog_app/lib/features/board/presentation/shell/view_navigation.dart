@@ -4,6 +4,7 @@ import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../shared/tokens.dart';
+import '../../../../shared/ui/ui.dart';
 import '../../application/board_controller.dart';
 import 'lint_dialog.dart';
 
@@ -55,14 +56,11 @@ class ViewNavigation extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: FilledButton.icon(
+            child: PrimaryButton(
               key: const ValueKey('new-item'),
-              style: FilledButton.styleFrom(backgroundColor: tokens.accent, foregroundColor: tokens.onAccent),
+              label: 'New item',
+              icon: Icons.add,
               onPressed: controller.workflow == null ? null : onCreate,
-              icon: const Icon(Icons.add, size: 18),
-              // The label's colour is set explicitly: on the web it does not
-              // follow foregroundColor here.
-              label: Text('New item', style: TextStyle(color: tokens.onAccent)),
             ),
           ),
           Expanded(
@@ -71,14 +69,14 @@ class ViewNavigation extends StatelessWidget {
               children: [
                 for (final (name, members) in sections)
                   if (name == null) ...[
-                    const _SectionHeader(title: 'Views'),
+                    const SectionLabel('Views'),
                     for (final view in members) _ViewRow(controller: controller, view: view, onNavigate: onNavigate),
                   ],
                 for (final (name, members) in sections)
                   if (name != null) ...[
-                    _SectionHeader(
+                    SectionLabel(
+                      name,
                       key: ValueKey('section-$name'),
-                      title: name,
                       collapsed: controller.collapsedSections.contains(name),
                       onToggle: () => controller.toggleSection(name),
                     ),
@@ -95,42 +93,6 @@ class ViewNavigation extends StatelessWidget {
             child: LintLink(issues: controller.lint, onOpenItem: onOpenItem),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({super.key, required this.title, this.collapsed = false, this.onToggle});
-
-  final String title;
-  final bool collapsed;
-
-  /// Null for the heading of views without a section, which cannot fold.
-  final VoidCallback? onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = BoardTokens.of(context);
-    final toggle = onToggle;
-    return InkWell(
-      borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
-      onTap: toggle,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 12, 6, 4),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                title.toUpperCase(),
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.6, color: tokens.muted),
-              ),
-            ),
-            if (toggle != null)
-              Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 16, color: tokens.muted),
-          ],
-        ),
       ),
     );
   }
@@ -175,7 +137,7 @@ class _ViewRow extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (count != null) Text('$count', style: TextStyle(fontSize: 12, color: tokens.muted)),
+                if (count != null) CountText(count),
                 _ViewMenu(controller: controller, view: view),
               ],
             ),
@@ -208,14 +170,12 @@ class _ViewMenu extends StatelessWidget {
         child: Text(view.pinned ? 'Unpin from bottom bar' : 'Pin to bottom bar'),
       ),
     ],
-    builder: (context, menu, _) => IconButton(
+    builder: (context, menu, _) => IconActionButton(
       key: ValueKey('view-menu-${view.id}'),
       tooltip: 'View options',
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-      iconSize: 16,
-      color: BoardTokens.of(context).muted,
-      icon: const Icon(Icons.more_vert),
+      icon: Icons.more_vert,
+      size: 16,
+      box: 28,
       onPressed: () => menu.isOpen ? menu.close() : menu.open(),
     ),
   );
@@ -282,9 +242,9 @@ class _SectionDialogState extends State<_SectionDialog> {
     ),
     actions: [
       if (widget.view.section != null)
-        TextButton(onPressed: () => Navigator.of(context).pop(''), child: const Text('Remove from section')),
-      TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-      FilledButton(onPressed: () => Navigator.of(context).pop(_name.text.trim()), child: const Text('Move')),
+        LinkButton(label: 'Remove from section', onPressed: () => Navigator.of(context).pop('')),
+      LinkButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+      PrimaryButton(label: 'Move', onPressed: () => Navigator.of(context).pop(_name.text.trim())),
     ],
   );
 }
@@ -334,10 +294,7 @@ class ViewTabs extends StatelessWidget {
                         fontWeight: view.id == controller.selectedViewId ? FontWeight.w600 : FontWeight.w400,
                       ),
                     ),
-                    if (view.count != null) ...[
-                      const SizedBox(width: 6),
-                      Text('${view.count}', style: TextStyle(fontSize: 12, color: tokens.muted)),
-                    ],
+                    if (view.count != null) ...[const SizedBox(width: 6), CountText(view.count!)],
                   ],
                 ),
               ),
