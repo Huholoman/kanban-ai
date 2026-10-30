@@ -91,9 +91,13 @@ class Tag extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[Icon(icon, size: 12, color: foreground), const SizedBox(width: 3)],
-          Text(
-            text,
-            style: theme.textTheme.labelSmall?.copyWith(color: foreground, fontWeight: FontWeight.w600),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(color: foreground, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
