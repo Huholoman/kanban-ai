@@ -50,6 +50,39 @@ void main() {
       expect(board.sectionNames, isEmpty);
     });
 
+    test('the view can be regrouped for the session and resets on view change', () async {
+      await board.setGroupBy('priority');
+      expect(board.result!.groupBy, 'priority');
+      expect(board.canMove, isTrue, reason: 'dropping into a priority column sets the priority');
+      await board.selectView('list');
+      expect(board.groupByOverride, isNull);
+    });
+
+    test('people are the agents with live claims, busiest first', () async {
+      ClaimDto claim(String agent, {bool expired = false}) => ClaimDto(
+        item: 'x',
+        agent: agent,
+        claimedAt: DateTime.utc(2026),
+        heartbeatAt: DateTime.utc(2026),
+        expiresAt: DateTime.utc(2027),
+        expired: expired,
+      );
+      ItemDto claimed(String id, ClaimDto c) =>
+          ItemDto(id: id, title: id, type: 'task', status: 'in-progress', priority: 'p2', claim: c);
+      board.dispose(); // the one from setUp; tearDown disposes the new one
+      api = FakeBacklogApi([
+        claimed('A', claim('bob')),
+        claimed('B', claim('alice')),
+        claimed('C', claim('alice')),
+        claimed('D', claim('carol', expired: true)),
+      ]);
+      board = BoardController(api, refreshDelay: const Duration(milliseconds: 10));
+      await board.start();
+      expect(board.people, [('alice', 2), ('bob', 1)]);
+      board.showPerson('bob');
+      expect(board.filter.valuesFor(FilterFacet.person), {'bob'});
+    });
+
     test('list views cannot be reordered by dragging', () async {
       await board.selectView('list');
       expect(board.result!.layout, ViewLayoutDto.list);

@@ -42,6 +42,13 @@ class BoardController extends ChangeNotifier {
   /// Sections of the view list that are folded.
   Set<String> collapsedSections = const {};
 
+  /// Grouping chosen in the header for the current view only (null: the
+  /// view's own; '' ungrouped). Reset when another view is selected.
+  String? groupByOverride;
+
+  /// Fields the header offers to group by.
+  static const groupableFields = ['status', 'priority', 'type', 'milestone', 'assignee', 'labels', 'epic'];
+
   /// One-off messages for the user (failed moves and the like).
   Stream<String> get notices => _notices.stream;
 
@@ -207,7 +214,36 @@ class BoardController extends ChangeNotifier {
 
   Future<void> selectView(String id) async {
     selectedViewId = id;
+    groupByOverride = null;
     await refresh();
+  }
+
+  /// Regroups the current view by [field] for this session; null goes back
+  /// to the view's own grouping.
+  Future<void> setGroupBy(String? field) async {
+    groupByOverride = field;
+    await refresh();
+  }
+
+  /// Agents holding a live claim, with how many items each holds, busiest
+  /// first — the "People" part of the navigation.
+  List<(String, int)> get people {
+    final counts = <String, int>{};
+    for (final item in index.values) {
+      final claim = item.claim;
+      if (claim != null && !claim.expired && !item.isDone) counts[claim.agent] = (counts[claim.agent] ?? 0) + 1;
+    }
+    return counts.entries.map((e) => (e.key, e.value)).toList()
+      ..sort((a, b) => b.$2 != a.$2 ? b.$2.compareTo(a.$2) : a.$1.compareTo(b.$1));
+  }
+
+  /// Narrows the board to what [agent] works on (assignee or claim).
+  void showPerson(String agent) {
+    var next = filter;
+    for (final other in filter.valuesFor(FilterFacet.person)) {
+      next = next.toggle(FilterFacet.person, other);
+    }
+    setFilter(next.toggle(FilterFacet.person, agent));
   }
 
   /// Reloads everything; [quiet] keeps the current content visible meanwhile.
@@ -223,7 +259,7 @@ class BoardController extends ChangeNotifier {
       final loadedLint = await _api.lint();
       final loadedItems = await _api.items(includeDone: true);
       final id = _pickView(loadedViews);
-      final loadedResult = id == null ? null : await _api.view(id);
+      final loadedResult = id == null ? null : await _api.view(id, groupBy: groupByOverride);
       if (generation != _generation) return; // a newer refresh won
       workflow = loadedWorkflow;
       views = loadedViews;
