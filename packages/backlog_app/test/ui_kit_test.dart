@@ -90,30 +90,35 @@ void main() {
     });
   });
 
-  group('PillChoice', () {
-    testWidgets('selects another option, ignores the selected one and a disabled row', (tester) async {
+  group('ChoiceMenu', () {
+    testWidgets('shows the value and picks another one from its menu', (tester) async {
       final selected = <String>[];
-      Widget pills({bool enabled = true}) => PillChoice(
+      Widget menu({bool enabled = true}) => ChoiceMenu(
+        key: const ValueKey('menu'),
         options: const ['todo', 'done'],
         selected: 'todo',
         enabled: enabled,
-        keyOf: (value) => ValueKey('pill-$value'),
+        keyOf: (value) => ValueKey('option-$value'),
         colorOf: (value) => value == 'todo' ? Colors.red : Colors.green,
         onSelect: selected.add,
       );
-      await pump(tester, pills());
-      expect(styleOf(tester, 'todo')?.color, Colors.red);
-      await tester.tap(find.byKey(const ValueKey('pill-todo')));
-      await tester.tap(find.byKey(const ValueKey('pill-done')));
+      await pump(tester, menu());
+      expect(find.text('todo'), findsOneWidget);
+      expect(find.byKey(const ValueKey('option-done')), findsNothing, reason: 'closed until tapped');
+      await tester.tap(find.byKey(const ValueKey('menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('option-done')));
+      await tester.pumpAndSettle();
       expect(selected, ['done']);
 
-      await pump(tester, pills(enabled: false));
-      await tester.tap(find.byKey(const ValueKey('pill-done')));
-      expect(selected, ['done']);
+      await pump(tester, menu(enabled: false));
+      await tester.tap(find.byKey(const ValueKey('menu')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('option-done')), findsNothing);
     });
 
     testWidgets('keeps an unknown selected value visible', (tester) async {
-      await pump(tester, PillChoice(options: const ['a'], selected: 'legacy', onSelect: (_) {}));
+      await pump(tester, ChoiceMenu(options: const ['a'], selected: 'legacy', onSelect: (_) {}));
       expect(find.text('legacy'), findsOneWidget);
     });
   });

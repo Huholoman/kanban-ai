@@ -193,13 +193,12 @@ void main() {
   });
 
   group('ItemDetailView fields', () {
-    testWidgets('status and priority pills set the field', (tester) async {
+    testWidgets('status and priority dropdowns set the field', (tester) async {
       final api = await _pumpDetail(tester, 'T-2');
-      final selected = tester.widget<Semantics>(
-        find.ancestor(of: _key('status-todo'), matching: find.byType(Semantics)).first,
-      );
-      expect(selected.properties.checked, isTrue);
+      expect(find.descendant(of: _key('field-status'), matching: find.text('todo')), findsOneWidget);
+      await _tap(tester, _key('field-status'));
       await _tap(tester, _key('status-in-progress'));
+      await _tap(tester, _key('field-priority'));
       await _tap(tester, _key('priority-p0'));
       expect(api.updates.map((u) => u.$2.changes), [
         ['status=in-progress'],

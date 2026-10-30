@@ -42,27 +42,40 @@ class DetailContent extends StatelessWidget {
               const SizedBox(height: 12),
               _Status(item: item),
               if (workflow != null) ...[
-                _Labelled(
-                  'Status',
-                  PillChoice(
-                    options: [for (final status in workflow.statuses) status.id],
-                    selected: item.status,
-                    enabled: !controller.busy,
-                    keyOf: (status) => ValueKey('status-$status'),
-                    onSelect: (status) => unawaited(controller.set('status', status)),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _Labelled(
-                  'Priority',
-                  PillChoice(
-                    options: workflow.priorities,
-                    selected: item.priority,
-                    colorOf: (priority) => ItemStyle.priority(priority, workflow),
-                    enabled: !controller.busy,
-                    keyOf: (priority) => ValueKey('priority-$priority'),
-                    onSelect: (priority) => unawaited(controller.set('priority', priority)),
-                  ),
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 10,
+                  children: [
+                    _Labelled(
+                      'Status',
+                      ChoiceMenu(
+                        key: const ValueKey('field-status'),
+                        options: [for (final status in workflow.statuses) status.id],
+                        selected: item.status,
+                        enabled: !controller.busy,
+                        colorOf: (status) => ItemStyle.status(
+                          status,
+                          workflow.categoryOf(status),
+                          workflow,
+                          Theme.of(context).colorScheme,
+                        ),
+                        keyOf: (status) => ValueKey('status-$status'),
+                        onSelect: (status) => unawaited(controller.set('status', status)),
+                      ),
+                    ),
+                    _Labelled(
+                      'Priority',
+                      ChoiceMenu(
+                        key: const ValueKey('field-priority'),
+                        options: workflow.priorities,
+                        selected: item.priority,
+                        colorOf: (priority) => ItemStyle.priority(priority, workflow),
+                        enabled: !controller.busy,
+                        keyOf: (priority) => ValueKey('priority-$priority'),
+                        onSelect: (priority) => unawaited(controller.set('priority', priority)),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 _Fields(controller: controller, item: item, workflow: workflow),
