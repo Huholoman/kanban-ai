@@ -13,7 +13,15 @@ enum ViewLayoutDto {
 
 /// A saved view without its items, for the view picker.
 final class ViewSummaryDto {
-  const ViewSummaryDto({required this.id, required this.name, required this.layout, this.groupBy, this.section});
+  const ViewSummaryDto({
+    required this.id,
+    required this.name,
+    required this.layout,
+    this.groupBy,
+    this.section,
+    this.pinned = false,
+    this.count,
+  });
 
   factory ViewSummaryDto.fromJson(Json json) => ViewSummaryDto(
     id: json.string('id'),
@@ -21,6 +29,8 @@ final class ViewSummaryDto {
     layout: ViewLayoutDto.parse(json.string('layout')),
     groupBy: json.optionalString('group_by'),
     section: json.optionalString('section'),
+    pinned: json.boolean('pinned'),
+    count: json['count'] as int?,
   );
 
   final String id;
@@ -31,7 +41,21 @@ final class ViewSummaryDto {
   /// Heading in the view list; null for views outside any section.
   final String? section;
 
-  Json toJson() => {'id': id, 'name': name, 'layout': layout.name, 'group_by': groupBy, 'section': section};
+  /// Shown in the phone's bottom bar.
+  final bool pinned;
+
+  /// Items the view shows right now; null when not computed.
+  final int? count;
+
+  Json toJson() => {
+    'id': id,
+    'name': name,
+    'layout': layout.name,
+    'group_by': groupBy,
+    'section': section,
+    'pinned': pinned,
+    'count': count,
+  };
 }
 
 final class ViewGroupDto {

@@ -29,6 +29,11 @@ final class ViewService {
     return _reloaded(id);
   }
 
+  Future<ViewDefinition> setPinned(String id, bool pinned) async {
+    await _views.setPinned(id, pinned);
+    return _reloaded(id);
+  }
+
   Future<ViewDefinition> setColumns(String id, List<String>? columns) async {
     await _views.setColumns(id, columns);
     return _reloaded(id);
@@ -40,6 +45,7 @@ final class ViewService {
   Future<ViewDefinition> saveAs({
     required String name,
     String? section,
+    bool pinned = false,
     String? base,
     List<Object?> conditions = const [],
   }) async {
@@ -50,6 +56,7 @@ final class ViewService {
     final definition = <String, Object?>{
       'name': name.trim(),
       if (section != null && section.trim().isNotEmpty) 'section': section.trim(),
+      if (pinned) 'pinned': true,
       'layout': template['layout'] ?? 'list',
       if (parts.isNotEmpty) 'filter': parts.length == 1 ? parts.single : {'and': parts},
       for (final key in ['group_by', 'columns', 'sort', 'fields'])

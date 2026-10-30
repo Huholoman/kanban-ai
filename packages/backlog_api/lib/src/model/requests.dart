@@ -76,36 +76,61 @@ final class ItemUpdateRequest {
 /// shows. Only what was given is changed; null or empty values remove the
 /// key from the YAML (no section, default groups).
 final class ViewUpdateRequest {
-  const ViewUpdateRequest({this.section, this.columns, this.changesSection = false, this.changesColumns = false});
+  const ViewUpdateRequest({
+    this.section,
+    this.columns,
+    this.pinned,
+    this.changesSection = false,
+    this.changesColumns = false,
+  });
 
-  const ViewUpdateRequest.section(this.section) : columns = null, changesSection = true, changesColumns = false;
+  const ViewUpdateRequest.section(this.section)
+    : columns = null,
+      pinned = null,
+      changesSection = true,
+      changesColumns = false;
 
-  const ViewUpdateRequest.columns(this.columns) : section = null, changesSection = false, changesColumns = true;
+  const ViewUpdateRequest.columns(this.columns)
+    : section = null,
+      pinned = null,
+      changesSection = false,
+      changesColumns = true;
+
+  const ViewUpdateRequest.pinned(bool this.pinned)
+    : section = null,
+      columns = null,
+      changesSection = false,
+      changesColumns = false;
 
   factory ViewUpdateRequest.fromJson(Json json) => ViewUpdateRequest(
     section: json.optionalString('section'),
     columns: json['columns'] == null ? null : json.strings('columns'),
+    pinned: json['pinned'] as bool?,
     changesSection: json.containsKey('section'),
     changesColumns: json.containsKey('columns'),
   );
 
   final String? section;
   final List<String>? columns;
+
+  /// Pin to (true) or unpin from (false) the phone's bottom bar; null keeps it.
+  final bool? pinned;
   final bool changesSection;
   final bool changesColumns;
 
-  Json toJson() => {if (changesSection) 'section': section, if (changesColumns) 'columns': columns};
+  Json toJson() => {if (changesSection) 'section': section, if (changesColumns) 'columns': columns, 'pinned': ?pinned};
 }
 
 /// A new saved view: a copy of [base] (layout, grouping, columns, sorting)
 /// whose filter also requires every one of [conditions] — filter expressions
 /// in the view YAML grammar, e.g. `{"labels": ["ui"]}`.
 final class NewViewRequest {
-  const NewViewRequest({required this.name, this.section, this.base, this.conditions = const []});
+  const NewViewRequest({required this.name, this.section, this.pinned = false, this.base, this.conditions = const []});
 
   factory NewViewRequest.fromJson(Json json) => NewViewRequest(
     name: json.string('name'),
     section: json.optionalString('section'),
+    pinned: json.boolean('pinned'),
     base: json.optionalString('base'),
     conditions: switch (json['conditions']) {
       null => const [],
@@ -116,10 +141,11 @@ final class NewViewRequest {
 
   final String name;
   final String? section;
+  final bool pinned;
   final String? base;
   final List<Object?> conditions;
 
-  Json toJson() => {'name': name, 'section': section, 'base': base, 'conditions': conditions};
+  Json toJson() => {'name': name, 'section': section, 'pinned': pinned, 'base': base, 'conditions': conditions};
 }
 
 /// Claim, release or completion of an item on behalf of [agent].

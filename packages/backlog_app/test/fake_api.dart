@@ -144,6 +144,7 @@ final class FakeBacklogApi implements BacklogApi {
   /// Section and columns of each view, as `PATCH /api/views/<id>` sets them.
   final viewSections = <String, String>{};
   final viewColumns = <String, List<String>>{};
+  final pinnedViews = <String>{};
 
   @override
   Future<List<ViewSummaryDto>> views() async => [
@@ -154,14 +155,24 @@ final class FakeBacklogApi implements BacklogApi {
         layout: ViewLayoutDto.kanban,
         groupBy: 'status',
         section: request.section,
+        pinned: request.pinned || pinnedViews.contains('saved-${index + 1}'),
       ),
-    ViewSummaryDto(id: 'list', name: 'All', layout: ViewLayoutDto.list, section: viewSections['list']),
+    ViewSummaryDto(
+      id: 'list',
+      name: 'All',
+      layout: ViewLayoutDto.list,
+      section: viewSections['list'],
+      pinned: pinnedViews.contains('list'),
+      count: items_.length,
+    ),
     ViewSummaryDto(
       id: 'board',
       name: 'Board',
       layout: ViewLayoutDto.kanban,
       groupBy: 'status',
       section: viewSections['board'],
+      pinned: pinnedViews.contains('board'),
+      count: items_.values.where((i) => const ['todo', 'in-progress', 'done'].contains(i.status)).length,
     ),
   ];
 
@@ -179,6 +190,9 @@ final class FakeBacklogApi implements BacklogApi {
     if (request.changesSection) {
       final section = request.section?.trim() ?? '';
       section.isEmpty ? viewSections.remove(id) : viewSections[id] = section;
+    }
+    if (request.pinned case final pinned?) {
+      pinned ? pinnedViews.add(id) : pinnedViews.remove(id);
     }
     if (request.changesColumns) {
       final columns = request.columns;

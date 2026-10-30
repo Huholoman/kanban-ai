@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../shared/debounced_changes.dart';
 import '../shared/item_style.dart';
+import '../shared/tokens.dart';
 
 /// Theme of the app from `appearance` in backlog.yaml, reloaded when the file
 /// changes, plus the mode the user switched to in this session.
@@ -53,19 +54,24 @@ class AppearanceController extends ChangeNotifier {
     notifyListeners();
   }
 
-  ThemeData theme(Brightness brightness) {
+  /// The design tokens for [brightness], with the accent and background
+  /// from `appearance` (primary, else the seed, else the built-in indigo).
+  BoardTokens tokens(Brightness brightness) {
     final palette = brightness == Brightness.light ? appearance.light : appearance.dark;
-    var scheme = ColorScheme.fromSeed(
-      seedColor: ItemStyle.parse(palette.seed) ?? const Color(0xFF3A6EA5),
-      brightness: brightness,
+    final base = brightness == Brightness.light ? BoardTokens.light : BoardTokens.dark;
+    final accent = ItemStyle.parse(palette.primary) ?? ItemStyle.parse(palette.seed);
+    final page = ItemStyle.parse(palette.background);
+    if (accent == null && page == null) return base;
+    final generated = accent == null ? null : ColorScheme.fromSeed(seedColor: accent, brightness: brightness);
+    return base.copyWith(
+      accent: generated == null ? null : (palette.primary != null ? accent : generated.primary),
+      accentSoft: generated?.secondaryContainer,
+      onAccent: generated?.onPrimary,
+      page: page,
     );
-    scheme = scheme.copyWith(
-      primary: ItemStyle.parse(palette.primary),
-      secondary: ItemStyle.parse(palette.secondary),
-      surface: ItemStyle.parse(palette.background),
-    );
-    return ThemeData(colorScheme: scheme, visualDensity: VisualDensity.standard);
   }
+
+  ThemeData theme(Brightness brightness) => tokens(brightness).toTheme(brightness);
 
   @override
   void dispose() {

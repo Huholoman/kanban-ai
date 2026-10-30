@@ -134,7 +134,7 @@ void main() {
       addTearDown(appearance.dispose);
       await appearance.start();
       expect(appearance.mode, ThemeMode.dark);
-      expect(appearance.theme(Brightness.dark).colorScheme.surface, const Color(0xFF101820));
+      expect(appearance.theme(Brightness.dark).scaffoldBackgroundColor, const Color(0xFF101820));
 
       api
         ..appearance = const AppearanceDto(

@@ -122,10 +122,16 @@ class BoardController extends ChangeNotifier {
 
   /// Saves the current view narrowed by [filter] as a new view and switches
   /// to it (with the filter cleared, the view now does the filtering).
-  Future<bool> saveFilterAsView(String name, {String? section}) async {
+  Future<bool> saveFilterAsView(String name, {String? section, bool pinned = false}) async {
     try {
       final created = await _api.createView(
-        NewViewRequest(name: name, section: section, base: selectedViewId, conditions: filter.toConditions()),
+        NewViewRequest(
+          name: name,
+          section: section,
+          pinned: pinned,
+          base: selectedViewId,
+          conditions: filter.toConditions(),
+        ),
       );
       filter = BoardFilter.none;
       selectedViewId = created.id;
@@ -136,6 +142,38 @@ class BoardController extends ChangeNotifier {
     await refresh();
     return true;
   }
+
+  /// Views pinned to the phone's bottom bar, in list order.
+  List<ViewSummaryDto> get pinnedViews => [
+    for (final view in views)
+      if (view.pinned) view,
+  ];
+
+  /// Pins view [id] to the phone's bottom bar, or unpins it.
+  Future<void> setPinned(String id, bool pinned) async {
+    try {
+      await _api.updateView(id, ViewUpdateRequest.pinned(pinned));
+    } catch (e) {
+      _notices.add('$e');
+    }
+    await refresh(quiet: true);
+  }
+
+  /// Narrows the board to everything under [epicId] (replacing any other
+  /// epic in the filter); the filter bar shows it as a removable chip.
+  void scopeToEpic(String epicId) {
+    var next = filter;
+    for (final other in filter.valuesFor(FilterFacet.epic)) {
+      next = next.toggle(FilterFacet.epic, other);
+    }
+    setFilter(next.toggle(FilterFacet.epic, epicId));
+  }
+
+  /// The epic the board is scoped to, if exactly one is chosen.
+  String? get scopedEpic => switch (filter.valuesFor(FilterFacet.epic)) {
+    final epics when epics.length == 1 => epics.single,
+    _ => null,
+  };
 
   /// Moves view [id] to [section] (null or blank: out of any section).
   Future<void> moveView(String id, String? section) async {

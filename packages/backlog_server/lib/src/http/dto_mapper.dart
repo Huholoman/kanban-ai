@@ -94,12 +94,14 @@ abstract final class DtoMapper {
     expired: expired,
   );
 
-  static ViewSummaryDto viewSummary(ViewDefinition view) => ViewSummaryDto(
+  static ViewSummaryDto viewSummary(ViewDefinition view, {int? count}) => ViewSummaryDto(
     id: view.id,
     name: view.name,
     layout: ViewLayoutDto.parse(view.layout.name),
     groupBy: view.groupBy,
     section: view.section,
+    pinned: view.pinned,
+    count: count,
   );
 
   static ViewResultDto view(ViewResult result) {

@@ -46,6 +46,7 @@ final class ViewDefinition {
     this.sort = const [],
     this.fields = const [],
     this.section,
+    this.pinned = false,
   });
 
   final String id;
@@ -54,6 +55,9 @@ final class ViewDefinition {
 
   /// Heading the view is listed under in the app; null for no section.
   final String? section;
+
+  /// Shown in the phone's bottom bar.
+  final bool pinned;
   final Filter filter;
   final String? groupBy;
 
@@ -156,6 +160,9 @@ abstract interface class ViewRepository {
   /// Moves view [id] under [section]; null or blank removes the section.
   /// Everything else in the definition stays as written.
   Future<void> setSection(String id, String? section);
+
+  /// Pins view [id] to the phone's bottom bar, or unpins it.
+  Future<void> setPinned(String id, bool pinned);
 
   /// Sets which groups view [id] shows and in what order; null or empty
   /// goes back to the default groups.
