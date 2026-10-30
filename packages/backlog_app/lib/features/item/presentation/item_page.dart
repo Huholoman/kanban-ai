@@ -28,12 +28,16 @@ class ItemPage extends StatelessWidget {
 /// and relations from their lists), with a back button for the way taken.
 /// Give it a new key to start over at another [reference].
 class ItemDetailView extends StatefulWidget {
-  const ItemDetailView({super.key, required this.reference, this.onClose, this.closeIcon = Icons.close});
+  const ItemDetailView({super.key, required this.reference, this.onClose, this.closeIcon = Icons.close, this.onScope});
 
   /// Id (or a shortened id) of the item shown first.
   final String reference;
   final VoidCallback? onClose;
   final IconData closeIcon;
+
+  /// Narrows the board to everything under an epic; without it the epic has
+  /// no *Scope board* button.
+  final void Function(String epicId)? onScope;
 
   @override
   State<ItemDetailView> createState() => _ItemDetailViewState();
@@ -100,6 +104,7 @@ class _ItemDetailViewState extends State<ItemDetailView> {
             onBack: _navigation.canGoBack ? () => _go(_navigation.back()) : null,
             onClose: widget.onClose,
             closeIcon: widget.closeIcon,
+            onScope: widget.onScope,
           ),
           const Divider(height: 1),
           Expanded(

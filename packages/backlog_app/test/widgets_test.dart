@@ -252,6 +252,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('link-S-1')).first);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('open-S-1')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('open-S-1')));
     await tester.pumpAndSettle();
     expect(find.byType(ItemDetailView), findsOneWidget);

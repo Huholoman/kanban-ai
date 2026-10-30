@@ -141,4 +141,21 @@ void main() {
     await pumpApp(tester, width: 400);
     expect(tester.widget<KanbanBoard>(find.byType(KanbanBoard)).stacked, isTrue);
   });
+
+  testWidgets('Scope board narrows the board to the epic from its detail', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = FakeBacklogApi([item('E-1', type: 'epic'), item('S-1', type: 'story', parent: 'E-1'), item('T-9')]);
+    await tester.pumpWidget(BacklogApp(api: api));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('card-E-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('scope-board')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('chip-epic')), findsOneWidget);
+    expect(find.byKey(const ValueKey('card-S-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('card-T-9')), findsNothing);
+  });
 }

@@ -230,7 +230,7 @@ class _BoardPageState extends State<BoardPage> {
 
   /// The item detail; it navigates to parents, siblings and children itself.
   Widget _detail(String reference, {VoidCallback? onClose, void Function(String epicId)? onScope}) =>
-      ItemDetailView(key: ValueKey('detail-$reference'), reference: reference, onClose: onClose);
+      ItemDetailView(key: ValueKey('detail-$reference'), reference: reference, onClose: onClose, onScope: onScope);
 
   /// The board; with [sheet] the open item is a bottom sheet over it.
   Widget _board(BoardController controller, String? openId, {required bool sheet}) {

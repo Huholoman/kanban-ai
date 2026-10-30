@@ -21,17 +21,23 @@ List<ItemDto> _tree() => [
   item('T-3', parent: 'T-1'),
 ];
 
-Future<FakeBacklogApi> _pumpDetail(WidgetTester tester, String reference, {List<ItemDto>? items}) async {
+Future<FakeBacklogApi> _pumpDetail(
+  WidgetTester tester,
+  String reference, {
+  void Function(String epicId)? onScope,
+}) async {
   tester.view.physicalSize = const Size(560, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  final api = FakeBacklogApi(items ?? _tree());
+  final api = FakeBacklogApi(_tree());
   await tester.pumpWidget(
     AppScope(
       api: api,
       child: MaterialApp(
         theme: BoardTokens.light.toTheme(Brightness.light),
-        home: Scaffold(body: ItemDetailView(reference: reference)),
+        home: Scaffold(
+          body: ItemDetailView(reference: reference, onScope: onScope),
+        ),
       ),
     ),
   );
@@ -216,5 +222,21 @@ void main() {
     await _tap(tester, _key('checklist-0'));
     expect(api.updates.single.$2.body, '## Plan\nTime the restore.\n- [x] script\n');
     expect(tester.widget<Checkbox>(_key('checklist-0')).value, isTrue);
+  });
+
+  testWidgets('an epic scopes the board, other items cannot', (tester) async {
+    final scoped = <String>[];
+    await _pumpDetail(tester, 'E-1', onScope: scoped.add);
+    await _tap(tester, _key('scope-board'));
+    expect(scoped, ['E-1']);
+    await _tap(tester, _key('link-S-1'));
+    await _tap(tester, _key('open-S-1'));
+    expect(find.text('S-1 Item S-1'), findsOneWidget);
+    expect(_key('scope-board'), findsNothing);
+  });
+
+  testWidgets('without onScope there is no Scope board button', (tester) async {
+    await _pumpDetail(tester, 'E-1');
+    expect(_key('scope-board'), findsNothing);
   });
 }

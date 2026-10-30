@@ -16,6 +16,7 @@ class DetailHeader extends StatelessWidget {
     this.onBack,
     this.onClose,
     this.closeIcon = Icons.close,
+    this.onScope,
   });
 
   final ItemController controller;
@@ -30,6 +31,9 @@ class DetailHeader extends StatelessWidget {
   final VoidCallback? onBack;
   final VoidCallback? onClose;
   final IconData closeIcon;
+
+  /// Scopes the board to an epic, see [ItemDetailView.onScope].
+  final void Function(String epicId)? onScope;
 
   @override
   Widget build(BuildContext context) {
@@ -136,6 +140,13 @@ class DetailHeader extends StatelessWidget {
   List<Widget> _actions(ItemDto item) {
     final enabled = !controller.busy;
     return [
+      if (onScope case final onScope? when item.type == 'epic')
+        OutlinedButton.icon(
+          key: const ValueKey('scope-board'),
+          onPressed: () => onScope(item.id),
+          icon: const Icon(Icons.filter_alt_outlined, size: 16),
+          label: const Text('Scope board'),
+        ),
       if (item.claim != null)
         OutlinedButton(onPressed: enabled ? controller.release : null, child: const Text('Release')),
       if (!item.isDone && !item.isClaimed)
