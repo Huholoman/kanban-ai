@@ -7,6 +7,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../../../shared/item_style.dart';
 import '../../../shared/pr_link.dart';
 import '../../../shared/tokens.dart';
+import '../../../shared/ui/ui.dart';
 import '../application/item_body.dart';
 import '../application/item_controller.dart';
 import 'ask_text.dart';
@@ -41,23 +42,27 @@ class DetailContent extends StatelessWidget {
               const SizedBox(height: 12),
               _Status(item: item),
               if (workflow != null) ...[
-                _Pills(
-                  field: 'status',
-                  label: 'Status',
-                  options: [for (final status in workflow.statuses) status.id],
-                  selected: item.status,
-                  enabled: !controller.busy,
-                  onSelect: (status) => controller.set('status', status),
+                _Labelled(
+                  'Status',
+                  PillChoice(
+                    options: [for (final status in workflow.statuses) status.id],
+                    selected: item.status,
+                    enabled: !controller.busy,
+                    keyOf: (status) => ValueKey('status-$status'),
+                    onSelect: (status) => unawaited(controller.set('status', status)),
+                  ),
                 ),
                 const SizedBox(height: 10),
-                _Pills(
-                  field: 'priority',
-                  label: 'Priority',
-                  options: workflow.priorities,
-                  selected: item.priority,
-                  color: (priority) => ItemStyle.priority(priority, workflow),
-                  enabled: !controller.busy,
-                  onSelect: (priority) => controller.set('priority', priority),
+                _Labelled(
+                  'Priority',
+                  PillChoice(
+                    options: workflow.priorities,
+                    selected: item.priority,
+                    colorOf: (priority) => ItemStyle.priority(priority, workflow),
+                    enabled: !controller.busy,
+                    keyOf: (priority) => ValueKey('priority-$priority'),
+                    onSelect: (priority) => unawaited(controller.set('priority', priority)),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 _Fields(controller: controller, item: item, workflow: workflow),
@@ -199,83 +204,22 @@ class _BlockedBy extends StatelessWidget {
   }
 }
 
-/// A labelled row of radio pills, one per option (statuses, priorities); a
-/// tap on another one sets the field.
-class _Pills extends StatelessWidget {
-  const _Pills({
-    required this.field,
-    required this.label,
-    required this.options,
-    required this.selected,
-    required this.enabled,
-    required this.onSelect,
-    this.color,
-  });
+/// A small label above its control.
+class _Labelled extends StatelessWidget {
+  const _Labelled(this.label, this.child);
 
-  final String field;
   final String label;
-  final List<String> options;
-  final String selected;
-  final bool enabled;
-  final Future<bool> Function(String value) onSelect;
-
-  /// Colour of the selected pill; the accent when null.
-  final Color Function(String value)? color;
+  final Widget child;
 
   @override
-  Widget build(BuildContext context) {
-    final tokens = BoardTokens.of(context);
-    final theme = Theme.of(context);
-    final all = [...options, if (!options.contains(selected)) selected];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: theme.textTheme.labelSmall),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final option in all)
-              Builder(
-                builder: (context) {
-                  final isSelected = option == selected;
-                  final accent = color?.call(option) ?? tokens.accent;
-                  return Semantics(
-                    inMutuallyExclusiveGroup: true,
-                    checked: isSelected,
-                    child: Material(
-                      key: ValueKey('$field-$option'),
-                      color: isSelected
-                          ? (color == null ? tokens.accentSoft : accent.withValues(alpha: 0.10))
-                          : tokens.surface,
-                      shape: StadiumBorder(side: BorderSide(color: isSelected ? accent : tokens.borderStrong)),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: !enabled || isSelected ? null : () => unawaited(onSelect(option)),
-                        child: Container(
-                          height: 26,
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          alignment: Alignment.center,
-                          child: Text(
-                            option,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isSelected ? accent : tokens.text,
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-          ],
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: Theme.of(context).textTheme.labelSmall),
+      const SizedBox(height: 6),
+      child,
+    ],
+  );
 }
 
 /// The other fields as a definition list: milestone, type, assignee, branch,
@@ -599,15 +543,15 @@ class _BodyState extends State<_Body> {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              TextButton(
+              LinkButton(
+                label: 'Cancel',
                 onPressed: () => setState(() {
                   editor.dispose();
                   _editor = null;
                 }),
-                child: const Text('Cancel'),
               ),
               const SizedBox(width: 8),
-              FilledButton(onPressed: _save, child: const Text('Save')),
+              PrimaryButton(label: 'Save', onPressed: _save),
             ],
           ),
         ],
@@ -628,10 +572,10 @@ class _BodyState extends State<_Body> {
             children: [
               Text('Description', style: theme.textTheme.bodySmall),
               const Spacer(),
-              TextButton.icon(
+              LinkButton(
+                label: 'Edit',
+                icon: Icons.edit_note,
                 onPressed: () => setState(() => _editor = TextEditingController(text: widget.body)),
-                icon: const Icon(Icons.edit_note, size: 18),
-                label: const Text('Edit'),
               ),
             ],
           ),

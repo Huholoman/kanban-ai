@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../shared/item_style.dart';
 import '../../../shared/tokens.dart';
+import '../../../shared/ui/ui.dart';
 import '../application/item_body.dart';
 import '../application/item_controller.dart';
 import 'ask_text.dart';
@@ -212,11 +213,12 @@ class _ChildPreview extends StatelessWidget {
                       ),
                     ),
                 ],
-                TextButton(
+                LinkButton(
                   key: ValueKey('open-$id'),
-                  style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                  label: 'Open $id →',
+                  accent: true,
+                  compact: true,
                   onPressed: () => onOpen(id),
-                  child: Text('Open $id →'),
                 ),
               ],
             ),
@@ -317,12 +319,13 @@ class _DetailRelationsState extends State<DetailRelations> {
             children: [
               Text('Link:', style: muted),
               for (final relation in addable)
-                TextButton.icon(
+                LinkButton(
                   key: ValueKey('add-${relation.name}'),
-                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  label: relation.title,
+                  icon: Icons.add,
+                  accent: true,
+                  compact: true,
                   onPressed: () => _add(relation),
-                  icon: const Icon(Icons.add, size: 16),
-                  label: Text(relation.title),
                 ),
             ],
           ),

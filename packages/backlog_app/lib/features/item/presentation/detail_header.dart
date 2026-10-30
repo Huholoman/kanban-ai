@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../shared/copyable_id.dart';
 import '../../../shared/tokens.dart';
+import '../../../shared/ui/ui.dart';
 import '../application/item_controller.dart';
 
 /// Top of the detail: back, the breadcrumb of parents and close; the item's
@@ -141,20 +142,18 @@ class DetailHeader extends StatelessWidget {
     final enabled = !controller.busy;
     return [
       if (onScope case final onScope? when item.type == 'epic')
-        OutlinedButton.icon(
+        SecondaryButton(
           key: const ValueKey('scope-board'),
+          label: 'Scope board',
+          icon: Icons.filter_alt_outlined,
           onPressed: () => onScope(item.id),
-          icon: const Icon(Icons.filter_alt_outlined, size: 16),
-          label: const Text('Scope board'),
         ),
-      if (item.claim != null)
-        OutlinedButton(onPressed: enabled ? controller.release : null, child: const Text('Release')),
-      if (!item.isDone && !item.isClaimed)
-        FilledButton(onPressed: enabled ? controller.claim : null, child: const Text('Claim')),
+      if (item.claim != null) SecondaryButton(label: 'Release', onPressed: enabled ? controller.release : null),
+      if (!item.isDone && !item.isClaimed) PrimaryButton(label: 'Claim', onPressed: enabled ? controller.claim : null),
       if (!item.isDone)
         item.isClaimed
-            ? FilledButton(onPressed: enabled ? controller.complete : null, child: const Text('Done'))
-            : OutlinedButton(onPressed: enabled ? controller.complete : null, child: const Text('Done')),
+            ? PrimaryButton(label: 'Done', onPressed: enabled ? controller.complete : null)
+            : SecondaryButton(label: 'Done', onPressed: enabled ? controller.complete : null),
     ];
   }
 

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/ui/ui.dart';
+
 /// Asks for one line of text in a dialog; null when cancelled.
 Future<String?> askText(BuildContext context, String label, {String initial = ''}) {
   final controller = TextEditingController(text: initial);
@@ -16,8 +18,8 @@ Future<String?> askText(BuildContext context, String label, {String initial = ''
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.of(dialogContext).pop(controller.text), child: const Text('OK')),
+        LinkButton(label: 'Cancel', onPressed: () => Navigator.of(dialogContext).pop()),
+        PrimaryButton(label: 'OK', onPressed: () => Navigator.of(dialogContext).pop(controller.text)),
       ],
     ),
   );
