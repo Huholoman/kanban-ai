@@ -17,7 +17,26 @@ abstract final class DtoMapper {
     defaultStatus: workflow.defaultStatus,
     defaultPriority: workflow.defaultPriority,
     defaultType: workflow.defaultType,
+    appearance: _appearance(workflow.appearance),
   );
+
+  static AppearanceDto _appearance(Appearance appearance) {
+    PaletteDto palette(Palette palette) => PaletteDto(
+      seed: palette.seed,
+      primary: palette.primary,
+      secondary: palette.secondary,
+      background: palette.background,
+    );
+    return AppearanceDto(
+      mode: appearance.mode,
+      light: palette(appearance.light),
+      dark: palette(appearance.dark),
+      statuses: appearance.statuses,
+      priorities: appearance.priorities,
+      types: appearance.types,
+      labels: appearance.labels,
+    );
+  }
 
   static ItemDto item(PlannedItem planned, {String? path, bool withBody = false}) {
     final item = planned.item;
@@ -91,6 +110,7 @@ abstract final class DtoMapper {
       layout: ViewLayoutDto.parse(definition.layout.name),
       groupBy: definition.groupBy,
       fields: definition.fields,
+      columns: definition.columns,
       hidden: result.hidden,
       groups: [
         for (final group in result.groups) ViewGroupDto(group.key, [for (final planned in group.items) item(planned)]),

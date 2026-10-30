@@ -59,6 +59,7 @@ void main() {
     expect(workflow.categoryOf('done'), StatusCategoryDto.done);
     expect(workflow.priorities, ['p0', 'p1', 'p2', 'p3']);
     expect(workflow.defaultStatus, 'backlog');
+    expect(workflow.appearance.mode, 'system');
   });
 
   test('create, list and detail with relations', () async {
@@ -137,11 +138,60 @@ void main() {
   });
 
   test('a view moves between sections', () async {
-    final moved = await api.updateView('board', const ViewUpdateRequest(section: 'Planning'));
+    final moved = await api.updateView('board', const ViewUpdateRequest.section('Planning'));
     expect(moved.section, 'Planning');
     expect((await api.views()).firstWhere((v) => v.id == 'board').section, 'Planning');
-    expect((await api.updateView('board', const ViewUpdateRequest())).section, isNull);
-    expect(() => api.updateView('nope', const ViewUpdateRequest(section: 'X')), throwsA(apiError(404, 'not_found')));
+    expect((await api.updateView('board', const ViewUpdateRequest.section(null))).section, isNull);
+    expect(() => api.updateView('nope', const ViewUpdateRequest.section('X')), throwsA(apiError(404, 'not_found')));
+  });
+
+  test('a view gets its columns from the app and back to the default', () async {
+    await api.updateView('board', const ViewUpdateRequest.columns(['review', 'todo']));
+    expect((await api.view('board')).groups.map((g) => g.key), ['review', 'todo']);
+    expect((await api.view('board')).columns, ['review', 'todo']);
+    await api.updateView('board', const ViewUpdateRequest.columns(null));
+    final restored = await api.view('board');
+    expect(restored.columns, isNull);
+    expect(restored.groups.map((g) => g.key), containsAll(['backlog', 'todo', 'done']));
+    expect(() => api.updateView('board', const ViewUpdateRequest()), throwsA(apiError(400, 'invalid_input')));
+  });
+
+  test('a filter from the app is saved as a new view', () async {
+    final created = await api.createItem(const NewItemRequest(title: 'Fix login', labels: ['ui'], status: 'todo'));
+    await api.createItem(const NewItemRequest(title: 'Other', labels: ['ui'], status: 'todo'));
+    final view = await api.createView(
+      const NewViewRequest(
+        name: 'UI login',
+        section: 'Mine',
+        base: 'board',
+        conditions: [
+          {
+            'labels': ['ui'],
+          },
+          {
+            'title': {'contains': 'LOGIN'},
+          },
+        ],
+      ),
+    );
+    expect(view.id, 'ui-login');
+    expect(view.section, 'Mine');
+    expect(view.layout, ViewLayoutDto.kanban);
+    final result = await api.view(view.id);
+    expect(result.groups.expand((g) => g.items).map((i) => i.id), [created.item.id]);
+    expect(
+      () => api.createView(
+        const NewViewRequest(
+          name: 'X',
+          conditions: [
+            {
+              'status': {'nope': 1},
+            },
+          ],
+        ),
+      ),
+      throwsA(apiError(400, 'invalid_input')),
+    );
   });
 
   test('lint reports problems', () async {

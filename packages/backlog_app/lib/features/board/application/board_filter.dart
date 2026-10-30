@@ -107,6 +107,37 @@ final class BoardFilter {
     return flags.every((flag) => flag.of(item));
   }
 
+  /// The filter as conditions of a saved view (the YAML filter grammar), so
+  /// that the server evaluates the same thing: one condition per facet, flag
+  /// and the search text; all of them must hold.
+  List<Object?> toConditions() {
+    final query = text.trim();
+    return [
+      if (query.isNotEmpty)
+        {
+          'or': [
+            for (final field in ['id', 'title', 'branch'])
+              {
+                field: {'contains': query},
+              },
+          ],
+        },
+      for (final MapEntry(key: facet, value: values) in selected.entries)
+        if (values.isNotEmpty)
+          switch (facet) {
+            FilterFacet.person => {
+              'or': [
+                {'assignee': values.toList()},
+                {'claimed_by': values.toList()},
+              ],
+            },
+            FilterFacet.label => {'labels': values.toList()},
+            _ => {facet.name: values.toList()},
+          },
+      for (final flag in flags) {flag.name: true},
+    ];
+  }
+
   /// [result] with the non-matching items left out; groups stay, even empty
   /// ones, so kanban columns do not jump around. [index] resolves parents.
   ViewResultDto apply(ViewResultDto result, [Map<String, ItemDto> index = const {}]) {
@@ -117,6 +148,7 @@ final class BoardFilter {
       layout: result.layout,
       groupBy: result.groupBy,
       fields: result.fields,
+      columns: result.columns,
       hidden: result.hidden,
       groups: [
         for (final group in result.groups)

@@ -66,7 +66,11 @@ class ItemCard extends StatelessWidget {
                 children: [
                   Tooltip(
                     message: item.type,
-                    child: Icon(ItemStyle.type(item.type), size: 14, color: scheme.onSurfaceVariant),
+                    child: Icon(
+                      ItemStyle.type(item.type),
+                      size: 14,
+                      color: ItemStyle.typeColor(item.type, workflow) ?? scheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(width: 4),
                   CopyableId(item.id, style: muted),
@@ -99,10 +103,10 @@ class ItemCard extends StatelessWidget {
   List<Widget> _tags(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return [
-      if (showStatus) Tag(item.status, color: ItemStyle.category(item.category, scheme)),
+      if (showStatus) Tag(item.status, color: ItemStyle.status(item.status, item.category, workflow, scheme)),
       if (item.milestone != null) Tag(item.milestone!, icon: Icons.outlined_flag, color: scheme.tertiary),
       if (item.pr case final pr?) PrLink(pr),
-      for (final label in item.labels) Tag('#$label'),
+      for (final label in item.labels) Tag('#$label', color: ItemStyle.label(label, workflow)),
       if (item.blocked) Tag('blocked by ${item.blockedBy.join(', ')}', icon: Icons.block, color: scheme.error),
       if (item.ready) Tag('ready', icon: Icons.play_arrow, color: Colors.green.shade700),
       if (item.claim case final claim?)

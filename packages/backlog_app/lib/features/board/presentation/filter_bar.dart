@@ -13,6 +13,7 @@ class FilterBar extends StatefulWidget {
     required this.total,
     required this.onChanged,
     this.index = const {},
+    this.onSaveAsView,
   });
 
   final BoardFilter filter;
@@ -23,6 +24,9 @@ class FilterBar extends StatefulWidget {
 
   /// All items by id, for showing epics by title.
   final Map<String, ItemDto> index;
+
+  /// Saves the filter as a view; null hides the button.
+  final VoidCallback? onSaveAsView;
 
   @override
   State<FilterBar> createState() => _FilterBarState();
@@ -100,6 +104,13 @@ class _FilterBarState extends State<FilterBar> {
               icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
               label: const Text('Clear'),
             ),
+            if (widget.onSaveAsView != null)
+              TextButton.icon(
+                key: const ValueKey('filter-save'),
+                onPressed: widget.onSaveAsView,
+                icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+                label: const Text('Save as view'),
+              ),
             Text(
               '${widget.shown} of ${widget.total}',
               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),

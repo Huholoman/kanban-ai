@@ -156,6 +156,17 @@ abstract interface class ViewRepository {
   /// Moves view [id] under [section]; null or blank removes the section.
   /// Everything else in the definition stays as written.
   Future<void> setSection(String id, String? section);
+
+  /// Sets which groups view [id] shows and in what order; null or empty
+  /// goes back to the default groups.
+  Future<void> setColumns(String id, List<String>? columns);
+
+  /// The definition of view [id] as written (JSON-like), to derive others.
+  Future<Map<String, Object?>> raw(String id);
+
+  /// Saves a new view under an id derived from [preferredId] (made unique)
+  /// and returns that id. [definition] uses the YAML format of views.
+  Future<String> create(String preferredId, Map<String, Object?> definition);
 }
 
 final class ViewCatalog {

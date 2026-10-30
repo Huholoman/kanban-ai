@@ -56,8 +56,22 @@ final class FakeBacklogApi implements BacklogApi {
     _changes.add(BacklogChangeEvent(['items/${item.id}.md']));
   }
 
+  /// What backlog.yaml would say under `appearance`.
+  AppearanceDto appearance = const AppearanceDto();
+
   @override
-  Future<WorkflowDto> workflow() async => _workflow;
+  Future<WorkflowDto> workflow() async => WorkflowDto(
+    statuses: _workflow.statuses,
+    priorities: _workflow.priorities,
+    types: _workflow.types,
+    defaultStatus: _workflow.defaultStatus,
+    defaultPriority: _workflow.defaultPriority,
+    defaultType: _workflow.defaultType,
+    appearance: appearance,
+  );
+
+  /// Simulates an edit of backlog.yaml.
+  void configChange() => _changes.add(const BacklogChangeEvent(['backlog.yaml']));
 
   @override
   Future<List<ItemDto>> items({bool includeDone = false}) async =>
@@ -127,11 +141,20 @@ final class FakeBacklogApi implements BacklogApi {
     return ItemDetailDto(item: items_[reference]!);
   }
 
-  /// Section of each view, as `PATCH /api/views/<id>` sets it.
+  /// Section and columns of each view, as `PATCH /api/views/<id>` sets them.
   final viewSections = <String, String>{};
+  final viewColumns = <String, List<String>>{};
 
   @override
   Future<List<ViewSummaryDto>> views() async => [
+    for (final (index, request) in createdViews.indexed)
+      ViewSummaryDto(
+        id: 'saved-${index + 1}',
+        name: request.name,
+        layout: ViewLayoutDto.kanban,
+        groupBy: 'status',
+        section: request.section,
+      ),
     ViewSummaryDto(id: 'list', name: 'All', layout: ViewLayoutDto.list, section: viewSections['list']),
     ViewSummaryDto(
       id: 'board',
@@ -142,10 +165,25 @@ final class FakeBacklogApi implements BacklogApi {
     ),
   ];
 
+  /// Views saved from the app.
+  final createdViews = <NewViewRequest>[];
+
+  @override
+  Future<ViewSummaryDto> createView(NewViewRequest request) async {
+    createdViews.add(request);
+    return ViewSummaryDto(id: 'saved-${createdViews.length}', name: request.name, layout: ViewLayoutDto.kanban);
+  }
+
   @override
   Future<ViewSummaryDto> updateView(String id, ViewUpdateRequest request) async {
-    final section = request.section?.trim() ?? '';
-    section.isEmpty ? viewSections.remove(id) : viewSections[id] = section;
+    if (request.changesSection) {
+      final section = request.section?.trim() ?? '';
+      section.isEmpty ? viewSections.remove(id) : viewSections[id] = section;
+    }
+    if (request.changesColumns) {
+      final columns = request.columns;
+      columns == null || columns.isEmpty ? viewColumns.remove(id) : viewColumns[id] = columns;
+    }
     return (await views()).firstWhere((view) => view.id == id);
   }
 
@@ -161,8 +199,9 @@ final class FakeBacklogApi implements BacklogApi {
       name: 'Board',
       layout: ViewLayoutDto.kanban,
       groupBy: 'status',
+      columns: viewColumns[id],
       groups: [
-        for (final status in ['todo', 'in-progress', 'done'])
+        for (final status in viewColumns[id] ?? ['todo', 'in-progress', 'done'])
           ViewGroupDto(status, all.where((i) => i.status == status).toList()),
       ],
     );

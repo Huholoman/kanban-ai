@@ -1,4 +1,5 @@
 import '../../shared/errors.dart';
+import 'appearance.dart';
 
 /// What a status means for planning, independently of its name.
 enum StatusCategory {
@@ -49,6 +50,7 @@ final class Workflow {
     String? defaultPriority,
     String? defaultType,
     Duration claimLease = const Duration(hours: 4),
+    Appearance appearance = Appearance.none,
   }) {
     _require(statuses.isNotEmpty, 'At least one status is required.');
     _requireUnique(statuses.map((s) => s.id), 'status');
@@ -91,6 +93,7 @@ final class Workflow {
       defaultPriority: priority,
       defaultType: type,
       claimLease: claimLease,
+      appearance: appearance,
     );
   }
 
@@ -105,6 +108,7 @@ final class Workflow {
     required this.defaultPriority,
     required this.defaultType,
     required this.claimLease,
+    required this.appearance,
   });
 
   /// The workflow `backlog init` writes out.
@@ -139,6 +143,9 @@ final class Workflow {
 
   /// How long a claim stays valid without a heartbeat.
   final Duration claimLease;
+
+  /// Colours and default mode of the web board.
+  final Appearance appearance;
 
   StatusDefinition? status(String id) {
     for (final status in statuses) {

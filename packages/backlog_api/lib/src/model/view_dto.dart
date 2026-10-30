@@ -58,6 +58,7 @@ final class ViewResultDto {
     required this.layout,
     this.groupBy,
     this.fields = const [],
+    this.columns,
     this.hidden = 0,
     required this.groups,
   });
@@ -68,6 +69,7 @@ final class ViewResultDto {
     layout: ViewLayoutDto.parse(json.string('layout')),
     groupBy: json.optionalString('group_by'),
     fields: json.strings('fields'),
+    columns: json['columns'] == null ? null : json.strings('columns'),
     hidden: json.integer('hidden'),
     groups: json.objects('groups').map(ViewGroupDto.fromJson).toList(),
   );
@@ -77,6 +79,10 @@ final class ViewResultDto {
   final ViewLayoutDto layout;
   final String? groupBy;
   final List<String> fields;
+
+  /// Groups the view is configured to show, in order; null for the default
+  /// (every value of the grouping field).
+  final List<String>? columns;
 
   /// Items that matched the filter but fall outside the shown columns.
   final int hidden;
@@ -92,6 +98,7 @@ final class ViewResultDto {
     'layout': layout.name,
     'group_by': groupBy,
     'fields': fields,
+    'columns': columns,
     'hidden': hidden,
     'groups': [for (final group in groups) group.toJson()],
   };

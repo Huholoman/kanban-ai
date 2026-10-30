@@ -17,6 +17,8 @@ final class PlannedItem {
     required this.claim,
     required this.isClaimExpired,
     required this.isReady,
+    this.ancestors = const [],
+    this.epics = const [],
   });
 
   final Item item;
@@ -38,6 +40,12 @@ final class PlannedItem {
 
   /// Pickable status, nothing blocking, no open children, not claimed.
   final bool isReady;
+
+  /// Parent, grandparent, … up to the root (cycles cut off).
+  final List<ItemId> ancestors;
+
+  /// Epics among the item itself and its [ancestors], nearest first.
+  final List<ItemId> epics;
 
   ItemId get id => item.id;
 

@@ -32,6 +32,8 @@ abstract interface class BacklogApi {
 
   Future<ViewSummaryDto> updateView(String id, ViewUpdateRequest request);
 
+  Future<ViewSummaryDto> createView(NewViewRequest request);
+
   Future<List<LintIssueDto>> lint();
 
   /// Notifications about changed files; reconnects while listened to.

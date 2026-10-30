@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:backlog_core/backlog_core.dart';
+import 'package:backlog_core/src/workflow/infrastructure/yaml_workflow.dart' show workflowTemplate;
 import 'package:test/test.dart';
 
 import 'support.dart';
@@ -47,6 +48,46 @@ claims: {lease_minutes: 30}
       expect(workflow.acceptsMilestone('launch'), isTrue);
       expect(workflow.acceptsMilestone('other'), isFalse);
       expect(workflow.claimLease, const Duration(minutes: 30));
+    });
+
+    test('reads appearance colours in any accepted spelling', () {
+      final appearance = parseWorkflowYaml('''
+appearance:
+  mode: dark
+  light: {seed: "#3F51B5", background: fafafa}
+  dark: {seed: "#abc"}
+  statuses: {todo: "#1e88e5"}
+  priorities: {p0: "e53935"}
+  labels: {infra: "#00897b"}
+''').appearance;
+      expect(appearance.mode, 'dark');
+      expect(appearance.light.seed, '#3f51b5');
+      expect(appearance.light.background, '#fafafa');
+      expect(appearance.dark.seed, '#aabbcc');
+      expect(appearance.dark.primary, isNull);
+      expect(appearance.statuses, {'todo': '#1e88e5'});
+      expect(appearance.priorities, {'p0': '#e53935'});
+      expect(appearance.labels, {'infra': '#00897b'});
+      expect(Workflow.standard().appearance.mode, 'system');
+    });
+
+    test('rejects bad colours and modes', () {
+      expect(
+        () => parseWorkflowYaml('appearance: {statuses: {todo: "blue"}}'),
+        throwsA(
+          isA<ConfigurationException>().having((e) => e.message, 'message', contains('appearance.statuses.todo')),
+        ),
+      );
+      expect(() => parseWorkflowYaml('appearance: {mode: dim}'), throwsA(isA<ConfigurationException>()));
+    });
+
+    test('the init template parses, including its commented appearance', () {
+      final template = workflowTemplate(idPrefix: 'X');
+      expect(parseWorkflowYaml(template).appearance.mode, 'system');
+      final start = template.indexOf('# appearance:');
+      final uncommented =
+          template.substring(0, start) + template.substring(start).replaceAll(RegExp(r'^# ', multiLine: true), '');
+      expect(parseWorkflowYaml(uncommented).appearance.priorities['p0'], '#e53935');
     });
 
     test('free-form milestones when none are listed', () {

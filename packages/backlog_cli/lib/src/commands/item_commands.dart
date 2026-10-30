@@ -94,7 +94,12 @@ final class NewCommand extends BacklogCommand {
 final class ListCommand extends BacklogCommand {
   ListCommand(super.context) {
     argParser
-      ..addMultiOption('where', abbr: 'w', help: 'Condition: field=a,b  field!=a  field?  !field?', splitCommas: false)
+      ..addMultiOption(
+        'where',
+        abbr: 'w',
+        help: 'Condition: field=a,b  field!=a  field~text  field?  !field?',
+        splitCommas: false,
+      )
       ..addMultiOption('status', abbr: 's')
       ..addMultiOption('milestone', abbr: 'm')
       ..addMultiOption('label', abbr: 'l')

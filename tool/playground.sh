@@ -25,6 +25,15 @@ new() { bl --json new "$@" | jq -r .id; }
 
 "${cli[@]}" init backlog --prefix SP >/dev/null
 sed -i 's/^milestones: \[\]/milestones:\n  - id: mvp\n    title: MVP for the first workshop\n    due: 2026-12-01\n  - id: launch\n    title: Public launch\n    due: 2027-02-15/' backlog/backlog.yaml
+cat >>backlog/backlog.yaml <<'EOF'
+
+appearance:
+  mode: system
+  light: {seed: "#00796b"}
+  dark: {seed: "#4db6ac", background: "#101816"}
+  statuses: {todo: "#1e88e5", in-progress: "#fb8c00", review: "#8e24aa", done: "#43a047"}
+  labels: {infra: "#00897b", backend: "#5e35b1", web: "#1e88e5", ui: "#d81b60"}
+EOF
 
 # --- epics -------------------------------------------------------------------
 booking=$(new "Online service booking" -t epic -p p0 -m mvp --body '## Goal

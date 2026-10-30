@@ -113,4 +113,46 @@ void main() {
     expect(PrLink.label('https://gitlab.com/g/p/-/merge_requests/7'), 'PR #7');
     expect(PrLink.label('https://example.com/review'), 'PR');
   });
+
+  test('a filter becomes view conditions the server understands', () {
+    final filter = BoardFilter.none
+        .withText(' login ')
+        .toggle(FilterFacet.label, 'ui')
+        .toggle(FilterFacet.epic, 'E-1')
+        .toggle(FilterFacet.person, 'alice')
+        .toggleFlag(ItemFlag.ready);
+    expect(filter.toConditions(), [
+      {
+        'or': [
+          {
+            'id': {'contains': 'login'},
+          },
+          {
+            'title': {'contains': 'login'},
+          },
+          {
+            'branch': {'contains': 'login'},
+          },
+        ],
+      },
+      {
+        'labels': ['ui'],
+      },
+      {
+        'epic': ['E-1'],
+      },
+      {
+        'or': [
+          {
+            'assignee': ['alice'],
+          },
+          {
+            'claimed_by': ['alice'],
+          },
+        ],
+      },
+      {'ready': true},
+    ]);
+    expect(BoardFilter.none.toggle(FilterFacet.type, 'bug').toggle(FilterFacet.type, 'bug').toConditions(), isEmpty);
+  });
 }

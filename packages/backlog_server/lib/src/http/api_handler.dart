@@ -31,6 +31,7 @@ final class ApiHandler {
           ..post('${ApiPaths.items}/<ref>/release', _release)
           ..post('${ApiPaths.items}/<ref>/done', _complete)
           ..get(ApiPaths.views, _views)
+          ..post(ApiPaths.views, _createView)
           ..get('${ApiPaths.views}/<id>', _view)
           ..patch('${ApiPaths.views}/<id>', _updateView)
           ..get(ApiPaths.lint, _lint);
@@ -105,10 +106,26 @@ final class ApiHandler {
   Future<Response> _view(Request request, String id) async =>
       _json(DtoMapper.view(await (await _host.backlog).views.run(id)).toJson());
 
+  Future<Response> _createView(Request request) async {
+    final payload = NewViewRequest.fromJson(await _body(request));
+    final view = await (await _host.backlog).views.saveAs(
+      name: payload.name,
+      section: payload.section,
+      base: payload.base,
+      conditions: payload.conditions,
+    );
+    return _json(DtoMapper.viewSummary(view).toJson(), status: 201);
+  }
+
   Future<Response> _updateView(Request request, String id) async {
     final payload = ViewUpdateRequest.fromJson(await _body(request));
-    final view = await (await _host.backlog).views.setSection(id, payload.section);
-    return _json(DtoMapper.viewSummary(view).toJson());
+    final views = (await _host.backlog).views;
+    if (!payload.changesSection && !payload.changesColumns) {
+      throw const InvalidInputException('Nothing to change: give "section" and/or "columns".');
+    }
+    var view = payload.changesSection ? await views.setSection(id, payload.section) : null;
+    if (payload.changesColumns) view = await views.setColumns(id, payload.columns);
+    return _json(DtoMapper.viewSummary(view!).toJson());
   }
 
   Future<Response> _lint(Request request) async {

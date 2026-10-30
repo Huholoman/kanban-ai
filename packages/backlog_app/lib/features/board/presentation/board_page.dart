@@ -6,11 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../app/app_scope.dart';
+import '../../../app/appearance_controller.dart';
 import '../../item/presentation/item_page.dart';
 import '../application/board_controller.dart';
 import '../application/detail_trail.dart';
+import 'columns_dialog.dart';
 import 'filter_bar.dart';
 import 'new_item_dialog.dart';
+import 'save_view_dialog.dart';
 import 'view_layouts.dart';
 
 /// Main screen. On a wide window: saved views on the left, the board in the
@@ -78,6 +81,32 @@ class _BoardPageState extends State<BoardPage> {
     unawaited(_controller?.refresh(quiet: true));
   }
 
+  Future<void> _saveFilterAsView(BoardController controller) async {
+    final chosen = await showSaveViewDialog(
+      context,
+      suggestedName: '${_currentViewName(controller)} (filtered)',
+      sections: controller.sectionNames,
+    );
+    if (chosen == null) return;
+    final (name, section) = chosen;
+    await controller.saveFilterAsView(name, section: section);
+  }
+
+  Future<void> _editColumns(BoardController controller) async {
+    final result = controller.result;
+    if (result?.groupBy == null) return;
+    final chosen = await showColumnsDialog(
+      context,
+      field: result!.groupBy!,
+      options: controller.columnOptions,
+      shown: [
+        for (final group in result.groups)
+          if (group.key.isNotEmpty) group.key,
+      ],
+    );
+    if (chosen != null) await controller.setColumns(chosen.isEmpty ? null : chosen);
+  }
+
   void _closeLast() => setState(() => _trail = _trail.pop());
 
   Future<void> _create(BoardController controller) async {
@@ -111,6 +140,14 @@ class _BoardPageState extends State<BoardPage> {
                     padding: EdgeInsets.all(16),
                     child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                   ),
+                if (controller.canEditColumns)
+                  IconButton(
+                    key: const ValueKey('edit-columns'),
+                    tooltip: 'Columns of this view',
+                    icon: const Icon(Icons.view_week_outlined),
+                    onPressed: () => _editColumns(controller),
+                  ),
+                if (AppScope.of(context).appearance case final appearance?) _ModeButton(appearance: appearance),
                 _LintButton(issues: controller.lint, onOpen: _open),
                 IconButton(
                   tooltip: 'Reload',
@@ -236,6 +273,7 @@ class _BoardPageState extends State<BoardPage> {
           shown: controller.counts.shown,
           total: controller.counts.total,
           onChanged: controller.setFilter,
+          onSaveAsView: () => _saveFilterAsView(controller),
           index: controller.index,
         ),
         const Divider(height: 1),
@@ -540,6 +578,31 @@ class _ViewPicker extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Switches between the system, light and dark look for this session.
+class _ModeButton extends StatelessWidget {
+  const _ModeButton({required this.appearance});
+
+  final AppearanceController appearance;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: appearance,
+    builder: (context, _) {
+      final (icon, label) = switch (appearance.mode) {
+        ThemeMode.system => (Icons.brightness_auto_outlined, 'system'),
+        ThemeMode.light => (Icons.light_mode_outlined, 'light'),
+        ThemeMode.dark => (Icons.dark_mode_outlined, 'dark'),
+      };
+      return IconButton(
+        key: const ValueKey('theme-mode'),
+        tooltip: 'Theme: $label (click to switch)',
+        icon: Icon(icon),
+        onPressed: appearance.cycleMode,
+      );
+    },
+  );
 }
 
 class _LintButton extends StatelessWidget {

@@ -2,6 +2,7 @@ import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/backlog_app.dart';
 import 'package:backlog_app/features/board/presentation/view_layouts.dart';
 import 'package:backlog_app/features/item/presentation/item_page.dart';
+import 'package:backlog_app/shared/item_style.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -313,5 +314,72 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('link-T-1')), findsNothing);
     expect(find.text('Children (2)'), findsOneWidget);
+  });
+
+  testWidgets('colours from backlog.yaml reach cards and the theme switch works', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = FakeBacklogApi([
+      item('T-1', labels: ['ui']),
+    ])..appearance = const AppearanceDto(labels: {'ui': '#d81b60'}, priorities: {'p2': '#00ff00'});
+    await tester.pumpWidget(BacklogApp(api: api));
+    await tester.pumpAndSettle();
+
+    final label = tester.widget<Tag>(find.widgetWithText(Tag, '#ui'));
+    expect(label.color, const Color(0xFFD81B60));
+    final priority = tester.widget<Tag>(find.widgetWithText(Tag, 'p2'));
+    expect(priority.color, const Color(0xFF00FF00));
+
+    MaterialApp app() => tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(app().themeMode, ThemeMode.system);
+    await tester.tap(find.byKey(const ValueKey('theme-mode')));
+    await tester.pumpAndSettle();
+    expect(app().themeMode, ThemeMode.light);
+  });
+
+  testWidgets('columns of a view are picked in a dialog', (tester) async {
+    final api = await pumpApp(tester);
+    await tester.tap(find.byKey(const ValueKey('edit-columns')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('column-backlog')), findsOneWidget, reason: 'workflow statuses not shown yet');
+
+    await tester.tap(find.byKey(const ValueKey('column-done')));
+    await tester.tap(find.byKey(const ValueKey('column-backlog')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(api.viewColumns['board'], ['todo', 'in-progress', 'backlog']);
+    expect(find.text('done'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('edit-columns')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Default'));
+    await tester.pumpAndSettle();
+    expect(api.viewColumns, isEmpty);
+    expect(find.text('done'), findsOneWidget);
+  });
+
+  testWidgets('a filter is saved as a view and the board switches to it', (tester) async {
+    final api = await pumpApp(tester);
+    expect(find.byKey(const ValueKey('filter-save')), findsNothing, reason: 'nothing to save without a filter');
+    await tester.tap(find.byKey(const ValueKey('filter-flag-ready')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('filter-save')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('save-view-name')), 'Ready now');
+    await tester.enterText(find.byKey(const ValueKey('save-view-section')), 'Mine');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final request = api.createdViews.single;
+    expect(request.name, 'Ready now');
+    expect(request.section, 'Mine');
+    expect(request.base, 'board');
+    expect(request.conditions, [
+      {'ready': true},
+    ]);
+    expect(find.byKey(const ValueKey('section-Mine')), findsOneWidget);
+    expect(find.byKey(const ValueKey('filter-clear')), findsNothing, reason: 'the view filters now');
   });
 }

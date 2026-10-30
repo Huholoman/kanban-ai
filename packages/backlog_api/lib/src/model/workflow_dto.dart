@@ -31,6 +31,76 @@ final class MilestoneDto {
   Json toJson() => {'id': id, 'title': title, 'due': due};
 }
 
+/// Colours of one brightness as `#rrggbb`; all optional.
+final class PaletteDto {
+  const PaletteDto({this.seed, this.primary, this.secondary, this.background});
+
+  factory PaletteDto.fromJson(Json? json) => json == null
+      ? const PaletteDto()
+      : PaletteDto(
+          seed: json.optionalString('seed'),
+          primary: json.optionalString('primary'),
+          secondary: json.optionalString('secondary'),
+          background: json.optionalString('background'),
+        );
+
+  final String? seed;
+  final String? primary;
+  final String? secondary;
+  final String? background;
+
+  Json toJson() => {'seed': seed, 'primary': primary, 'secondary': secondary, 'background': background};
+}
+
+/// How the board should look (`appearance` in backlog.yaml).
+final class AppearanceDto {
+  const AppearanceDto({
+    this.mode = 'system',
+    this.light = const PaletteDto(),
+    this.dark = const PaletteDto(),
+    this.statuses = const {},
+    this.priorities = const {},
+    this.types = const {},
+    this.labels = const {},
+  });
+
+  factory AppearanceDto.fromJson(Json? json) {
+    if (json == null) return const AppearanceDto();
+    Map<String, String> colors(String key) => {
+      for (final MapEntry(:key, :value) in (json.optionalObject(key) ?? const {}).entries)
+        if (value is String) key: value,
+    };
+    return AppearanceDto(
+      mode: json.optionalString('mode') ?? 'system',
+      light: PaletteDto.fromJson(json.optionalObject('light')),
+      dark: PaletteDto.fromJson(json.optionalObject('dark')),
+      statuses: colors('statuses'),
+      priorities: colors('priorities'),
+      types: colors('types'),
+      labels: colors('labels'),
+    );
+  }
+
+  /// `system`, `light` or `dark`.
+  final String mode;
+  final PaletteDto light;
+  final PaletteDto dark;
+  final Map<String, String> statuses;
+  final Map<String, String> priorities;
+  final Map<String, String> types;
+  final Map<String, String> labels;
+
+  Json toJson() => {
+    'mode': mode,
+    'light': light.toJson(),
+    'dark': dark.toJson(),
+    'statuses': statuses,
+    'priorities': priorities,
+    'types': types,
+    'labels': labels,
+  };
+}
+
 /// The allowed values of a backlog — what the UI offers in pickers.
 final class WorkflowDto {
   const WorkflowDto({
@@ -41,6 +111,7 @@ final class WorkflowDto {
     required this.defaultStatus,
     required this.defaultPriority,
     required this.defaultType,
+    this.appearance = const AppearanceDto(),
   });
 
   factory WorkflowDto.fromJson(Json json) {
@@ -53,6 +124,7 @@ final class WorkflowDto {
       defaultStatus: defaults.string('status'),
       defaultPriority: defaults.string('priority'),
       defaultType: defaults.string('type'),
+      appearance: AppearanceDto.fromJson(json.optionalObject('appearance')),
     );
   }
 
@@ -63,6 +135,7 @@ final class WorkflowDto {
   final String defaultStatus;
   final String defaultPriority;
   final String defaultType;
+  final AppearanceDto appearance;
 
   StatusCategoryDto? categoryOf(String status) {
     for (final definition in statuses) {
@@ -77,5 +150,6 @@ final class WorkflowDto {
     'types': types,
     'milestones': [for (final milestone in milestones) milestone.toJson()],
     'defaults': {'status': defaultStatus, 'priority': defaultPriority, 'type': defaultType},
+    'appearance': appearance.toJson(),
   };
 }

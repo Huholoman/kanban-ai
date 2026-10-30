@@ -1,6 +1,8 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/widgets.dart';
 
+import 'appearance_controller.dart';
+
 /// Settings that come from the page URL (`?token=…&as=…&server=…`).
 final class AppConfig {
   const AppConfig({this.agent});
@@ -12,10 +14,20 @@ final class AppConfig {
 /// Provides the [BacklogApi] and [AppConfig] to the widget tree, so that
 /// features get them without global state and tests can pass a fake.
 class AppScope extends InheritedWidget {
-  const AppScope({super.key, required this.api, this.config = const AppConfig(), required super.child});
+  const AppScope({
+    super.key,
+    required this.api,
+    this.config = const AppConfig(),
+    this.appearance,
+    required super.child,
+  });
 
   final BacklogApi api;
   final AppConfig config;
+
+  /// Theme from backlog.yaml and the light/dark switch; null in tests that
+  /// build a single screen.
+  final AppearanceController? appearance;
 
   static AppScope of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<AppScope>();
@@ -24,5 +36,6 @@ class AppScope extends InheritedWidget {
   }
 
   @override
-  bool updateShouldNotify(AppScope oldWidget) => api != oldWidget.api || config != oldWidget.config;
+  bool updateShouldNotify(AppScope oldWidget) =>
+      api != oldWidget.api || config != oldWidget.config || appearance != oldWidget.appearance;
 }

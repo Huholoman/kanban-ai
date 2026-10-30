@@ -1,6 +1,7 @@
 import 'package:yaml/yaml.dart';
 
 import '../../shared/errors.dart';
+import '../domain/appearance.dart';
 import '../domain/workflow.dart';
 
 /// Parses the `backlog.yaml` format into a [Workflow].
@@ -69,6 +70,49 @@ Workflow parseWorkflowYaml(String source, {String origin = 'backlog.yaml'}) {
         defaults['priority']?.toString() ?? (document['priorities'] == null ? standard.defaultPriority : null),
     defaultType: defaults['type']?.toString() ?? (document['types'] == null ? standard.defaultType : null),
     claimLease: leaseMinutes == null ? standard.claimLease : Duration(minutes: leaseMinutes as int),
+    appearance: _appearance(document['appearance'], origin),
+  );
+}
+
+Appearance _appearance(Object? node, String origin) {
+  if (node == null) return Appearance.none;
+  final yaml = _map(node, 'appearance', origin);
+  String color(Object value, String path) {
+    try {
+      return Appearance.color(value, path);
+    } on ConfigurationException catch (e) {
+      throw ConfigurationException('$origin: ${e.message}');
+    }
+  }
+
+  Palette palette(String key) {
+    final map = _map(yaml[key], 'appearance.$key', origin);
+    String? pick(String name) => map[name] == null ? null : color(map[name] as Object, 'appearance.$key.$name');
+    return Palette(
+      seed: pick('seed'),
+      primary: pick('primary'),
+      secondary: pick('secondary'),
+      background: pick('background'),
+    );
+  }
+
+  Map<String, String> colors(String section) => {
+    for (final MapEntry(:key, :value) in _map(yaml[section], 'appearance.$section', origin).entries)
+      if (value != null) '$key': color(value as Object, 'appearance.$section.$key'),
+  };
+
+  final mode = '${yaml['mode'] ?? 'system'}'.trim();
+  if (!Appearance.modes.contains(mode)) {
+    throw ConfigurationException('$origin: appearance.mode must be one of ${Appearance.modes.join(', ')}.');
+  }
+  return Appearance(
+    mode: mode,
+    light: palette('light'),
+    dark: palette('dark'),
+    statuses: colors('statuses'),
+    priorities: colors('priorities'),
+    types: colors('types'),
+    labels: colors('labels'),
   );
 }
 
@@ -141,4 +185,18 @@ defaults:
 
 claims:
   lease_minutes: 240   # a claim without heartbeat expires after this
+
+# Colours of the web board (all optional). Quote colours: in YAML an unquoted
+# "#..." is a comment.
+# appearance:
+#   mode: system          # system | light | dark (the app can still switch)
+#   light:
+#     seed: "#3f51b5"     # a whole palette is generated from it
+#     background: "#fafafa"   # optional overrides: primary, secondary, background
+#   dark:
+#     seed: "#8c9eff"
+#   statuses: {todo: "#1e88e5", in-progress: "#fb8c00", review: "#8e24aa", done: "#43a047"}
+#   priorities: {p0: "#e53935", p1: "#fb8c00", p2: "#1e88e5", p3: "#90a4ae"}
+#   types: {epic: "#6a1b9a", bug: "#c62828"}
+#   labels: {infra: "#00897b", ui: "#d81b60"}
 ''';

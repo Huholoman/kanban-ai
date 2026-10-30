@@ -34,6 +34,15 @@ final class BacklogSnapshot {
 
     bool isDone(ItemId id) => workflow.categoryOf(byId[id]!.status) == StatusCategory.done;
 
+    List<ItemId> ancestorsOf(Item item) {
+      final chain = <ItemId>[];
+      for (var parent = item.parent; parent != null && parent != item.id && !chain.contains(parent);) {
+        chain.add(parent);
+        parent = byId[parent]?.parent;
+      }
+      return chain;
+    }
+
     final planned = <ItemId, PlannedItem>{};
     for (final item in byId.values) {
       final category = workflow.categoryOf(item.status);
@@ -45,6 +54,7 @@ final class BacklogSnapshot {
       final expired = claim != null && claim.isExpiredAt(now);
       final blocked = category != StatusCategory.done && (open.isNotEmpty || missing.isNotEmpty);
       final pickable = workflow.status(item.status)?.pickable ?? false;
+      final ancestors = ancestorsOf(item);
       planned[item.id] = PlannedItem(
         item: item,
         category: category,
@@ -55,6 +65,11 @@ final class BacklogSnapshot {
         claim: claim,
         isClaimExpired: expired,
         isReady: pickable && !blocked && openKids == 0 && (claim == null || expired),
+        ancestors: ancestors,
+        epics: [
+          for (final id in [item.id, ...ancestors])
+            if (byId[id]?.type == 'epic') id,
+        ],
       );
     }
 

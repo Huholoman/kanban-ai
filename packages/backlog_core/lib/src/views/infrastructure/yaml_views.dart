@@ -5,9 +5,11 @@ import 'package:yaml/yaml.dart';
 import 'package:yaml_edit/yaml_edit.dart';
 
 import '../../infrastructure/backlog_layout.dart';
+import '../../items/infrastructure/slug.dart';
 import '../../shared/errors.dart';
 import '../domain/filter.dart';
 import '../domain/view.dart';
+import 'yaml_writer.dart';
 
 /// Views as `views/<id>.yaml`:
 ///
@@ -55,29 +57,85 @@ final class YamlViewRepository implements ViewRepository {
   }
 
   @override
-  Future<void> setSection(String id, String? section) async {
+  Future<void> setSection(String id, String? section) => _edit(id, (source) => withSection(source, section));
+
+  @override
+  Future<void> setColumns(String id, List<String>? columns) => _edit(id, (source) => withColumns(source, columns));
+
+  @override
+  Future<Map<String, Object?>> raw(String id) async {
+    final source = await (await _file(id)).readAsString();
+    return _plain(loadYaml(source)) as Map<String, Object?>;
+  }
+
+  @override
+  Future<String> create(String preferredId, Map<String, Object?> definition) async {
+    final source = toYaml(definition);
+    final base = slugify(preferredId).isEmpty ? 'view' : slugify(preferredId);
+    parseViewYaml(base, source); // never write what could not be read back
+    await Directory(_layout.viewsDir).create(recursive: true);
+    for (var n = 1; ; n++) {
+      final id = n == 1 ? base : '$base-$n';
+      final file = File(p.join(_layout.viewsDir, '$id.yaml'));
+      if (file.existsSync() || File(p.join(_layout.viewsDir, '$id.yml')).existsSync()) continue;
+      await writeAtomically(file, source);
+      return id;
+    }
+  }
+
+  /// Rewrites the file of view [id] through [change], keeping the rest.
+  Future<void> _edit(String id, String Function(String source) change) async {
+    final file = await _file(id);
+    final source = await file.readAsString();
+    parseViewYaml(id, source); // refuse to touch a broken definition
+    await writeAtomically(file, change(source));
+  }
+
+  Future<File> _file(String id) async {
     // Only ids of existing views, so that no path can be smuggled in.
     if (!(await load()).views.any((view) => view.id == id)) throw NotFoundException('No view "$id".');
     final file = [
       for (final extension in ['yaml', 'yml']) File(p.join(_layout.viewsDir, '$id.$extension')),
     ].where((file) => file.existsSync()).firstOrNull;
-    if (file == null) throw NotFoundException('No view "$id".');
-    final source = await file.readAsString();
-    parseViewYaml(id, source); // refuse to touch a broken definition
-    await writeAtomically(file, withSection(source, section));
+    return file ?? (throw NotFoundException('No view "$id".'));
   }
+
+  static Object? _plain(Object? node) => switch (node) {
+    final YamlMap map => {for (final MapEntry(:key, :value) in map.entries) '$key': _plain(value)},
+    final YamlList list => [for (final value in list) _plain(value)],
+    _ => node,
+  };
 }
 
 /// [source] with its `section` key set, or removed when [section] is null or
 /// blank; comments and the other keys are kept.
 String withSection(String source, String? section) {
-  final editor = YamlEditor(source);
   final value = section?.trim() ?? '';
-  final present = (loadYaml(source) as YamlMap).containsKey('section');
-  if (value.isEmpty) {
-    if (present) editor.remove(['section']);
+  return _withKey(source, 'section', value.isEmpty ? null : value);
+}
+
+/// [source] with its `columns` set (as a flow list), or removed when
+/// [columns] is null or empty so that the view shows its default groups.
+String withColumns(String source, List<String>? columns) {
+  final values = [
+    for (final column in columns ?? const <String>[])
+      if (column.trim().isNotEmpty) column.trim(),
+  ];
+  if (values.toSet().length != values.length) throw const InvalidInputException('Columns must not repeat.');
+  return _withKey(
+    source,
+    'columns',
+    values.isEmpty ? null : wrapAsYamlNode(values, collectionStyle: CollectionStyle.FLOW),
+  );
+}
+
+String _withKey(String source, String key, Object? value) {
+  final editor = YamlEditor(source);
+  final present = (loadYaml(source) as YamlMap).containsKey(key);
+  if (value == null) {
+    if (present) editor.remove([key]);
   } else {
-    editor.update(['section'], value);
+    editor.update([key], value);
   }
   return editor.toString();
 }
@@ -118,7 +176,8 @@ ViewDefinition parseViewYaml(String id, String source) {
 /// - a mapping is an AND of its entries;
 /// - `and: [...]`, `or: [...]`, `not: <expr>` combine expressions;
 /// - `field: value` / `field: [a, b]` match any of the values;
-/// - `field: {not: ...}`, `{in: [...]}` and `{exists: bool}` refine it.
+/// - `field: {not: ...}`, `{in: [...]}`, `{exists: bool}` and
+///   `{contains: text}` (substring, ignoring case) refine it.
 Filter parseFilter(Object? node) {
   if (node is List) return AllOf(node.map(parseFilter).toList());
   if (node is! Map) throw ConfigurationException('Cannot read filter "$node".');
@@ -150,6 +209,8 @@ Filter _fieldFilter(String field, Object? value) {
         parts.add(Not(FieldIn(field, _values(operand))));
       case 'exists':
         parts.add(FieldExists(field, exists: operand == true));
+      case 'contains':
+        parts.add(FieldContains(field, '$operand'));
       case final other:
         throw ConfigurationException('Unknown operator "$other" for field "$field".');
     }

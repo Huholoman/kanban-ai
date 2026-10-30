@@ -89,10 +89,58 @@ class BoardController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The current view groups its items, so its columns can be chosen.
+  bool get canEditColumns => result?.groupBy != null;
+
+  /// Values the current view's columns can be picked from: the shown ones in
+  /// their order, then the rest the workflow knows for the grouping field.
+  List<String> get columnOptions {
+    final current = result;
+    if (current == null || current.groupBy == null) return const [];
+    final flow = workflow;
+    final known = switch (current.groupBy) {
+      'status' => [...?flow?.statuses.map((status) => status.id)],
+      'priority' => [...?flow?.priorities],
+      'type' => [...?flow?.types],
+      'milestone' => [...?flow?.milestones.map((milestone) => milestone.id)],
+      _ => const <String>[],
+    };
+    return {...current.groups.map((group) => group.key).where((key) => key.isNotEmpty), ...known}.toList();
+  }
+
+  /// Saves the columns of the current view; null goes back to the default.
+  Future<void> setColumns(List<String>? columns) async {
+    final id = selectedViewId;
+    if (id == null) return;
+    try {
+      await _api.updateView(id, ViewUpdateRequest.columns(columns));
+    } catch (e) {
+      _notices.add('$e');
+    }
+    await refresh(quiet: true);
+  }
+
+  /// Saves the current view narrowed by [filter] as a new view and switches
+  /// to it (with the filter cleared, the view now does the filtering).
+  Future<bool> saveFilterAsView(String name, {String? section}) async {
+    try {
+      final created = await _api.createView(
+        NewViewRequest(name: name, section: section, base: selectedViewId, conditions: filter.toConditions()),
+      );
+      filter = BoardFilter.none;
+      selectedViewId = created.id;
+    } catch (e) {
+      _notices.add('$e');
+      return false;
+    }
+    await refresh();
+    return true;
+  }
+
   /// Moves view [id] to [section] (null or blank: out of any section).
   Future<void> moveView(String id, String? section) async {
     try {
-      await _api.updateView(id, ViewUpdateRequest(section: section));
+      await _api.updateView(id, ViewUpdateRequest.section(section));
     } catch (e) {
       _notices.add('$e');
     }
@@ -195,6 +243,7 @@ class BoardController extends ChangeNotifier {
     layout: result.layout,
     groupBy: result.groupBy,
     fields: result.fields,
+    columns: result.columns,
     hidden: result.hidden,
     groups: [
       for (final group in result.groups)

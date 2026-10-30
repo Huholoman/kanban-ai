@@ -74,8 +74,20 @@ void main() {
         defaultStatus: 'todo',
         defaultPriority: 'p0',
         defaultType: 'task',
+        appearance: AppearanceDto(
+          mode: 'dark',
+          light: PaletteDto(seed: '#3f51b5'),
+          statuses: {'todo': '#1e88e5'},
+          labels: {'ui': '#d81b60'},
+        ),
       );
       expect(roundTrip(workflow.toJson(), WorkflowDto.fromJson).toJson(), workflow.toJson());
+      expect(
+        WorkflowDto.fromJson(
+          jsonDecode(jsonEncode({...workflow.toJson()}..remove('appearance'))) as Map<String, Object?>,
+        ).appearance.mode,
+        'system',
+      );
     });
 
     test('update request helpers write the CLI syntax', () {

@@ -73,6 +73,10 @@ final class HttpBacklogApi implements BacklogApi {
       ViewSummaryDto.fromJson(asJson(await _send('PATCH', ApiPaths.view(id), request.toJson())));
 
   @override
+  Future<ViewSummaryDto> createView(NewViewRequest request) async =>
+      ViewSummaryDto.fromJson(asJson(await _send('POST', ApiPaths.views, request.toJson())));
+
+  @override
   Future<List<LintIssueDto>> lint() async => _list(await _get(ApiPaths.lint)).map(LintIssueDto.fromJson).toList();
 
   @override

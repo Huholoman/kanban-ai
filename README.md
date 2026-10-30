@@ -201,9 +201,11 @@ URL parameters of the app: `?token=…`, `&as=name` (who claims items from the U
 - **Ids:** clicking an item id (on a card or in the detail) copies it to the clipboard.
 - **Pull requests:** an item's `pr` link shows as a "PR #42" tag that opens it in a new tab; it can be set in the detail or by an agent (`backlog set <id> pr=<url>`).
 - **Kanban:** the board scrolls as one page, columns grow with their cards. Dragging a card to another column sets the field the view is grouped by (status, priority, …). A parent with nested items in a column (an epic, a story) has a fold toggle that hides them and shows how many are hidden. Within a column, children are indented under their parent. When the parent (an epic, say) sits in another column, it appears as a grey header above its children, so you can see which epic a story in progress belongs to.
-- **Filter bar:** search (id, title, branch) and menus for labels, epic (everything under the chosen epic, at any depth), type, priority, milestone and people (assignee or claim holder), plus chips: *Ready* (pickable status, dependencies done, no open children, nobody holds it), *Blocked* (waits for an unfinished dependency) and *Claimed* (someone holds it, i.e. it is being worked on). Values within one menu are alternatives; everything else must match. The filter works on any view and is kept when switching views; status is left out because views show it already.
+- **Filter bar:** search (id, title, branch) and menus for labels, epic (everything under the chosen epic, at any depth), type, priority, milestone and people (assignee or claim holder), plus chips: *Ready* (pickable status, dependencies done, no open children, nobody holds it), *Blocked* (waits for an unfinished dependency) and *Claimed* (someone holds it, i.e. it is being worked on). Values within one menu are alternatives; everything else must match. The filter works on any view and is kept when switching views; status is left out because views show it already. **Save as view** stores the current view plus the filter as a new view (name and optional section; the new file in `views/` keeps the layout, grouping, columns and sorting of the current view and ANDs its filter with yours).
 - **Detail:** opens in a right-hand panel on wide windows and full-screen on narrow ones. You can edit all fields, labels, relations (parent, dependencies, related), the Markdown description, and claim, release or finish the item. Links are grouped by kind (children, parent, depends on, blocks, related) into foldable sections with a count, children also with their progress (`Children (5) · 2/5 done`); empty kinds are left out and new links are added from the *Link:* row. On wide windows a link opens in a new panel to the right (an epic, then its story, then the story's task), and the child open on the right is highlighted. When the panels do not fit next to the board, the board and the oldest panels give way to a breadcrumb (*Board › Epic › …*) that leads back. Esc closes the rightmost panel.
 - **The `graph` layout** (default view "Dependencies") shows each item with an expandable tree of its dependencies, including their titles and statuses. Clicking a dependency opens its detail.
+- **Columns:** for a view grouped by a field, the columns button in the app bar picks which groups are shown and in what order (drag to reorder); it is saved as `columns:` in the view's YAML, *Default* removes it.
+- **Theme:** light / dark / system switch in the app bar (for the session; the default comes from `appearance.mode`).
 - **Lint:** a badge in the app bar; clicking it lists the problems with links to the items.
 - **Live updates:** the server watches the folder and pushes changes over a WebSocket. The board shows straight away what an agent did in the CLI, what came from `git pull` and what changed in an editor. Edits of `backlog.yaml` apply without a restart.
 
@@ -271,7 +273,22 @@ Derived properties are computed, never stored: `blocked`, `ready`, and the progr
 - priorities `p0`–`p3`
 - types, milestones, defaults and the claim lease
 
-Every status belongs to the category `open`, `active` or `done`. Items in the `done` category satisfy dependencies, and agents pick up work from statuses marked `pickable`.
+Every status belongs to the category `open`, `active` or `done`. Items in the `done` category satisfy dependencies, and agents pick up work from statuses marked `pickable`. The statuses are the possible board columns; which of them a view shows, and in what order, is set by `columns:` in the view (or from the app, see below).
+
+**Colours** of the web board go to an optional `appearance` section (quote the colours, an unquoted `#…` is a YAML comment):
+
+```yaml
+appearance:
+  mode: system                 # system | light | dark — the default, the app can still switch
+  light: {seed: "#3f51b5"}     # a palette is generated from the seed; optional primary, secondary, background
+  dark: {seed: "#8c9eff", background: "#121212"}
+  statuses: {todo: "#1e88e5", in-progress: "#fb8c00", review: "#8e24aa", done: "#43a047"}
+  priorities: {p0: "#e53935", p1: "#fb8c00"}
+  types: {epic: "#6a1b9a", bug: "#c62828"}
+  labels: {infra: "#00897b", ui: "#d81b60"}
+```
+
+The board picks up changes to it live.
 
 ### View (`views/*.yaml`)
 
@@ -281,7 +298,7 @@ section: Releases           # optional heading in the app's view list
 layout: kanban              # list | kanban | table | graph
 filter:                     # a map = AND; also and/or/not
   milestone: launch
-  category: {not: [done]}   # {in: [...]}, {not: [...]}, {exists: bool}
+  category: {not: [done]}   # {in: [...]}, {not: [...]}, {exists: bool}, {contains: text}
   or:
     - priority: [p0, p1]
     - labels: security
@@ -290,7 +307,7 @@ columns: [todo, in-progress, review, done]
 sort: [priority, -updated]
 ```
 
-Views can filter and group by every item field, by custom keys and by the computed fields `ready`, `blocked`, `claimed`, `claimed_by`, `category` and `has_children`.
+Views can filter and group by every item field, by custom keys and by the computed fields `ready`, `blocked`, `claimed`, `claimed_by`, `category`, `has_children`, `ancestors` (the parent chain) and `epic` (epics among the item and its ancestors, so `epic: X-m4an` is everything under that epic).
 
 ## CLI reference
 
@@ -361,7 +378,8 @@ There is no event bus or event sourcing: the state lives in files and git keeps 
 - `workflow`, `items` (`?all=true`)
 - `items/<id>`: GET, and PATCH `{changes: ["status=done"], body}`
 - `items/<id>/claim|release|done`: POST `{agent, status, force}`
-- `views`, `views/<id>`: GET, and PATCH `{section}` (null removes it)
+- `views`: GET, and POST `{name, section?, base?, conditions: [filter expressions]}` (save a filter as a view)
+- `views/<id>`: GET, and PATCH `{section?, columns?}` (only the given keys change; null removes them)
 - `lint`, `health`
 - the WebSocket `events`
 

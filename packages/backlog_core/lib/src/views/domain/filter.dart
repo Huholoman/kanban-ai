@@ -49,6 +49,17 @@ final class FieldIn extends Filter {
   bool matches(PlannedItem item) => ItemFields.valuesOf(item, field).any(values.contains);
 }
 
+/// True when any value of [field] contains [text], ignoring case.
+final class FieldContains extends Filter {
+  FieldContains(this.field, String text) : text = text.toLowerCase();
+
+  final String field;
+  final String text;
+
+  @override
+  bool matches(PlannedItem item) => ItemFields.valuesOf(item, field).any((v) => v.toLowerCase().contains(text));
+}
+
 final class FieldExists extends Filter {
   const FieldExists(this.field, {this.exists = true});
 

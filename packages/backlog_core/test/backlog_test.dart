@@ -319,6 +319,79 @@ void main() {
       expect((await backlog.views.all()).where((v) => v.id == 'ready').single.section, isNull);
     });
 
+    test('columns are set as a flow list and removed again', () async {
+      final (backlog, _) = await tempBacklog();
+      final file = File(p.join(backlog.root, 'views', 'board.yaml'));
+      final before = file.readAsStringSync();
+
+      final board = await backlog.views.setColumns('board', ['review', 'todo', ' ']);
+      expect(board.columns, ['review', 'todo']);
+      expect(file.readAsStringSync(), contains('columns: [review, todo]'));
+      expect((await backlog.views.run('board')).groups.map((g) => g.key), ['review', 'todo']);
+
+      expect((await backlog.views.setColumns('board', null)).columns, isNull);
+      expect(file.readAsStringSync(), isNot(contains('columns:')));
+      expect(file.readAsStringSync().replaceAll(RegExp(r'\s'), ''), isNot(isEmpty));
+      expect(before, contains('name: Board'));
+      expect(() => backlog.views.setColumns('board', ['todo', 'todo']), throwsA(isA<InvalidInputException>()));
+    });
+
+    test('a filter is saved as a new view derived from another', () async {
+      final (backlog, _) = await tempBacklog();
+      final epic = await backlog.items.create(const NewItem(title: 'Payments', type: 'epic', status: 'todo'));
+      final story = await backlog.items.create(
+        NewItem(title: 'Deposit "quoted" #1', status: 'todo', parent: epic.id.value, labels: const ['web']),
+      );
+      await backlog.items.create(const NewItem(title: 'Other', status: 'todo', labels: ['web']));
+
+      final view = await backlog.views.saveAs(
+        name: 'Web payments',
+        section: 'Mine',
+        base: 'board',
+        conditions: [
+          {
+            'labels': ['web'],
+          },
+          {
+            'epic': [epic.id.value],
+          },
+          {
+            'or': [
+              {
+                'title': {'contains': 'deposit "q'},
+              },
+              {
+                'id': {'contains': 'zzz'},
+              },
+            ],
+          },
+        ],
+      );
+      expect(view.id, 'web-payments');
+      expect(view.section, 'Mine');
+      expect(view.layout, ViewLayout.kanban);
+      expect(view.groupBy, 'status');
+      final result = await backlog.views.run(view.id);
+      expect(result.items.map((i) => i.id), [story.id]);
+      expect(result.groups.map((g) => g.key), contains('todo'), reason: 'columns copied from the board');
+
+      final again = await backlog.views.saveAs(name: 'Web payments');
+      expect(again.id, 'web-payments-2');
+      expect(again.layout, ViewLayout.list);
+      expect(() => backlog.views.saveAs(name: ' '), throwsA(isA<InvalidInputException>()));
+      expect(
+        () => backlog.views.saveAs(
+          name: 'Bad',
+          conditions: [
+            {
+              'status': {'between': 1},
+            },
+          ],
+        ),
+        throwsA(isA<InvalidInputException>()),
+      );
+    });
+
     test('only existing views can get a section', () async {
       final (backlog, _) = await tempBacklog();
       expect(() => backlog.views.setSection('../backlog', 'X'), throwsA(isA<NotFoundException>()));

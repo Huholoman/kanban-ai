@@ -127,6 +127,7 @@ void main() {
     expect(await ids(['-w', 'milestone?']), [c]);
     expect(await ids(['-w', 'status!=todo', '--all']), unorderedEquals([b, c]));
     expect(await ids(['-s', 'done']), [b]);
+    expect(await ids(['-w', 'title~a', '--all']), [a]);
   });
 
   test('views: list, kanban and json groups', () async {

@@ -1,7 +1,9 @@
 import 'package:backlog_api/backlog_api.dart';
+import 'package:backlog_app/app/appearance_controller.dart';
 import 'package:backlog_app/features/board/application/board_controller.dart';
 import 'package:backlog_app/features/board/application/board_filter.dart';
 import 'package:backlog_app/features/item/application/item_controller.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_api.dart';
@@ -118,6 +120,36 @@ void main() {
       addTearDown(controller.dispose);
       await controller.start();
       expect((controller.error! as BacklogApiException).type, 'not_found');
+    });
+  });
+
+  group('AppearanceController', () {
+    test('follows backlog.yaml, reloads on change and can be switched', () async {
+      final api = FakeBacklogApi(const [])
+        ..appearance = const AppearanceDto(
+          mode: 'dark',
+          dark: PaletteDto(background: '#101820'),
+        );
+      final appearance = AppearanceController(api, refreshDelay: const Duration(milliseconds: 10));
+      addTearDown(appearance.dispose);
+      await appearance.start();
+      expect(appearance.mode, ThemeMode.dark);
+      expect(appearance.theme(Brightness.dark).colorScheme.surface, const Color(0xFF101820));
+
+      api
+        ..appearance = const AppearanceDto(
+          mode: 'light',
+          light: PaletteDto(primary: '#ff0000'),
+        )
+        ..configChange();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(appearance.mode, ThemeMode.light);
+      expect(appearance.theme(Brightness.light).colorScheme.primary, const Color(0xFFFF0000));
+
+      appearance.cycleMode();
+      expect(appearance.mode, ThemeMode.dark);
+      appearance.cycleMode();
+      expect(appearance.mode, ThemeMode.system);
     });
   });
 }

@@ -72,16 +72,54 @@ final class ItemUpdateRequest {
   Json toJson() => {'changes': changes, 'body': ?body};
 }
 
-/// Moves a view to another section of the view list; null or blank removes
-/// it from its section.
+/// Changes a saved view: its section in the view list and/or the groups it
+/// shows. Only what was given is changed; null or empty values remove the
+/// key from the YAML (no section, default groups).
 final class ViewUpdateRequest {
-  const ViewUpdateRequest({this.section});
+  const ViewUpdateRequest({this.section, this.columns, this.changesSection = false, this.changesColumns = false});
 
-  factory ViewUpdateRequest.fromJson(Json json) => ViewUpdateRequest(section: json.optionalString('section'));
+  const ViewUpdateRequest.section(this.section) : columns = null, changesSection = true, changesColumns = false;
+
+  const ViewUpdateRequest.columns(this.columns) : section = null, changesSection = false, changesColumns = true;
+
+  factory ViewUpdateRequest.fromJson(Json json) => ViewUpdateRequest(
+    section: json.optionalString('section'),
+    columns: json['columns'] == null ? null : json.strings('columns'),
+    changesSection: json.containsKey('section'),
+    changesColumns: json.containsKey('columns'),
+  );
 
   final String? section;
+  final List<String>? columns;
+  final bool changesSection;
+  final bool changesColumns;
 
-  Json toJson() => {'section': section};
+  Json toJson() => {if (changesSection) 'section': section, if (changesColumns) 'columns': columns};
+}
+
+/// A new saved view: a copy of [base] (layout, grouping, columns, sorting)
+/// whose filter also requires every one of [conditions] — filter expressions
+/// in the view YAML grammar, e.g. `{"labels": ["ui"]}`.
+final class NewViewRequest {
+  const NewViewRequest({required this.name, this.section, this.base, this.conditions = const []});
+
+  factory NewViewRequest.fromJson(Json json) => NewViewRequest(
+    name: json.string('name'),
+    section: json.optionalString('section'),
+    base: json.optionalString('base'),
+    conditions: switch (json['conditions']) {
+      null => const [],
+      final List<Object?> list => list,
+      _ => throw const MalformedPayloadException('"conditions" must be a list.'),
+    },
+  );
+
+  final String name;
+  final String? section;
+  final String? base;
+  final List<Object?> conditions;
+
+  Json toJson() => {'name': name, 'section': section, 'base': base, 'conditions': conditions};
 }
 
 /// Claim, release or completion of an item on behalf of [agent].

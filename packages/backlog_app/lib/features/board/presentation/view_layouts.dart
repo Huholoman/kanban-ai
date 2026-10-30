@@ -65,8 +65,7 @@ class KanbanBoard extends StatelessWidget {
 
   Widget _column(BuildContext context, ViewGroupDto group) {
     final theme = Theme.of(context);
-    final category = result.groupBy == 'status' ? workflow?.categoryOf(group.key) : null;
-    final accent = category == null ? theme.colorScheme.outline : ItemStyle.category(category, theme.colorScheme);
+    final accent = ItemStyle.group(result.groupBy, group.key, workflow, theme.colorScheme);
     final entries = ColumnArrangement.arrange(group.items, index, collapsed: collapsed);
 
     Widget cards(bool highlighted) => AnimatedContainer(
