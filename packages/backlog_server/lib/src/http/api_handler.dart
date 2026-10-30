@@ -106,8 +106,11 @@ final class ApiHandler {
     ]);
   }
 
-  Future<Response> _view(Request request, String id) async =>
-      _json(DtoMapper.view(await (await _host.backlog).views.run(id)).toJson());
+  Future<Response> _view(Request request, String id) async => _json(
+    DtoMapper.view(
+      await (await _host.backlog).views.run(id, groupBy: request.url.queryParameters['group_by']),
+    ).toJson(),
+  );
 
   Future<Response> _createView(Request request) async {
     final payload = NewViewRequest.fromJson(await _body(request));

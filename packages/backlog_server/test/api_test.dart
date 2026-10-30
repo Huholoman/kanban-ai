@@ -207,6 +207,16 @@ void main() {
     expect(saved.pinned, isTrue);
   });
 
+  test('a view can be regrouped for one request without changing it', () async {
+    await api.createItem(const NewItemRequest(title: 'Urgent', status: 'todo', priority: 'p0'));
+    final byPriority = await api.view('board', groupBy: 'priority');
+    expect(byPriority.groupBy, 'priority');
+    expect(byPriority.columns, isNull);
+    expect(byPriority.groups.map((g) => g.key), containsAll(['p0', 'p1', 'p2', 'p3']));
+    expect((await api.view('board')).groupBy, 'status');
+    expect((await api.view('board', groupBy: '')).groups.single.key, '');
+  });
+
   test('lint reports problems', () async {
     expect(await api.lint(), isEmpty);
     File(p.join(dir.path, 'items', 'S-zzzz-x.md')).writeAsStringSync('---\nid: S-zzzz\ntitle: X\nstatus: nope\n---\n');

@@ -58,6 +58,22 @@ final class ViewDefinition {
 
   /// Shown in the phone's bottom bar.
   final bool pinned;
+
+  /// The same view grouped by [field] instead (null: ungrouped). Columns
+  /// belong to the original grouping, so they are dropped when it changes.
+  ViewDefinition regroupedBy(String? field) => field == groupBy
+      ? this
+      : ViewDefinition(
+          id: id,
+          name: name,
+          layout: layout,
+          filter: filter,
+          groupBy: field,
+          sort: sort,
+          fields: fields,
+          section: section,
+          pinned: pinned,
+        );
   final Filter filter;
   final String? groupBy;
 

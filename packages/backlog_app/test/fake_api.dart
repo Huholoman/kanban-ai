@@ -209,9 +209,21 @@ final class FakeBacklogApi implements BacklogApi {
   }
 
   @override
-  Future<ViewResultDto> view(String id) async {
+  Future<ViewResultDto> view(String id, {String? groupBy}) async {
     viewLoads++;
     final all = items_.values.toList();
+    if (groupBy == 'priority') {
+      return ViewResultDto(
+        id: id,
+        name: 'Board',
+        layout: ViewLayoutDto.kanban,
+        groupBy: 'priority',
+        groups: [
+          for (final priority in _workflow.priorities)
+            ViewGroupDto(priority, all.where((i) => i.priority == priority).toList()),
+        ],
+      );
+    }
     if (id == 'list') {
       return ViewResultDto(id: id, name: 'All', layout: ViewLayoutDto.list, groups: [ViewGroupDto('', all)]);
     }

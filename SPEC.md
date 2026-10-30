@@ -245,7 +245,7 @@ At start it prints the board URLs (with the token). It watches the folder (debou
 | `POST /api/items/<ref>/claim` \| `release` \| `done` | `{agent?, status?, force}` | detail |
 | `GET /api/views` | | `[{id, name, layout, group_by, section}]` |
 | `POST /api/views` | `{name, section?, base?, conditions: [...]}` | view summary (201); writes `views/<slug>.yaml` (unique id) copying `layout`, `group_by`, `columns`, `sort`, `fields` from `base` and setting `filter: {and: [<base filter>, ...conditions]}`; invalid filters are `invalid_input` |
-| `GET /api/views/<id>` | | `{id, name, layout, group_by, fields, columns, hidden, groups: [{key, items}]}` |
+| `GET /api/views/<id>` | `?group_by=field` regroups for this request only (empty: ungrouped; columns dropped) | `{id, name, layout, group_by, fields, columns, hidden, groups: [{key, items}]}` |
 | `PATCH /api/views/<id>` | `{section?, columns?}` — only given keys change, null/blank/empty removes | view summary; writes `section:` / `columns:` into the YAML, keeping the rest |
 | `GET /api/lint` | | `[{severity, code, message, item?, location?}]` |
 | `WS /api/events` | `?token=` | `{"type": "changed", "paths": [...]}` |

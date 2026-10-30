@@ -14,10 +14,13 @@ final class ViewService {
 
   Future<List<ViewDefinition>> all() async => (await _views.load()).views;
 
-  Future<ViewResult> run(String id) async {
+  /// Runs view [id]; with [groupBy] grouped by that field for this run only
+  /// (empty string: ungrouped), the saved definition stays as it is.
+  Future<ViewResult> run(String id, {String? groupBy}) async {
     final catalog = await _views.load();
     for (final view in catalog.views) {
-      if (view.id == id) return evaluate(view);
+      if (view.id != id) continue;
+      return evaluate(groupBy == null ? view : view.regroupedBy(groupBy.isEmpty ? null : groupBy));
     }
     final broken = catalog.problems.where((problem) => p.basenameWithoutExtension(problem.$1) == id);
     if (broken.isNotEmpty) throw ConfigurationException('${broken.first.$1}: ${broken.first.$2}');
