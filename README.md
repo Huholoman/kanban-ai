@@ -197,7 +197,7 @@ backlog-server --allow 127.0.0.1,10.77.11.22,10.77.0.0/16  # answer only these c
 URL parameters of the app: `?token=…`, `&as=name` (who claims items from the UI) and `&server=http://…` (another API server, handy with `flutter run -d web-server`).
 
 **Features:**
-- **Left panel:** saved views and a button for new items. Views with a `section` are listed under foldable section headings. The ⋮ menu of a view moves it to an existing or new section, and the server writes `section:` into its YAML. On narrow windows the view picker is a dropdown in the app bar.
+- **Left panel:** saved views with their item counts and a button for new items. Views with a `section` are listed under foldable section headings. The ⋮ menu of a view moves it to an existing or new section, and the server writes `section:` into its YAML. On narrow windows the view picker is a dropdown in the app bar.
 - **Cards:** id and priority on top, the title, and one meta line that tells the state: *Ready*, *Blocked by …*, the claim holder with the time left, an expired claim (faint, dashed border) or else the labels; a thin bar shows progress of the checklist or children.
 - **Ids:** clicking an item id (on a card or in the detail) copies it to the clipboard.
 - **Pull requests:** an item's `pr` link shows as a "PR #42" tag that opens it in a new tab; it can be set in the detail or by an agent (`backlog set <id> pr=<url>`).
@@ -207,7 +207,7 @@ URL parameters of the app: `?token=…`, `&as=name` (who claims items from the U
 - **The `graph` layout** (default view "Dependencies") shows each item with an expandable tree of its dependencies, including their titles and statuses. Clicking a dependency opens its detail.
 - **Columns:** for a view grouped by a field, the columns button in the app bar picks which groups are shown and in what order (drag to reorder); it is saved as `columns:` in the view's YAML, *Default* removes it.
 - **Theme:** light / dark / system switch in the app bar (for the session; the default comes from `appearance.mode`).
-- **Lint:** a badge in the app bar; clicking it lists the problems with links to the items.
+- **Lint:** a summary at the bottom of the left panel ("Lint: 2 warnings"); clicking it lists the problems with links to the items.
 - **Live updates:** the server watches the folder and pushes changes over a WebSocket. The board shows straight away what an agent did in the CLI, what came from `git pull` and what changed in an editor. Edits of `backlog.yaml` apply without a restart.
 
 ## Backlog format

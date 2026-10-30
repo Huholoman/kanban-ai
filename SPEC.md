@@ -260,7 +260,8 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 
 **Left panel**
 - *New item* button (dialog: title, type, status, priority, milestone, parent, labels, body).
-- Saved views; views with `section` grouped under foldable section headings; the ⋮ menu of a view moves it to an existing or new section (persisted to the YAML).
+- Saved views with their item count; views with `section` grouped under foldable section headings; the ⋮ menu of a view moves it to an existing or new section (persisted to the YAML) or pins it to the phone's bottom bar.
+- *Lint* summary at the bottom ("Lint: 2 warnings"); a click lists the problems with links to items.
 
 **Filter bar** (client-side, on any view, kept across views)
 - Search in id, title, branch (280 px, `/` focuses it).
@@ -290,7 +291,6 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 **Other**
 - Columns button in the app bar (views with `group_by`): pick and reorder the shown groups, saved as `columns:`; *Default* removes it.
 - Theme switch system → light → dark (for the session; default from `appearance.mode`); colours from `appearance`, reloaded live.
-- Lint badge in the app bar with the list of problems linking to items.
 - Live updates over the WebSocket (debounced refresh), reconnecting automatically.
 
 ## 10. Installation and operation

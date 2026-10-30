@@ -14,6 +14,7 @@ import 'columns_dialog.dart';
 import 'filter_bar.dart';
 import 'new_item_dialog.dart';
 import 'save_view_dialog.dart';
+import 'shell/view_navigation.dart';
 import 'view_layouts.dart';
 
 /// Main screen. On a wide window: saved views on the left, the board in the
@@ -148,7 +149,6 @@ class _BoardPageState extends State<BoardPage> {
                     onPressed: () => _editColumns(controller),
                   ),
                 if (AppScope.of(context).appearance case final appearance?) _ModeButton(appearance: appearance),
-                _LintButton(issues: controller.lint, onOpen: _open),
                 IconButton(
                   tooltip: 'Reload',
                   icon: const Icon(Icons.refresh),
@@ -168,7 +168,14 @@ class _BoardPageState extends State<BoardPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (sideNavigation) ...[
-                  _ViewsPanel(controller: controller, onCreate: () => _create(controller)),
+                  SizedBox(
+                    width: 220,
+                    child: ViewNavigation(
+                      controller: controller,
+                      onCreate: () => _create(controller),
+                      onOpenItem: _open,
+                    ),
+                  ),
                   const VerticalDivider(width: 1),
                 ],
                 Expanded(
@@ -358,199 +365,6 @@ class _Breadcrumb extends StatelessWidget {
   }
 }
 
-IconData _layoutIcon(ViewLayoutDto layout) => switch (layout) {
-  ViewLayoutDto.kanban => Icons.view_kanban_outlined,
-  ViewLayoutDto.graph => Icons.account_tree_outlined,
-  ViewLayoutDto.table => Icons.table_rows_outlined,
-  ViewLayoutDto.list => Icons.list,
-};
-
-/// Saved views as a list on the left: views without a section first, then
-/// foldable sections. Each view's menu moves it to another section.
-class _ViewsPanel extends StatelessWidget {
-  const _ViewsPanel({required this.controller, required this.onCreate});
-
-  final BoardController controller;
-  final VoidCallback onCreate;
-
-  @override
-  Widget build(BuildContext context) {
-    final sections = controller.viewSections;
-    return SizedBox(
-      width: 220,
-      child: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: FilledButton.tonalIcon(
-              onPressed: controller.workflow == null ? null : onCreate,
-              icon: const Icon(Icons.add),
-              label: const Text('New item'),
-            ),
-          ),
-          for (final (name, members) in sections)
-            if (name == null) ...[
-              const _SectionHeader(title: 'Views'),
-              for (final view in members) _tile(context, view),
-            ],
-          for (final (name, members) in sections)
-            if (name != null) ...[
-              _SectionHeader(
-                key: ValueKey('section-$name'),
-                title: name,
-                collapsed: controller.collapsedSections.contains(name),
-                onToggle: () => controller.toggleSection(name),
-              ),
-              if (!controller.collapsedSections.contains(name))
-                for (final view in members) _tile(context, view),
-            ],
-        ],
-      ),
-    );
-  }
-
-  Widget _tile(BuildContext context, ViewSummaryDto view) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: ListTile(
-        key: ValueKey('view-${view.id}'),
-        dense: true,
-        contentPadding: const EdgeInsets.only(left: 16, right: 4),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        selected: view.id == controller.selectedViewId,
-        selectedTileColor: theme.colorScheme.secondaryContainer,
-        leading: Icon(_layoutIcon(view.layout), size: 20),
-        title: Text(view.name),
-        trailing: MenuAnchor(
-          menuChildren: [
-            MenuItemButton(
-              key: ValueKey('move-view-${view.id}'),
-              leadingIcon: const Icon(Icons.drive_file_move_outline, size: 18),
-              onPressed: () => _move(context, view),
-              child: const Text('Move to section…'),
-            ),
-          ],
-          builder: (context, menu, _) => IconButton(
-            key: ValueKey('view-menu-${view.id}'),
-            tooltip: 'View options',
-            visualDensity: VisualDensity.compact,
-            iconSize: 18,
-            icon: const Icon(Icons.more_vert),
-            onPressed: () => menu.isOpen ? menu.close() : menu.open(),
-          ),
-        ),
-        onTap: () => unawaited(controller.selectView(view.id)),
-      ),
-    );
-  }
-
-  Future<void> _move(BuildContext context, ViewSummaryDto view) async {
-    final section = await showDialog<String>(
-      context: context,
-      builder: (_) => _SectionDialog(view: view, sections: controller.sectionNames),
-    );
-    if (section != null) await controller.moveView(view.id, section);
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({super.key, required this.title, this.collapsed = false, this.onToggle});
-
-  final String title;
-  final bool collapsed;
-
-  /// Null for the heading of views without a section, which cannot fold.
-  final VoidCallback? onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final style = theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant);
-    final toggle = onToggle;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: toggle,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(title, style: style, overflow: TextOverflow.ellipsis),
-              ),
-              if (toggle != null)
-                Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 18, color: style?.color),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Asks for the section of [view]: an existing one, a new name, or none.
-/// Pops the name, '' for no section, or null when cancelled.
-class _SectionDialog extends StatefulWidget {
-  const _SectionDialog({required this.view, required this.sections});
-
-  final ViewSummaryDto view;
-  final List<String> sections;
-
-  @override
-  State<_SectionDialog> createState() => _SectionDialogState();
-}
-
-class _SectionDialogState extends State<_SectionDialog> {
-  late final _name = TextEditingController(text: widget.view.section ?? '');
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text('Move "${widget.view.name}"'),
-    content: SizedBox(
-      width: 360,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(
-            key: const ValueKey('section-name'),
-            controller: _name,
-            autofocus: true,
-            decoration: const InputDecoration(labelText: 'Section', hintText: 'New or existing section'),
-            onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
-          ),
-          if (widget.sections.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final section in widget.sections)
-                  ActionChip(label: Text(section), onPressed: () => Navigator.of(context).pop(section)),
-              ],
-            ),
-          ],
-        ],
-      ),
-    ),
-    actions: [
-      if (widget.view.section != null)
-        TextButton(onPressed: () => Navigator.of(context).pop(''), child: const Text('Remove from section')),
-      TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-      FilledButton(onPressed: () => Navigator.of(context).pop(_name.text.trim()), child: const Text('Move')),
-    ],
-  );
-}
-
 class _ViewPicker extends StatelessWidget {
   const _ViewPicker({required this.controller});
 
@@ -570,7 +384,7 @@ class _ViewPicker extends StatelessWidget {
               value: view.id,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
-                children: [Icon(_layoutIcon(view.layout), size: 20), const SizedBox(width: 8), Text(view.name)],
+                children: [Icon(layoutIcon(view.layout), size: 20), const SizedBox(width: 8), Text(view.name)],
               ),
             ),
         ],
@@ -602,60 +416,6 @@ class _ModeButton extends StatelessWidget {
         onPressed: appearance.cycleMode,
       );
     },
-  );
-}
-
-class _LintButton extends StatelessWidget {
-  const _LintButton({required this.issues, required this.onOpen});
-
-  final List<LintIssueDto> issues;
-  final void Function(String id) onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final errors = issues.where((i) => i.isError).length;
-    final scheme = Theme.of(context).colorScheme;
-    return IconButton(
-      tooltip: issues.isEmpty ? 'Lint: all good' : 'Lint: ${issues.length} issue(s)',
-      onPressed: issues.isEmpty ? null : () => _show(context),
-      icon: Badge(
-        isLabelVisible: issues.isNotEmpty,
-        backgroundColor: errors > 0 ? scheme.error : Colors.orange,
-        label: Text('${issues.length}'),
-        child: Icon(issues.isEmpty ? Icons.verified_outlined : Icons.rule),
-      ),
-    );
-  }
-
-  void _show(BuildContext context) => showDialog<void>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('Lint'),
-      content: SizedBox(
-        width: 640,
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            for (final issue in issues)
-              ListTile(
-                dense: true,
-                leading: Icon(
-                  issue.isError ? Icons.error_outline : Icons.warning_amber,
-                  color: issue.isError ? Theme.of(context).colorScheme.error : Colors.orange,
-                ),
-                title: Text(issue.message),
-                subtitle: Text([issue.code, ?issue.item, ?issue.location].join(' · ')),
-                onTap: issue.item == null
-                    ? null
-                    : () {
-                        Navigator.of(dialogContext).pop();
-                        onOpen(issue.item!);
-                      },
-              ),
-          ],
-        ),
-      ),
-    ),
   );
 }
 
