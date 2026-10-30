@@ -279,6 +279,7 @@ class _BoardPageState extends State<BoardPage> {
       return const Center(child: Text('No views in this backlog.'));
     }
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (controller.error != null)
           MaterialBanner(
@@ -310,7 +311,7 @@ class _BoardPageState extends State<BoardPage> {
         if (result.hidden > 0)
           Padding(
             padding: const EdgeInsets.all(8),
-            child: Text('${result.hidden} more item(s) outside the shown columns.'),
+            child: Text('${result.hidden} more item(s) outside the shown columns.', textAlign: TextAlign.center),
           ),
       ],
     );
