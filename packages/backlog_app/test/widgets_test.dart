@@ -2,7 +2,6 @@ import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/backlog_app.dart';
 import 'package:backlog_app/features/board/presentation/view_layouts.dart';
 import 'package:backlog_app/features/item/presentation/item_page.dart';
-import 'package:backlog_app/shared/item_style.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -33,7 +32,7 @@ void main() {
     expect(find.text('todo'), findsOneWidget);
     expect(find.text('in-progress'), findsOneWidget);
     expect(find.text('Item T-1'), findsOneWidget);
-    expect(find.text('#ui'), findsOneWidget);
+    expect(find.text('ui'), findsOneWidget);
   });
 
   testWidgets('dragging a card to another column changes its status', (tester) async {
@@ -326,10 +325,14 @@ void main() {
     await tester.pumpWidget(BacklogApp(api: api));
     await tester.pumpAndSettle();
 
-    final label = tester.widget<Tag>(find.widgetWithText(Tag, '#ui'));
-    expect(label.color, const Color(0xFFD81B60));
-    final priority = tester.widget<Tag>(find.widgetWithText(Tag, 'p2'));
-    expect(priority.color, const Color(0xFF00FF00));
+    final label = tester.widget<Text>(
+      find.descendant(of: find.byKey(const ValueKey('card-T-1')), matching: find.text('ui')),
+    );
+    expect(label.style?.color, const Color(0xFFD81B60));
+    final priority = tester.widget<Text>(
+      find.descendant(of: find.byKey(const ValueKey('card-T-1')), matching: find.text('p2')),
+    );
+    expect(priority.style?.color, const Color(0xFF00FF00));
 
     MaterialApp app() => tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(app().themeMode, ThemeMode.system);

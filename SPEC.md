@@ -274,7 +274,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - Drag a card to another column to set the field the view groups by (status, priority, type, milestone, assignee); optimistic update, rolled back with a message on failure.
 - Inside a column children are indented under their parent; a parent sitting in another column appears as a grey context header, so a story in progress still shows its epic.
 - Parents with nested items have a fold toggle ("N hidden").
-- Cards show id (click copies it), type, priority, title, milestone, labels, PR link, blocked/ready state, claim holder (expired claims greyed), checklist or children progress.
+- Cards: id (click copies it) and priority on top (the most urgent one in the warning colour), the title, and one meta line by state, in this order: *● Ready*, *Blocked by …*, claim holder with the time left (*◉ agent · 1h left*), *Claim expired · agent* (faint, dashed border), otherwise labels, milestone and assignee; a PR link and branch share the line. A thin bar shows checklist or children progress. The selected card has an accent border, done cards are dimmed.
 
 **Lists / table / graph**
 - Items grouped by the view's `group_by`; the graph layout shows each item with an expandable tree of its dependencies (titles, statuses, cycle-safe), clickable.

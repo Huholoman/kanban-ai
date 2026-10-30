@@ -1,6 +1,8 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 
+import 'tokens.dart';
+
 /// Colours and icons that encode item properties the same way everywhere.
 /// Colours set in `appearance` of backlog.yaml win over the built-in ones.
 abstract final class ItemStyle {
@@ -70,10 +72,11 @@ class Tag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = BoardTokens.of(context);
     final configured = color;
     // Configured colours are picked for light pages; lift them on dark ones.
     final base = configured == null
-        ? theme.colorScheme.onSurfaceVariant
+        ? tokens.muted
         : theme.brightness == Brightness.dark && !filled
         ? Color.lerp(configured, Colors.white, 0.35)!
         : configured;
@@ -81,8 +84,8 @@ class Tag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-        color: filled ? base : base.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(6),
+        color: filled ? base : (configured == null ? tokens.chip : base.withValues(alpha: 0.10)),
+        borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
