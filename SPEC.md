@@ -263,6 +263,8 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - Saved views with their item count; views with `section` grouped under foldable section headings; the ⋮ menu of a view moves it to an existing or new section (persisted to the YAML) or pins it to the phone's bottom bar.
 - *Lint* summary at the bottom ("Lint: 2 warnings"); a click lists the problems with links to items.
 
+**Header** (56 px, top of the main area): the filter bar, then compact buttons for columns, theme and reload, and a loading indicator. `/` focuses the search when no text field has focus.
+
 **Filter bar** (client-side, on any view, kept across views)
 - Search in id, title, branch (280 px, `/` focuses it).
 - **Filters** button with a badge (number of selected values) opens a popover: Labels (own search box when there are many, count per value), Epic (everything under the chosen epic at any depth), Type, Priority, Milestone, People (assignee or claim holder); "Clear all", "N items match" and **Save as view...**. Values in one section are alternatives; sections, readiness segments and search combine with AND.
@@ -289,7 +291,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - **Panel trail:** opening a child (or any link) from a panel opens it in a new panel to the right; the child open on the right is highlighted in its parent's list. Two panels fit beside the board; with more, the board and the oldest panels give way to a breadcrumb (*Board › Epic › …*) leading back. Esc closes the rightmost panel.
 
 **Other**
-- Columns button in the app bar (views with `group_by`): pick and reorder the shown groups, saved as `columns:`; *Default* removes it.
+- Columns button in the header (views with `group_by`): pick and reorder the shown groups, saved as `columns:`; *Default* removes it.
 - Theme switch system → light → dark (for the session; default from `appearance.mode`); colours from `appearance`, reloaded live.
 - Live updates over the WebSocket (debounced refresh), reconnecting automatically.
 

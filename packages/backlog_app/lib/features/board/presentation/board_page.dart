@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../app/app_scope.dart';
-import '../../../app/appearance_controller.dart';
 import '../../item/presentation/item_page.dart';
 import '../application/board_controller.dart';
 import '../application/detail_trail.dart';
@@ -14,6 +13,7 @@ import 'columns_dialog.dart';
 import 'filter_bar.dart';
 import 'new_item_dialog.dart';
 import 'save_view_dialog.dart';
+import 'shell/board_header.dart';
 import 'shell/view_navigation.dart';
 import 'view_layouts.dart';
 
@@ -46,6 +46,9 @@ class _BoardPageState extends State<BoardPage> {
   BoardController? _controller;
   StreamSubscription<String>? _notices;
 
+  /// Focus of the search field in the header; the `/` key moves it there.
+  final _searchFocus = FocusNode();
+
   /// Items open in panels on the right, left to right.
   DetailTrail _trail = DetailTrail.empty;
 
@@ -62,6 +65,7 @@ class _BoardPageState extends State<BoardPage> {
   void dispose() {
     unawaited(_notices?.cancel());
     _controller?.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -108,6 +112,15 @@ class _BoardPageState extends State<BoardPage> {
     if (chosen != null) await controller.setColumns(chosen.isEmpty ? null : chosen);
   }
 
+  /// `/` jumps to the search unless the user is typing somewhere.
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.slash) return KeyEventResult.ignored;
+    final typing = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>();
+    if (typing != null) return KeyEventResult.ignored;
+    _searchFocus.requestFocus();
+    return KeyEventResult.handled;
+  }
+
   void _closeLast() => setState(() => _trail = _trail.pop());
 
   Future<void> _create(BoardController controller) async {
@@ -130,33 +143,10 @@ class _BoardPageState extends State<BoardPage> {
       bindings: {const SingleActivator(LogicalKeyboardKey.escape): _closeLast},
       child: Focus(
         autofocus: true,
+        onKeyEvent: _onKey,
         child: ListenableBuilder(
           listenable: controller,
           builder: (context, _) => Scaffold(
-            appBar: AppBar(
-              title: sideNavigation ? Text(_currentViewName(controller)) : _ViewPicker(controller: controller),
-              actions: [
-                if (controller.loading)
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                  ),
-                if (controller.canEditColumns)
-                  IconButton(
-                    key: const ValueKey('edit-columns'),
-                    tooltip: 'Columns of this view',
-                    icon: const Icon(Icons.view_week_outlined),
-                    onPressed: () => _editColumns(controller),
-                  ),
-                if (AppScope.of(context).appearance case final appearance?) _ModeButton(appearance: appearance),
-                IconButton(
-                  tooltip: 'Reload',
-                  icon: const Icon(Icons.refresh),
-                  onPressed: () => unawaited(controller.refresh()),
-                ),
-                const SizedBox(width: 8),
-              ],
-            ),
             floatingActionButton: controller.workflow == null || sideNavigation
                 ? null
                 : FloatingActionButton.extended(
@@ -179,8 +169,22 @@ class _BoardPageState extends State<BoardPage> {
                   const VerticalDivider(width: 1),
                 ],
                 Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) => _content(controller, trail, selectedId, constraints.maxWidth),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      BoardHeader(
+                        controller: controller,
+                        filter: controller.visible == null ? null : _filterBar(controller),
+                        onEditColumns: () => _editColumns(controller),
+                        compact: !sideNavigation,
+                      ),
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) =>
+                              _content(controller, trail, selectedId, constraints.maxWidth),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -260,6 +264,18 @@ class _BoardPageState extends State<BoardPage> {
   static String _currentViewName(BoardController controller) =>
       controller.views.where((view) => view.id == controller.selectedViewId).firstOrNull?.name ?? 'Backlog';
 
+  /// The filter toolbar of the header.
+  // TODO(lead): pass `searchFocus: _searchFocus` once FilterBar has the parameter.
+  Widget _filterBar(BoardController controller) => FilterBar(
+    filter: controller.filter,
+    options: controller.filterOptions,
+    shown: controller.counts.shown,
+    total: controller.counts.total,
+    onChanged: controller.setFilter,
+    onSaveAsView: () => _saveFilterAsView(controller),
+    index: controller.index,
+  );
+
   Widget _body(BoardController controller, String? selectedId) {
     final result = controller.visible;
     if (result == null) {
@@ -274,16 +290,6 @@ class _BoardPageState extends State<BoardPage> {
             content: Text('Showing older data: ${controller.error}'),
             actions: [TextButton(onPressed: controller.refresh, child: const Text('Retry'))],
           ),
-        FilterBar(
-          filter: controller.filter,
-          options: controller.filterOptions,
-          shown: controller.counts.shown,
-          total: controller.counts.total,
-          onChanged: controller.setFilter,
-          onSaveAsView: () => _saveFilterAsView(controller),
-          index: controller.index,
-        ),
-        const Divider(height: 1),
         Expanded(
           child: switch (result.layout) {
             ViewLayoutDto.kanban => KanbanBoard(
@@ -363,60 +369,6 @@ class _Breadcrumb extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ViewPicker extends StatelessWidget {
-  const _ViewPicker({required this.controller});
-
-  final BoardController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    if (controller.views.isEmpty) return const Text('Backlog');
-    return DropdownButtonHideUnderline(
-      child: DropdownButton<String>(
-        key: const ValueKey('view-picker'),
-        value: controller.selectedViewId,
-        style: Theme.of(context).textTheme.titleLarge,
-        items: [
-          for (final view in controller.views)
-            DropdownMenuItem(
-              value: view.id,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [Icon(layoutIcon(view.layout), size: 20), const SizedBox(width: 8), Text(view.name)],
-              ),
-            ),
-        ],
-        onChanged: (id) => id == null ? null : unawaited(controller.selectView(id)),
-      ),
-    );
-  }
-}
-
-/// Switches between the system, light and dark look for this session.
-class _ModeButton extends StatelessWidget {
-  const _ModeButton({required this.appearance});
-
-  final AppearanceController appearance;
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: appearance,
-    builder: (context, _) {
-      final (icon, label) = switch (appearance.mode) {
-        ThemeMode.system => (Icons.brightness_auto_outlined, 'system'),
-        ThemeMode.light => (Icons.light_mode_outlined, 'light'),
-        ThemeMode.dark => (Icons.dark_mode_outlined, 'dark'),
-      };
-      return IconButton(
-        key: const ValueKey('theme-mode'),
-        tooltip: 'Theme: $label (click to switch)',
-        icon: Icon(icon),
-        onPressed: appearance.cycleMode,
-      );
-    },
-  );
 }
 
 class _ErrorView extends StatelessWidget {
