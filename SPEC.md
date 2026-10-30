@@ -263,7 +263,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - Saved views with their item count; views with `section` grouped under foldable section headings; the ⋮ menu of a view moves it to an existing or new section (persisted to the YAML) or pins it to the phone's bottom bar.
 - *Lint* summary at the bottom ("Lint: 2 warnings"); a click lists the problems with links to items.
 
-**Header** (56 px, top of the main area): the filter bar, then compact buttons for columns, theme and reload, and a loading indicator. `/` focuses the search when no text field has focus.
+**Header** (56 px, top of the main area): the filter bar, then *Group: status ▾* (regroups the current view for the session by status, priority, type, milestone, assignee, labels or epic, or none; *The view's own* goes back; an asterisk marks a changed grouping; only an icon when the header is narrow), compact buttons for columns, theme and reload, and a loading indicator. `/` focuses the search when no text field has focus.
 
 **Filter bar** (client-side, on any view, kept across views)
 - Search in id, title, branch (280 px, `/` focuses it).

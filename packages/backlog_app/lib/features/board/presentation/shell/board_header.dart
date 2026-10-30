@@ -33,10 +33,16 @@ class BoardHeader extends StatelessWidget {
   final VoidCallback? onMenu;
   final bool compact;
 
+  /// Below this header width the Group by menu shrinks to an icon.
+  static const roomyWidth = 1000.0;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      LayoutBuilder(builder: (context, constraints) => _build(context, roomy: constraints.maxWidth >= roomyWidth));
+
+  Widget _build(BuildContext context, {required bool roomy}) {
     final tokens = BoardTokens.of(context);
-    final actions = _actions(context);
+    final actions = _actions(context, roomy: roomy);
     final menu = onMenu;
     final Widget content = compact
         ? Column(
@@ -70,12 +76,13 @@ class BoardHeader extends StatelessWidget {
     );
   }
 
-  List<Widget> _actions(BuildContext context) => [
+  List<Widget> _actions(BuildContext context, {required bool roomy}) => [
     if (controller.loading)
       const Padding(
         padding: EdgeInsets.all(10),
         child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
       ),
+    if (controller.result != null && !compact) _GroupByMenu(controller: controller, iconOnly: !roomy),
     if (controller.canEditColumns)
       IconActionButton(
         key: const ValueKey('edit-columns'),
@@ -86,6 +93,67 @@ class BoardHeader extends StatelessWidget {
     if (AppScope.of(context).appearance case final appearance?) _ModeButton(appearance: appearance),
     IconActionButton(tooltip: 'Reload', icon: Icons.refresh, onPressed: () => unawaited(controller.refresh())),
   ];
+}
+
+/// "Group: status ▾" — regroups the current view for the session; the first
+/// entry goes back to the view's own grouping.
+class _GroupByMenu extends StatelessWidget {
+  const _GroupByMenu({required this.controller, this.iconOnly = false});
+
+  final BoardController controller;
+
+  /// Just an icon with the grouping in its tooltip, for narrow headers.
+  final bool iconOnly;
+
+  static String _label(String? field) => switch (field) {
+    null || '' => 'none',
+    final field => field,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    final current = controller.result?.groupBy;
+    final override = controller.groupByOverride;
+    return MenuAnchor(
+      menuChildren: [
+        MenuItemButton(
+          key: const ValueKey('group-by-default'),
+          onPressed: override == null ? null : () => unawaited(controller.setGroupBy(null)),
+          child: const Text("The view's own"),
+        ),
+        for (final field in BoardController.groupableFields)
+          MenuItemButton(
+            key: ValueKey('group-by-$field'),
+            trailingIcon: field == current ? Icon(Icons.check, size: 16, color: tokens.accent) : null,
+            onPressed: () => unawaited(controller.setGroupBy(field)),
+            child: Text(field),
+          ),
+        MenuItemButton(
+          key: const ValueKey('group-by-none'),
+          trailingIcon: current == null ? Icon(Icons.check, size: 16, color: tokens.accent) : null,
+          onPressed: () => unawaited(controller.setGroupBy('')),
+          child: const Text('none'),
+        ),
+      ],
+      builder: (context, menu, _) {
+        final label = 'Group: ${_label(current)}${override == null ? '' : ' *'}';
+        void toggle() => menu.isOpen ? menu.close() : menu.open();
+        if (iconOnly) {
+          return IconActionButton(
+            key: const ValueKey('group-by'),
+            tooltip: label,
+            icon: Icons.segment,
+            onPressed: toggle,
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: SecondaryButton(key: const ValueKey('group-by'), label: label, icon: Icons.segment, onPressed: toggle),
+        );
+      },
+    );
+  }
 }
 
 /// View dropdown of the phone header.

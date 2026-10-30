@@ -164,4 +164,21 @@ void main() {
     final context = tester.element(find.byKey(const ValueKey('view-board')));
     expect(MediaQuery.textScalerOf(context).scale(13), closeTo(13 * 1.15, 0.01));
   });
+
+  testWidgets('the header regroups the view for the session', (tester) async {
+    await pumpApp(tester);
+    expect(find.text('Group: status'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('group-by')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('group-by-priority')));
+    await tester.pumpAndSettle();
+    expect(find.text('Group: priority *'), findsOneWidget);
+    expect(find.text('p0'), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('group-by')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('group-by-default')));
+    await tester.pumpAndSettle();
+    expect(find.text('Group: status'), findsOneWidget);
+  });
 }
