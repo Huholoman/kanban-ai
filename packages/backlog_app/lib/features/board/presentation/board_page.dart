@@ -88,8 +88,8 @@ class _BoardPageState extends State<BoardPage> {
       sections: controller.sectionNames,
     );
     if (chosen == null) return;
-    final (name, section) = chosen;
-    await controller.saveFilterAsView(name, section: section);
+    final (name, section, pinned) = chosen;
+    await controller.saveFilterAsView(name, section: section, pinned: pinned);
   }
 
   Future<void> _editColumns(BoardController controller) async {
