@@ -157,17 +157,38 @@ void main() {
     test('pushes changes made by anyone — the API or an agent on disk', () async {
       final events = StreamIterator(api.changes());
       addTearDown(events.cancel);
-      // Let the socket connect before anything changes.
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      var pending = events.moveNext();
+
+      // The next event that touches a path matching [test], skipping others.
+      Future<List<String>> nextWith(bool Function(String path) test) async {
+        while (true) {
+          expect(await pending.timeout(const Duration(seconds: 5)), isTrue);
+          final paths = events.current.paths;
+          pending = events.moveNext();
+          if (paths.any(test)) return paths;
+        }
+      }
+
+      // Wait until the socket delivers instead of guessing how long it takes
+      // to connect: touch a doc until its change arrives.
+      final probe = File(p.join(dir.path, 'docs', 'probe.md'));
+      for (var attempt = 0; ; attempt++) {
+        probe.writeAsStringSync('$attempt');
+        final arrived = await Future.any([
+          pending.then((_) => true),
+          Future<bool>.delayed(const Duration(milliseconds: 200), () => false),
+        ]);
+        if (arrived) break;
+        expect(attempt, lessThan(50), reason: 'no change event within 10 s');
+      }
+      pending = events.moveNext();
 
       final created = await api.createItem(const NewItemRequest(title: 'Live'));
-      expect(await events.moveNext().timeout(const Duration(seconds: 5)), isTrue);
-      expect(events.current.paths, contains(created.item.path));
+      expect(await nextWith((path) => path == created.item.path), contains(created.item.path));
 
       final backlog = await Backlog.open(dir.path);
       await backlog.claims.claim(created.item.id, 'agent-7', force: true);
-      expect(await events.moveNext().timeout(const Duration(seconds: 5)), isTrue);
-      expect(events.current.paths, anyElement(startsWith('.locks/')));
+      expect(await nextWith((path) => path.startsWith('.locks/')), anyElement(startsWith('.locks/')));
       expect((await api.item(created.item.id)).item.claim!.agent, 'agent-7');
     });
 
