@@ -77,11 +77,19 @@ void main() {
 
   testWidgets('many labels get a search box that narrows the list', (tester) async {
     final many = [
-      for (var i = 0; i < 10; i++) item('T-$i', labels: ['label$i', if (i == 3) 'infra']),
+      for (var i = 0; i < 10; i++) item('T-$i', labels: ['label$i', if (i == 3 || i == 8) 'infra']),
     ];
     await pumpApp(tester, many);
     await tapKey(tester, 'filter-button');
-    expect(find.byKey(const ValueKey('filter-label-label7')), findsOneWidget);
+    // A short list first: the most frequent labels (infra has two items).
+    expect(find.byKey(const ValueKey('filter-label-infra')), findsOneWidget);
+    expect(find.byKey(const ValueKey('filter-label-label9')), findsNothing);
+    expect(find.text('Show all (11)'), findsOneWidget);
+    await tapKey(tester, 'filter-label-more');
+    expect(find.byKey(const ValueKey('filter-label-label9')), findsOneWidget);
+    await tapKey(tester, 'filter-label-more');
+    expect(find.byKey(const ValueKey('filter-label-label9')), findsNothing);
+
     await tester.enterText(find.byKey(const ValueKey('filter-label-search')), 'inf');
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('filter-label-infra')), findsOneWidget);

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 
@@ -309,10 +311,12 @@ class _FiltersPanel extends StatefulWidget {
 }
 
 class _FiltersPanelState extends State<_FiltersPanel> {
-  /// Labels beyond this many get their own search box.
-  static const _searchableFrom = 8;
+  /// A section shows this many values until "Show all"; longer ones also
+  /// get a search box, so the other sections stay in reach.
+  static const _shortList = 6;
 
-  String _labelQuery = '';
+  final _queries = <FilterFacet, String>{};
+  final _expanded = <FilterFacet>{};
 
   @override
   Widget build(BuildContext context) {
@@ -383,41 +387,68 @@ class _FiltersPanelState extends State<_FiltersPanel> {
     );
   }
 
+  /// Priorities and types are few and short: a wrapped row of checkboxes.
+  static bool _inline(FilterFacet facet) => facet == FilterFacet.priority || facet == FilterFacet.type;
+
   Widget _section(FilterFacet facet) {
-    var values = widget.options[facet]!;
-    final searchable = facet == FilterFacet.label && values.length >= _searchableFrom;
-    final query = _labelQuery.trim().toLowerCase();
-    if (searchable && query.isNotEmpty) {
+    final all = widget.options[facet]!;
+    final long = !_inline(facet) && all.length > _shortList;
+    final query = (_queries[facet] ?? '').trim().toLowerCase();
+    final selected = widget.filter.valuesFor(facet);
+    final counts = widget.counts[facet] ?? const {};
+    List<String> values;
+    if (query.isNotEmpty) {
       values = [
-        for (final value in values)
-          if (value.toLowerCase().contains(query)) value,
+        for (final value in all)
+          if (facet.describe(value, widget.index).toLowerCase().contains(query)) value,
       ];
+    } else if (long && !_expanded.contains(facet)) {
+      // The short list: what is ticked, then the most frequent values.
+      final ranked = [...all]
+        ..sort((a, b) {
+          final bySelection = (selected.contains(b) ? 1 : 0) - (selected.contains(a) ? 1 : 0);
+          if (bySelection != 0) return bySelection;
+          final byCount = (counts[b] ?? 0) - (counts[a] ?? 0);
+          return byCount != 0 ? byCount : all.indexOf(a) - all.indexOf(b);
+        });
+      values = ranked.take(max(_shortList, selected.length)).toList();
+    } else {
+      values = all;
     }
+    final hidden = all.length - values.length;
     return Column(
       key: ValueKey('filter-${facet.name}'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionLabel(facet.title, padding: const EdgeInsets.only(top: 8, bottom: 4)),
-        if (searchable)
+        if (long)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: SizedBox(
               height: BoardTokens.controlHeight,
               child: TextField(
-                key: const ValueKey('filter-label-search'),
+                key: ValueKey('filter-${facet.name}-search'),
                 textAlignVertical: TextAlignVertical.center,
                 decoration: InputDecoration(
-                  hintText: 'Search labels (${widget.options[facet]!.length})',
+                  hintText: 'Search ${facet.title.toLowerCase()} (${all.length})',
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
-                onChanged: (text) => setState(() => _labelQuery = text),
+                onChanged: (text) => setState(() => _queries[facet] = text),
               ),
             ),
           ),
-        if (facet == FilterFacet.priority)
+        if (_inline(facet))
           Wrap(spacing: 12, children: [for (final value in values) _option(facet, value)])
         else
           for (final value in values) _option(facet, value),
+        if (long && query.isEmpty && (hidden > 0 || _expanded.contains(facet)))
+          LinkButton(
+            key: ValueKey('filter-${facet.name}-more'),
+            label: _expanded.contains(facet) ? 'Show fewer' : 'Show all (${all.length})',
+            accent: true,
+            compact: true,
+            onPressed: () => setState(() => _expanded.contains(facet) ? _expanded.remove(facet) : _expanded.add(facet)),
+          ),
       ],
     );
   }
@@ -425,7 +456,7 @@ class _FiltersPanelState extends State<_FiltersPanel> {
   Widget _option(FilterFacet facet, String value) {
     final tokens = BoardTokens.of(context);
     final count = widget.counts[facet]?[value];
-    final compact = facet == FilterFacet.priority;
+    final compact = _inline(facet);
     return InkWell(
       borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
       onTap: () => widget.onChanged(widget.filter.toggle(facet, value)),
