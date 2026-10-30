@@ -264,7 +264,6 @@ class _BoardPageState extends State<BoardPage> {
       controller.views.where((view) => view.id == controller.selectedViewId).firstOrNull?.name ?? 'Backlog';
 
   /// The filter toolbar of the header.
-  // TODO(lead): pass `searchFocus: _searchFocus` once FilterBar has the parameter.
   Widget _filterBar(BoardController controller) => FilterBar(
     filter: controller.filter,
     options: controller.filterOptions,
@@ -273,6 +272,8 @@ class _BoardPageState extends State<BoardPage> {
     onChanged: controller.setFilter,
     onSaveAsView: () => _saveFilterAsView(controller),
     index: controller.index,
+    counts: controller.filterCounts,
+    searchFocus: _searchFocus,
   );
 
   Widget _body(BoardController controller, String? selectedId) {
@@ -291,8 +292,8 @@ class _BoardPageState extends State<BoardPage> {
           ),
         Expanded(
           child: switch (result.layout) {
-            // TODO(lead): pass `stacked: width < BoardPage.phoneWidth` once KanbanBoard has the parameter.
             ViewLayoutDto.kanban => KanbanBoard(
+              stacked: MediaQuery.sizeOf(context).width < BoardPage.phoneWidth,
               result: result,
               workflow: controller.workflow,
               index: controller.index,

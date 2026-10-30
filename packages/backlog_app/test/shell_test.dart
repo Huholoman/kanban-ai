@@ -124,4 +124,21 @@ void main() {
       expect(find.byKey(const ValueKey('detail-sheet')), findsNothing);
     });
   });
+
+  testWidgets('the / key focuses the search field', (tester) async {
+    await pumpApp(tester);
+    final search = find.descendant(
+      of: find.byKey(const ValueKey('filter-search')),
+      matching: find.byType(EditableText),
+    );
+    expect(tester.widget<EditableText>(search).focusNode.hasFocus, isFalse);
+    await tester.sendKeyEvent(LogicalKeyboardKey.slash);
+    await tester.pump();
+    expect(tester.widget<EditableText>(search).focusNode.hasFocus, isTrue);
+  });
+
+  testWidgets('phones get the board as stacked sections', (tester) async {
+    await pumpApp(tester, width: 400);
+    expect(tester.widget<KanbanBoard>(find.byType(KanbanBoard)).stacked, isTrue);
+  });
 }

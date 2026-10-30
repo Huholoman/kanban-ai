@@ -42,6 +42,9 @@ void main() {
     expect(find.byKey(const ValueKey('filter-badge')), findsOneWidget);
     expect(find.text('2 items match'), findsOneWidget);
 
+    // A tap outside an open menu only closes it, so close the popover first.
+    await tester.tapAt(const Offset(1300, 800));
+    await tester.pumpAndSettle();
     await tapKey(tester, 'chip-label-remove');
     expect(find.text('label: ui'), findsNothing);
     expect(find.text('Item T-2'), findsOneWidget);

@@ -190,6 +190,10 @@ class BoardController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// How many items of the current view have each facet value.
+  Map<FilterFacet, Map<String, int>> get filterCounts =>
+      BoardFilter.counts(result?.groups.expand((group) => group.items) ?? const [], index: index);
+
   void setFilter(BoardFilter next) {
     filter = next;
     notifyListeners();
