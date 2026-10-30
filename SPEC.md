@@ -263,10 +263,10 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - Saved views; views with `section` grouped under foldable section headings; the ⋮ menu of a view moves it to an existing or new section (persisted to the YAML).
 
 **Filter bar** (client-side, on any view, kept across views)
-- Search in id, title, branch.
-- Menus: Labels, Epic (everything under the chosen epic at any depth), Type, Priority, Milestone, People (assignee or claim holder). Values in one menu are alternatives; menus, chips and search combine with AND.
-- Chips: Ready, Blocked, Claimed (with explanatory tooltips). Clear button and "shown of total" count.
-- **Save as view:** turns the filter into view conditions (search → `or` of `contains` on id/title/branch, menus → field lists, people → `assignee` or `claimed_by`, epic → `epic`, chips → `ready/blocked/claimed: true`) and saves the current view plus them as a new view (name, optional section); the board then switches to it with the filter cleared.
+- Search in id, title, branch (280 px, `/` focuses it).
+- **Filters** button with a badge (number of selected values) opens a popover: Labels (own search box when there are many, count per value), Epic (everything under the chosen epic at any depth), Type, Priority, Milestone, People (assignee or claim holder); "Clear all", "N items match" and **Save as view...**. Values in one section are alternatives; sections, readiness segments and search combine with AND.
+- Segmented control Ready | Blocked | Claimed (with explanatory tooltips), then one removable chip per facet with values (`label: infra`, `priority: p0-p1`). "N of M shown · Clear" when a filter is active.
+- **Save as view:** turns the filter into view conditions (search → `or` of `contains` on id/title/branch, facet sections → field lists, people → `assignee` or `claimed_by`, epic → `epic`, segments → `ready/blocked/claimed: true`) and saves the current view plus them as a new view (name, optional section, optionally pinned to the mobile bottom bar); the board then switches to it with the filter cleared.
 - Status is intentionally not a filter: views show it as columns.
 
 **Kanban**

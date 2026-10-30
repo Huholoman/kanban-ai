@@ -141,18 +141,18 @@ void main() {
         item('T-3', status: 'in-progress', labels: ['ui', 'web']),
       ],
     );
-    await tester.tap(find.byKey(const ValueKey('filter-label')));
+    await tester.tap(find.byKey(const ValueKey('filter-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('filter-label-ui')).first);
     await tester.pumpAndSettle();
-    await tester.tapAt(const Offset(700, 800)); // close the menu
+    await tester.tapAt(const Offset(1300, 800)); // close the popover
     await tester.pumpAndSettle();
 
     expect(find.text('Item T-1'), findsOneWidget);
     expect(find.text('Item T-3'), findsOneWidget);
     expect(find.text('Item T-2'), findsNothing);
-    expect(find.text('Labels: #ui'), findsOneWidget);
-    expect(find.text('2 of 3'), findsOneWidget);
+    expect(find.text('label: ui'), findsOneWidget);
+    expect(find.text('2 of 3 shown ·'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('filter-clear')));
     await tester.pumpAndSettle();
@@ -364,6 +364,8 @@ void main() {
     final api = await pumpApp(tester);
     expect(find.byKey(const ValueKey('filter-save')), findsNothing, reason: 'nothing to save without a filter');
     await tester.tap(find.byKey(const ValueKey('filter-flag-ready')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('filter-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('filter-save')));
     await tester.pumpAndSettle();
