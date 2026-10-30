@@ -316,7 +316,7 @@ Dart pub workspace (`backlog_core`, `backlog_cli`, `backlog_api`, `backlog_serve
 - **backlog_cli** — thin adapter; text and JSON renderers.
 - **backlog_api** — DTOs, `BacklogApi` interface, `HttpBacklogApi` (pure Dart, compiles for the web).
 - **backlog_server** — shelf: `ApiHandler` + `DtoMapper`, `ChangeFeed` (watcher → WebSocket), middleware (token, client allowlist, CORS), multi-address binding.
-- **backlog_app** — features `board` and `item`, each with `application/` (ChangeNotifier controllers and pure logic: `BoardFilter`, `ColumnArrangement`, `DetailTrail`) and `presentation/`; depends only on `BacklogApi`.
+- **backlog_app** — features `board` and `item`, each with `application/` (ChangeNotifier controllers and pure logic: `BoardFilter`, `ColumnArrangement`, `DetailNavigation`; shared design tokens in `shared/tokens.dart`) and `presentation/`; depends only on `BacklogApi`.
 
 Development: `mise run check` (format check, analysis, all tests), `mise run playground` (demo backlog), `mise run serve`.
 
@@ -325,6 +325,6 @@ Development: `mise run check` (format check, analysis, all tests), `mise run pla
 - Prototype; formats may still change.
 - Claims coordinate agents sharing one filesystem; agents on different machines need a shared backlog folder (or the server).
 - The web app has no user accounts; protection is the token plus `--host`/`--allow`.
-- Filter state, folded columns and the panel trail are not kept across page reloads.
+- Filter state, folded columns and the detail's navigation history are not kept across page reloads.
 - `section` and `columns` are the only view properties editable from the app; other view changes, statuses and colours are made in the YAML.
 - The theme switch is not remembered across page reloads.
