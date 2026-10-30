@@ -160,6 +160,20 @@ final class BoardFilter {
     );
   }
 
+  /// How many of [items] carry each value, per facet (an item with several
+  /// labels counts once for each). [index] resolves epics.
+  static Map<FilterFacet, Map<String, int>> counts(Iterable<ItemDto> items, {Map<String, ItemDto> index = const {}}) {
+    final result = {for (final facet in FilterFacet.values) facet: <String, int>{}};
+    for (final item in items) {
+      for (final facet in FilterFacet.values) {
+        for (final value in facet.valuesOf(item, index).toSet()) {
+          result[facet]![value] = (result[facet]![value] ?? 0) + 1;
+        }
+      }
+    }
+    return result;
+  }
+
   /// Values to offer per facet, taken from [items] (and the current selection,
   /// so nothing selected disappears). Priorities and types keep the workflow
   /// order, the rest is alphabetical (epics by title).
