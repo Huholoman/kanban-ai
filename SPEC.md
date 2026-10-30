@@ -256,7 +256,7 @@ Errors: `{"error": {"type", "message", "candidates"?}}` with `not_found` 404, `a
 
 URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from the UI, default `web`), `&server=http://…` (another API server).
 
-**Layout** (responsive): from 900 px a left panel with views; from 1200 px detail panels next to the board; narrower windows use a view dropdown and full-screen detail.
+**Layout** (responsive): from 900 px a left panel with views (208 px, 240 px from 2000 px); the open item is a panel from 1200 px, a bottom sheet from 840 px and a full page below; narrower windows use a view dropdown.
 
 **Left panel**
 - *New item* button (dialog: title, type, status, priority, milestone, parent, labels, body).
@@ -288,7 +288,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - Editable title, status, priority, type, milestone, assignee, branch, pull request, labels, Markdown body (rendered, with an editor).
 - PR shown as "PR #42", opens in a new tab (http/https only).
 - Relations as foldable sections with counts — Children (with "x/y done"), Parent, Depends on, Blocks, Related; empty ones hidden; links added from the *Link:* row and removed with ×.
-- **Panel trail:** opening a child (or any link) from a panel opens it in a new panel to the right; the child open on the right is highlighted in its parent's list. Two panels fit beside the board; with more, the board and the oldest panels give way to a breadcrumb (*Board › Epic › …*) leading back. Esc closes the rightmost panel.
+- **One detail panel:** 480 px (520 px from 2000 px) right of the board from 1200 px; from 840 px a bottom sheet over the board (about 45 % of the height, drag handle, ⤢ opens it as a full page); narrower windows use a full page. Esc closes it.
 
 **Other**
 - Columns button in the header (views with `group_by`): pick and reorder the shown groups, saved as `columns:`; *Default* removes it.

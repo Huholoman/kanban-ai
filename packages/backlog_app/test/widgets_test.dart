@@ -1,7 +1,6 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/backlog_app.dart';
 import 'package:backlog_app/features/board/presentation/view_layouts.dart';
-import 'package:backlog_app/features/item/presentation/item_page.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -234,61 +233,6 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
     expect(position.pixels, greaterThan(0));
-  });
-
-  testWidgets('children open in panels to the right, the board gives way when they do not fit', (tester) async {
-    await pumpApp(
-      tester,
-      width: 1900,
-      items: [
-        item('E-1', type: 'epic'),
-        item('S-1', type: 'story', parent: 'E-1'),
-        item('T-1', parent: 'S-1'),
-      ],
-    );
-    await tester.tap(find.text('Item E-1'));
-    await tester.pumpAndSettle();
-    expect(find.byType(ItemDetailView), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('link-S-1')).first);
-    await tester.pumpAndSettle();
-    expect(find.byType(ItemDetailView), findsNWidgets(2));
-    expect(find.byType(KanbanBoard), findsOneWidget, reason: 'two panels still fit next to the board');
-
-    await tester.tap(find.byKey(const ValueKey('link-T-1')).first);
-    await tester.pumpAndSettle();
-    expect(find.byType(ItemDetailView), findsNWidgets(3));
-    expect(find.byType(KanbanBoard), findsNothing);
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pumpAndSettle();
-    expect(find.byType(ItemDetailView), findsNWidgets(2));
-    expect(find.byType(KanbanBoard), findsOneWidget);
-  });
-
-  testWidgets('the breadcrumb leads back to the board', (tester) async {
-    await pumpApp(
-      tester,
-      width: 1300,
-      items: [
-        item('E-1', type: 'epic'),
-        item('S-1', type: 'story', parent: 'E-1'),
-        item('T-1', parent: 'S-1'),
-      ],
-    );
-    await tester.tap(find.text('Item E-1'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('link-S-1')).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('link-T-1')).first);
-    await tester.pumpAndSettle();
-
-    expect(find.byType(ItemDetailView), findsNWidgets(2), reason: 'only two panels fit');
-    expect(find.byKey(const ValueKey('crumb-E-1')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('crumb-board')));
-    await tester.pumpAndSettle();
-    expect(find.byType(ItemDetailView), findsNothing);
-    expect(find.byType(KanbanBoard), findsOneWidget);
   });
 
   testWidgets('relations fold, show counts and hide when empty', (tester) async {
