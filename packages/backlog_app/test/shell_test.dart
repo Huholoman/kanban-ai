@@ -158,4 +158,10 @@ void main() {
     expect(find.byKey(const ValueKey('card-S-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('card-T-9')), findsNothing);
   });
+
+  testWidgets('text is larger on very wide screens', (tester) async {
+    await pumpApp(tester, width: 2560, height: 1440);
+    final context = tester.element(find.byKey(const ValueKey('view-board')));
+    expect(MediaQuery.textScalerOf(context).scale(13), closeTo(13 * 1.15, 0.01));
+  });
 }
