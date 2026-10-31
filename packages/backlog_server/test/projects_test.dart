@@ -140,6 +140,19 @@ projects:
     expect((await http.get(server.uri.replace(path: '/api/p/b/health'))).statusCode, 401);
   });
 
+  test('PATCH /api/projects/<id> pins a project in the registry file', () async {
+    expect((await api.projects()).map((project) => project.pinned), everyElement(isFalse));
+    final pinned = await api.setPinned('b', true);
+    expect((pinned.id, pinned.name, pinned.pinned), ('b', 'Beta', true));
+    expect((await api.projects()).map((project) => project.pinned), [false, true, false, false]);
+    final text = File(registry).readAsStringSync();
+    expect(text, contains('# test registry'));
+    expect(text, contains('pinned: true'));
+    expect((await api.setPinned('b', false)).pinned, isFalse);
+    expect(File(registry).readAsStringSync(), isNot(contains('pinned')));
+    await expectLater(api.setPinned('nope', true), throwsA(apiError(404, 'not_found')));
+  });
+
   test('change events arrive on the socket of their project only', () async {
     final alphaEvents = <BacklogChangeEvent>[];
     final alpha = api.project('alpha').changes().listen(alphaEvents.add);

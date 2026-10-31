@@ -407,8 +407,8 @@ final class FakeBacklogApi implements BacklogApi {
   );
 }
 
-ProjectDto fakeProject(String id, {String? error}) =>
-    ProjectDto(id: id, name: 'Project $id', path: '/srv/$id/backlog', error: error);
+ProjectDto fakeProject(String id, {String? error, bool pinned = false}) =>
+    ProjectDto(id: id, name: 'Project $id', path: '/srv/$id/backlog', error: error, pinned: pinned);
 
 /// In-memory [ProjectsApi]: [list] as the registry, one [FakeBacklogApi]
 /// per project in [backlogs]; [failure] is thrown by [projects].
@@ -433,5 +433,15 @@ final class FakeProjectsApi implements ProjectsApi {
   BacklogApi project(String id) {
     opened.add(id);
     return backlogs[id]!;
+  }
+
+  @override
+  Future<ProjectDto> setPinned(String id, bool pinned) async {
+    final index = list.indexWhere((project) => project.id == id);
+    if (index < 0) throw BacklogApiException(404, 'not_found', 'No project "$id".');
+    final old = list[index];
+    final updated = ProjectDto(id: old.id, name: old.name, path: old.path, error: old.error, pinned: pinned);
+    list = [...list]..[index] = updated;
+    return updated;
   }
 }

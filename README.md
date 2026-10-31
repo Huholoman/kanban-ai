@@ -503,9 +503,9 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `view [name]` | saved views |
 | `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches, dispatcher worktrees, agent, actions and pull request commands (exit 1 on errors) |
 | `instructions` | the guide for agents, in Markdown |
-| `projects`, `projects add [dir] [--id] [--name]`, `projects remove <id>` | the registry of backlogs on this machine (`~/.config/kanban-ai/projects.yaml`), see below |
+| `projects`, `projects add [dir] [--id] [--name]`, `projects remove <id>`, `projects pin\|unpin <id>` | the registry of backlogs on this machine (`~/.config/kanban-ai/projects.yaml`), see below |
 
-**Project registry:** `backlog init` registers the new backlog by itself (`--no-register` skips it); `backlog projects add` (in a project) registers an existing backlog in `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` (default `~/.config/kanban-ai/projects.yaml`; elsewhere with `BACKLOG_PROJECTS` or `--projects <file>`). The file is plain YAML you can also edit by hand — `projects:` is a list of `{id?, name?, path}`, paths absolute, `~/…` or relative to the file; the id defaults to the project folder's name (the parent of a folder called `backlog`), the first project is the default one, and `pinned: true` is kept for the board's upcoming pinned projects.
+**Project registry:** `backlog init` registers the new backlog by itself (`--no-register` skips it); `backlog projects add` (in a project) registers an existing backlog in `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` (default `~/.config/kanban-ai/projects.yaml`; elsewhere with `BACKLOG_PROJECTS` or `--projects <file>`). The file is plain YAML you can also edit by hand — `projects:` is a list of `{id?, name?, path}`, paths absolute, `~/…` or relative to the file; the id defaults to the project folder's name (the parent of a folder called `backlog`), the first project is the default one, and `pinned: true` puts a project into the board switcher's short list (`backlog projects pin|unpin <id>`).
 
 Global options are `-C <dir>` and `--json`. The agent comes from `--as` or `BACKLOG_AGENT`. **Exit codes:** 0 ok, 1 error, 2 nothing to do, 3 claim conflict, 4 not found, 64 usage. JSON fields are only ever added, never renamed.
 
@@ -558,7 +558,7 @@ There is no event bus or event sourcing: the state lives in files and git keeps 
 **The app** is split by feature (`features/board`, `features/item`, `features/projects`, `features/dispatch`). Each feature has `application/` (`ChangeNotifier` controllers without widgets, and pure logic such as `ColumnArrangement`) and `presentation/`. It depends only on the `BacklogApi` interface, which `AppScope` provides. `ProjectsController` picks the open project from the `ProjectsApi`; each project gets its own session (its `BacklogApi` in `AppScope`, theme, board), thrown away as a whole when another project is opened.
 
 **The REST API** (`/api/…` for the default project, the same under `/api/p/<id>/…` for each project):
-- `projects` (global: `[{id, name, path, error}]`)
+- `projects` (global: `[{id, name, path, error, pinned}]`); `projects/<id>`: PATCH `{pinned}` writes it into the registry
 - `workflow`, `items` (`?all=true`)
 - `items/<id>`: GET (with its relations and the items it waits for or holds up through `touches`), and PATCH `{changes: ["status=done"], body}`
 - `items/<id>/claim|release|done`: POST `{agent, status, force}`

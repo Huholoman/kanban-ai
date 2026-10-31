@@ -42,7 +42,7 @@ projects:
 - **Project folder** is the backlog folder itself, or its parent when the folder is called `backlog` (`~/p/hobbyo/backlog` → `hobbyo`).
 - **id** — lower-case letters, digits, `-`, `_`, starting with a letter or digit; unique within the registry (a repeated or invalid id makes the whole file invalid). It appears in URLs (`/api/p/<id>/…`).
 - **Order** matters: the first project is the *default project*.
-- **pinned** — optional `true`/`false` (default false), read and written back; meant for clients that offer pinned projects first (not used yet).
+- **pinned** — optional `true`/`false` (default false), read and written back; meant for clients that offer pinned projects first. Set with `backlog projects pin|unpin <id>` or `PATCH /api/projects/<id>`; unpinning removes the key.
 - Unknown keys and comments are kept; `backlog init` and `backlog projects add/remove` edit the file in place. A missing file is an empty registry.
 
 ## 2. Configuration — `backlog.yaml`
@@ -297,9 +297,10 @@ Global options: `-C/--dir <folder>`, `--json` (machine-readable output; JSON fie
 | `view [name]` | run a saved view; without a name list views grouped by section |
 | `lint` | check the backlog; exit 1 on errors |
 | `instructions` | print the workflow guide for agents (Markdown, for CLAUDE.md / AGENTS.md) |
-| `projects [list] [--projects f]` | the project registry (§1.2): id, name, path, the default project and why a backlog cannot be opened; JSON `[{id, name, path, default, error}]` |
+| `projects [list] [--projects f]` | the project registry (§1.2): id, name, path, the default project and why a backlog cannot be opened; JSON `[{id, name, path, default, pinned, error}]`; the text list marks `(default)` and `(pinned)` |
 | `projects add [path] [--id i] [--name n]` | register a backlog (default: the one found as in §1.1; a given folder may also be the project folder with `backlog/` inside); it must open; without `--id` the derived id gets `-2`, `-3`, … when taken; the entry is written with its `id` |
 | `projects remove <id>` | unregister a backlog (its files stay) |
+| `projects pin <id>`, `projects unpin <id>` | set or remove `pinned: true` of a registered project (§1.2), keeping the rest of the file; JSON is the project as in `projects` |
 
 `--where` conditions: `field=a,b` (any of), `field!=a`, `field~text` (contains, ignoring case), `field?` (has a value), `!field?` (has none); repeatable (AND). Any field from §3 / §6.2 works, including custom keys.
 
@@ -377,7 +378,8 @@ Every path below except `/api/health` and `/api/projects` exists per project und
 | Method & path | Body / query | Returns |
 |---|---|---|
 | `GET /api/health` | — (no token needed) | `{"ok": true}` |
-| `GET /api/projects` | | `[{id, name, path, error}]` in registry order; `error` (why the backlog cannot be opened) is null for working projects |
+| `GET /api/projects` | | `[{id, name, path, error, pinned}]` in registry order; `error` (why the backlog cannot be opened) is null for working projects |
+| `PATCH /api/projects/<id>` | `{pinned: bool}` | writes `pinned` into the registry file (§1.2) and answers the project as in the list; `not_found` 404 for an unknown id, `invalid_input` 400 for another body or a server started on one folder (no registry) |
 | `GET /api/workflow` | | statuses, priorities, types, milestones, defaults, appearance, `actions: [{name, kind, statuses, on_enter, agent, fresh, review, auto_fix}]` (`dispatcher.actions`; `kind` `prompt` \| `command` \| `builtin` — a review is a `prompt` with `review: true`, `statuses` null for the default, `agent` the profile of a prompt action) |
 | `GET /api/items` | `?all=true` includes done | items (same shape as `backlog --json list`) |
 | `POST /api/items` | `{title, type?, status?, priority?, milestone?, parent?, depends_on[], labels[], touches[], body}` | detail (201) |

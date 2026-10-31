@@ -305,5 +305,27 @@ void main() {
         'ws://server:8640/api/p/hobbyo/events?token=t0k',
       ]);
     });
+
+    test('projects: PATCH /api/projects/<id> pins a project', () async {
+      late http.Request sent;
+      final projects = HttpProjectsApi(
+        Uri.parse('http://server:8640/'),
+        client: MockClient((request) async {
+          sent = request;
+          final body = const ProjectDto(id: 'hobbyo', name: 'Hobbyo', path: '/p/hobbyo/backlog', pinned: true).toJson();
+          return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json'});
+        }),
+      );
+      final pinned = await projects.setPinned('hobbyo', true);
+      expect(pinned.pinned, isTrue);
+      expect((sent.method, sent.url.path), ('PATCH', '/api/projects/hobbyo'));
+      expect(jsonDecode(sent.body), {'pinned': true});
+      expect(ProjectDto.fromJson(pinned.toJson()).pinned, isTrue);
+      expect(
+        ProjectDto.fromJson(const {'id': 'a', 'name': 'a', 'path': '/a'}).pinned,
+        isFalse,
+        reason: 'older servers',
+      );
+    });
   });
 }

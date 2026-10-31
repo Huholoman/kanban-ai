@@ -239,6 +239,10 @@ final class HttpProjectsApi implements ProjectsApi {
   }
 
   @override
+  Future<ProjectDto> setPinned(String id, bool pinned) async =>
+      ProjectDto.fromJson(asJson(await _default._send('PATCH', ApiPaths.project(id), {'pinned': pinned})));
+
+  @override
   BacklogApi project(String id) =>
       HttpBacklogApi(baseUri, token: token, project: id, client: _client, connectSocket: _connectSocket);
 

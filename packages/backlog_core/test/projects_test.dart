@@ -99,6 +99,28 @@ projects:
       expect(() => service.remove('hobbyo'), throwsA(isA<NotFoundException>()));
     });
 
+    test('pin and unpin write `pinned` and keep the rest', () async {
+      File(file)
+        ..createSync(recursive: true)
+        ..writeAsStringSync('''
+projects:
+  - path: ~/p/a      # first
+  - id: b
+    path: ../b
+    pinned: true
+    color: red
+''');
+      expect((await service.setPinned('a', true)).pinned, isTrue);
+      expect((await service.setPinned('b', false)).pinned, isFalse);
+      expect((await service.setPinned('b', false)).pinned, isFalse, reason: 'unpinning twice changes nothing');
+      expect((await service.registry()).entries.map((e) => (e.id, e.pinned)), [('a', true), ('b', false)]);
+      final text = File(file).readAsStringSync();
+      expect(text, contains('# first'));
+      expect(text, contains('color: red'));
+      expect(text, isNot(contains('pinned: false')), reason: 'unpinned entries drop the key');
+      expect(() => service.setPinned('nope', true), throwsA(isA<NotFoundException>()));
+    });
+
     test('an empty list gets its first entry', () async {
       File(file)
         ..createSync(recursive: true)

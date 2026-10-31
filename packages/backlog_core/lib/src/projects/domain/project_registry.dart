@@ -148,4 +148,8 @@ abstract interface class ProjectRegistryStore {
 
   /// Removes the entry of project [id], keeping everything else.
   Future<void> remove(String id);
+
+  /// Sets or clears `pinned` of project [id], keeping everything else.
+  /// Throws [NotFoundException] for an unknown id.
+  Future<void> setPinned(String id, bool pinned);
 }

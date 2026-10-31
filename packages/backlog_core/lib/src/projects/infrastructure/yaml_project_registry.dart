@@ -141,6 +141,22 @@ final class YamlProjectRegistryStore implements ProjectRegistryStore {
     await writeAtomically(File(file), (YamlEditor(source!)..remove(['projects', index])).toString());
   }
 
+  @override
+  Future<void> setPinned(String id, bool pinned) async {
+    final source = await _read();
+    final registry = source == null ? ProjectRegistry.empty : await load();
+    final index = registry.entries.indexWhere((entry) => entry.id == id);
+    if (index < 0) throw NotFoundException('No project "$id" in $file.');
+    final editor = YamlEditor(source!);
+    final node = (loadYaml(source) as YamlMap)['projects'] as YamlList;
+    if (pinned) {
+      editor.update(['projects', index, 'pinned'], true);
+    } else if ((node[index] as YamlMap).containsKey('pinned')) {
+      editor.remove(['projects', index, 'pinned']);
+    }
+    await writeAtomically(File(file), editor.toString());
+  }
+
   Future<String?> _read() async {
     final handle = File(file);
     return await handle.exists() ? handle.readAsString() : null;

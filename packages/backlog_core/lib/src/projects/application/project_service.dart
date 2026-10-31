@@ -1,3 +1,4 @@
+import '../../shared/errors.dart';
 import '../domain/project_registry.dart';
 
 /// Use cases of the project registry: list, register and unregister backlogs.
@@ -28,6 +29,15 @@ final class ProjectService {
   Future<(ProjectEntry, bool)> ensure(String path, {String? name}) async {
     if ((await _store.load()).atPath(path) case final existing?) return (existing, false);
     return (await add(path, name: name), true);
+  }
+
+  /// Pins project [id] (clients offer pinned projects first) or unpins it;
+  /// returns its updated entry. Throws [NotFoundException] for an unknown id.
+  Future<ProjectEntry> setPinned(String id, bool pinned) async {
+    final entry = (await _store.load())[id];
+    if (entry == null) throw NotFoundException('No project "$id" in the registry.');
+    if (entry.pinned != pinned) await _store.setPinned(id, pinned);
+    return ProjectEntry(id: entry.id, path: entry.path, name: entry.name, pinned: pinned);
   }
 
   /// Unregisters project [id]; the backlog itself stays untouched.
