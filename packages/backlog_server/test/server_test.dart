@@ -131,6 +131,31 @@ void main() {
       expect(response.body, contains('app'));
     });
 
+    test('compresses API responses with gzip for clients that accept it', () async {
+      for (var i = 0; i < 5; i++) {
+        await api.createItem(NewItemRequest(title: 'Item number $i with a longer title'));
+      }
+      final client = HttpClient()..autoUncompress = false;
+      addTearDown(client.close);
+      Future<(HttpClientResponse, List<int>)> get(String? accept) async {
+        final request = await client.getUrl(server.uri.replace(path: ApiPaths.items));
+        request.headers
+          ..set('authorization', 'Bearer secret')
+          ..removeAll('accept-encoding');
+        if (accept != null) request.headers.set('accept-encoding', accept);
+        final response = await request.close();
+        return (response, await response.expand((chunk) => chunk).toList());
+      }
+
+      final (zipped, zippedBody) = await get('gzip, br');
+      expect(zipped.headers.value('content-encoding'), 'gzip');
+      expect(zipped.headers.value('vary'), 'Accept-Encoding');
+      final (plain, plainBody) = await get(null);
+      expect(plain.headers.value('content-encoding'), isNull);
+      expect(gzip.decode(zippedBody), plainBody);
+      expect(zippedBody.length, lessThan(plainBody.length));
+    });
+
     test('the web app is revalidated by ETag, never by a fixed date', () async {
       final uri = server.uri.replace(path: '/index.html');
       final first = await http.get(uri);

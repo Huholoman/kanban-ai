@@ -6,6 +6,7 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 
 import 'http/client_filter.dart';
+import 'http/compression.dart';
 import 'http/middleware.dart';
 import 'http/web_app.dart';
 import 'projects/hosted_project.dart';
@@ -122,7 +123,7 @@ final class BacklogServer {
     String? webRoot,
     void Function(String message)? log,
   }) {
-    final api = projects.handler;
+    final api = compressResponses()(projects.handler);
     final web = webRoot != null && Directory(webRoot).existsSync() ? webAppHandler(webRoot) : null;
 
     FutureOr<Response> route(Request request) {

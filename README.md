@@ -218,6 +218,8 @@ backlog-server --allow 127.0.0.1,10.77.11.22,10.77.0.0/16  # answer only these c
 | `--web` | `BACKLOG_WEB`, else `packages/backlog_app/build/web` | the built web app (served with ETags and `no-cache`, so browsers pick up a new build at once) |
 | `-q` | | do not log requests |
 
+API responses (1 kB and more) are gzip-compressed for clients that accept it.
+
 URL parameters of the app: `?token=…`, `&as=name` (who claims items from the UI) and `&server=http://…` (another API server, handy with `flutter run -d web-server`).
 
 The open project is in the URL after `#`: `http://host:8640/?token=…#/p/kanban-ai`. Such a link can be shared or reloaded; without one the app opens the project you used last in this browser, else the server's first project. The page title is the project's name. Switching projects starts the board afresh (no filters, open items or live updates carry over). With a server that does not know projects yet the app shows its one backlog as before.
