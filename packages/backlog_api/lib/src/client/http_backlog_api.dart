@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../model/discussion_dto.dart';
 import '../model/dispatch_dto.dart';
 import '../model/item_dto.dart';
 import '../model/json.dart';
@@ -68,6 +69,10 @@ final class HttpBacklogApi implements BacklogApi {
 
   @override
   Future<ItemDetailDto> complete(String reference, ClaimRequest request) => _action(reference, 'done', request);
+
+  @override
+  Future<ItemDetailDto> comment(String reference, CommentRequest request) async =>
+      ItemDetailDto.fromJson(asJson(await _send('POST', ApiPaths.itemAction(reference, 'comments'), request.toJson())));
 
   @override
   Future<List<ViewSummaryDto>> views() async => _list(await _get(ApiPaths.views)).map(ViewSummaryDto.fromJson).toList();

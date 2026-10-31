@@ -45,6 +45,11 @@ enum FilterFacet {
 
 /// Planning state an item can be required to have.
 enum ItemFlag {
+  needsHuman(
+    'Needs you',
+    'An agent asked a question in the discussion that nobody answered yet; it waits for a person.',
+    field: 'needs_human',
+  ),
   ready(
     'Ready',
     'Can be picked up now: in a pickable status (todo), all dependencies done, '
@@ -54,12 +59,17 @@ enum ItemFlag {
   conflicting('Waiting', 'Touches the same files as an item in progress; waits until that one is done or released.'),
   claimed('Claimed', 'An agent (or someone in the app) holds it: work is in progress.');
 
-  const ItemFlag(this.title, this.description);
+  const ItemFlag(this.title, this.description, {String? field}) : _field = field;
 
   final String title;
   final String description;
+  final String? _field;
+
+  /// The item field of the view filter grammar.
+  String get field => _field ?? name;
 
   bool of(ItemDto item) => switch (this) {
+    needsHuman => item.needsHuman,
     ready => item.ready,
     blocked => item.blocked,
     conflicting => item.conflicting,
@@ -136,7 +146,7 @@ final class BoardFilter {
             FilterFacet.label => {'labels': values.toList()},
             _ => {facet.name: values.toList()},
           },
-      for (final flag in flags) {flag.name: true},
+      for (final flag in flags) {flag.field: true},
     ];
   }
 

@@ -71,6 +71,7 @@ abstract final class DtoMapper {
       children: Progress(planned.childCount - planned.openChildCount, planned.childCount),
       checklist: Progress(planned.checklist.done, planned.checklist.total),
       claim: claim == null ? null : DtoMapper.claim(claim, expired: planned.isClaimExpired),
+      needsHuman: planned.needsHuman,
       path: path,
       body: withBody ? item.body : null,
     );
@@ -87,6 +88,10 @@ abstract final class DtoMapper {
       related: [for (final id in item.related) _link(id, snapshot)],
       conflicts: [for (final id in planned.conflictsWith) _link(id, snapshot)],
       waiting: [for (final other in snapshot.waitingOn(item.id)) _link(other.id, snapshot)],
+      discussion: [
+        for (final comment in item.discussion.comments)
+          CommentDto(author: comment.author, at: comment.at, text: comment.text, question: comment.question),
+      ],
     );
   }
 

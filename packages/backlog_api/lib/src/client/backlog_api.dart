@@ -1,3 +1,4 @@
+import '../model/discussion_dto.dart';
 import '../model/dispatch_dto.dart';
 import '../model/item_dto.dart';
 import '../model/misc_dto.dart';
@@ -27,6 +28,9 @@ abstract interface class BacklogApi {
   Future<ItemDetailDto> release(String reference, ClaimRequest request);
 
   Future<ItemDetailDto> complete(String reference, ClaimRequest request);
+
+  /// Adds a comment to the item's discussion.
+  Future<ItemDetailDto> comment(String reference, CommentRequest request);
 
   Future<List<ViewSummaryDto>> views();
 

@@ -4,6 +4,7 @@ library;
 
 export 'src/client/backlog_api.dart';
 export 'src/client/http_backlog_api.dart';
+export 'src/model/discussion_dto.dart';
 export 'src/model/dispatch_dto.dart';
 export 'src/model/item_dto.dart';
 export 'src/model/json.dart' show Json, MalformedPayloadException;

@@ -28,6 +28,7 @@ ItemDto item(
   List<String> touches = const [],
   List<String> conflictsWith = const [],
   bool ready = false,
+  bool needsHuman = false,
 }) => ItemDto(
   id: id,
   title: 'Item $id',
@@ -42,6 +43,7 @@ ItemDto item(
   conflicting: conflictsWith.isNotEmpty,
   conflictsWith: conflictsWith,
   ready: ready,
+  needsHuman: needsHuman,
   body: body,
 );
 
@@ -53,6 +55,10 @@ final class FakeBacklogApi implements BacklogApi {
   final Map<String, ItemDto> items_;
   final updates = <(String, ItemUpdateRequest)>[];
   final claims = <(String, String, ClaimRequest)>[];
+
+  /// The discussion of each item; [comment] appends (author `you` when the
+  /// request names none) and answers an open question.
+  final discussions = <String, List<CommentDto>>{};
   final _changes = StreamController<BacklogChangeEvent>.broadcast();
   int viewLoads = 0;
 
@@ -110,7 +116,23 @@ final class FakeBacklogApi implements BacklogApi {
         for (final other in items_.values)
           if (other.conflictsWith.contains(found.id)) link(other),
       ],
+      discussion: discussions[found.id] ?? const [],
     );
+  }
+
+  @override
+  Future<ItemDetailDto> comment(String reference, CommentRequest request) async {
+    final comments = discussions[reference] ??= [];
+    comments.add(
+      CommentDto(
+        author: request.author ?? 'you',
+        at: DateTime.utc(2026, 10, 31, 12, comments.length),
+        text: request.text,
+        question: request.question,
+      ),
+    );
+    items_[reference] = _with(items_[reference]!, needsHuman: request.question);
+    return item(reference);
   }
 
   @override
@@ -301,7 +323,14 @@ final class FakeBacklogApi implements BacklogApi {
   Future<AgentLogDto> agentLog(String reference, {int lines = 100}) async =>
       log ?? (throw BacklogApiException(404, 'not_found', 'No agent has run for $reference.'));
 
-  static ItemDto _with(ItemDto item, {String? status, String? priority, String? body, Progress? children}) => ItemDto(
+  static ItemDto _with(
+    ItemDto item, {
+    String? status,
+    String? priority,
+    String? body,
+    Progress? children,
+    bool? needsHuman,
+  }) => ItemDto(
     id: item.id,
     title: item.title,
     type: item.type,
@@ -316,6 +345,7 @@ final class FakeBacklogApi implements BacklogApi {
     parent: item.parent,
     dependsOn: item.dependsOn,
     children: children ?? item.children,
+    needsHuman: needsHuman ?? item.needsHuman,
     body: body ?? item.body,
   );
 }

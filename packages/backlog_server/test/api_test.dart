@@ -150,6 +150,24 @@ void main() {
     expect((await api.items(includeDone: true)).map((i) => i.id), contains(first.item.id));
   });
 
+  test('comments and questions: the discussion in the detail, needs a person', () async {
+    final created = await api.createItem(const NewItemRequest(title: 'Export', status: 'todo', body: 'Export it.\n'));
+    final id = created.item.id;
+    expect(created.discussion, isEmpty);
+    final asked = await api.comment(id, const CommentRequest('CSV or JSON?', author: 'w1', question: true));
+    expect(asked.item.needsHuman, isTrue);
+    expect(asked.item.ready, isFalse);
+    expect(asked.discussion.single.question, isTrue);
+    expect((await api.items()).single.needsHuman, isTrue);
+
+    final answered = await api.comment(id, const CommentRequest('CSV.'));
+    expect(answered.item.needsHuman, isFalse);
+    expect(answered.discussion.map((c) => c.text), ['CSV or JSON?', 'CSV.']);
+    expect(answered.discussion.last.author, isNot('w1'), reason: 'the server user or web');
+    expect(answered.item.body, startsWith('Export it.\n\n## Discussion\n\n### w1 · '));
+    await expectLater(api.comment(id, const CommentRequest(' ')), throwsA(apiError(400, 'invalid_input')));
+  });
+
   test('views are listed and evaluated', () async {
     await backlog.items.create(const NewItem(title: 'Doing', status: 'in-progress', priority: 'p0'));
     final views = await api.views();
@@ -448,6 +466,38 @@ void main() {
       await api.stopAgent(a.item.id);
       await api.startAgent(a.item.id);
       expect(launcher.started.last, '${a.item.id}@w2+resume');
+    });
+
+    test('a reply on an item in review is proposed and starts its session again', () async {
+      final config = File(p.join(dir.path, 'backlog.yaml'));
+      config.writeAsStringSync(
+        config.readAsStringSync().replaceFirst(
+          '  command: agent {id}\n',
+          '  agent: bot\n  agents:\n    bot:\n      command: bot {prompt}\n      output: claude-stream-json\n'
+              '      resume: --resume {session}\n',
+        ),
+      );
+      host.reload();
+      final api = dispatching();
+      final a = await api.createItem(const NewItemRequest(title: 'A', status: 'review'));
+      launcher.sessions = {
+        ItemId(a.item.id): AgentSession(
+          item: ItemId(a.item.id),
+          id: 'sess-a',
+          worktree: 'w2',
+          agent: 'bot',
+          startedAt: DateTime.utc(2026, 10, 29, 10),
+        ),
+      };
+      expect((await api.dispatch()).assignments, isEmpty);
+      await api.comment(a.item.id, const CommentRequest('Why this way?', author: 'tobik'));
+      await dispatcher.evaluate(); // the change feed would trigger it
+      final plan = await api.dispatch();
+      expect(plan.assignments.single.item, a.item.id);
+      expect(plan.assignments.single.resume, 'sess-a');
+      await api.startAgent(a.item.id);
+      expect(launcher.started, ['${a.item.id}@w2+resume']);
+      expect((await api.item(a.item.id)).item.status, 'review', reason: 'claiming keeps an active status');
     });
 
     test('items that are not ready cannot be started', () async {

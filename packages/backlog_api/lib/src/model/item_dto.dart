@@ -1,3 +1,4 @@
+import 'discussion_dto.dart';
 import 'json.dart';
 import 'workflow_dto.dart';
 
@@ -83,6 +84,7 @@ final class ItemDto {
     this.children = Progress.none,
     this.checklist = Progress.none,
     this.claim,
+    this.needsHuman = false,
     this.path,
     this.body,
   });
@@ -121,6 +123,7 @@ final class ItemDto {
       children: Progress(total - children.integer('open'), total),
       checklist: Progress(progress.integer('done'), progress.integer('total')),
       claim: claim == null ? null : ClaimDto.fromJson(claim),
+      needsHuman: json.boolean('needs_human'),
       path: json.optionalString('path'),
       body: json.optionalString('body'),
     );
@@ -161,6 +164,10 @@ final class ItemDto {
   final Progress checklist;
   final ClaimDto? claim;
 
+  /// An agent asked a question in the discussion that nobody answered yet;
+  /// the item waits for a person (and is not ready).
+  final bool needsHuman;
+
   /// Location of the file, relative to the backlog root.
   final String? path;
 
@@ -200,6 +207,7 @@ final class ItemDto {
     'children': {'total': children.total, 'open': children.total - children.done},
     'progress': {'done': checklist.done, 'total': checklist.total},
     'claim': claim?.toJson(),
+    'needs_human': needsHuman,
     'path': ?path,
     'body': ?body,
   };
@@ -242,6 +250,7 @@ final class ItemDetailDto {
     this.related = const [],
     this.conflicts = const [],
     this.waiting = const [],
+    this.discussion = const [],
   });
 
   factory ItemDetailDto.fromJson(Json json) {
@@ -256,6 +265,7 @@ final class ItemDetailDto {
       related: links('related'),
       conflicts: links('conflicts'),
       waiting: links('waiting'),
+      discussion: json.objects('discussion').map(CommentDto.fromJson).toList(),
     );
   }
 
@@ -274,6 +284,9 @@ final class ItemDetailDto {
   /// Open items waiting for this (active) one because of overlapping `touches`.
   final List<ItemLinkDto> waiting;
 
+  /// The comments of the `## Discussion` section of the body, oldest first.
+  final List<CommentDto> discussion;
+
   Json toJson() => {
     'item': item.toJson(),
     'parent': parent?.toJson(),
@@ -283,5 +296,6 @@ final class ItemDetailDto {
     'related': [for (final link in related) link.toJson()],
     'conflicts': [for (final link in conflicts) link.toJson()],
     'waiting': [for (final link in waiting) link.toJson()],
+    'discussion': [for (final comment in discussion) comment.toJson()],
   };
 }

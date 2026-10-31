@@ -7,8 +7,9 @@ import '../../../shared/pr_link.dart';
 import '../../../shared/tokens.dart';
 
 /// Compact summary of an item for boards and lists: id and priority, the
-/// title and one meta line that tells the state (ready, blocked, waiting for
-/// overlapping work, claimed, claim expired, or just labels).
+/// title and one meta line that tells the state (waits for you, ready,
+/// blocked, waiting for overlapping work, claimed, claim expired, or just
+/// labels); a card that waits for a person has a warning border.
 class ItemCard extends StatelessWidget {
   const ItemCard({
     super.key,
@@ -56,7 +57,11 @@ class ItemCard extends StatelessWidget {
     final theme = Theme.of(context);
     final expired = item.claim?.expired ?? false;
     final muted = theme.textTheme.bodySmall?.copyWith(color: tokens.muted, fontSize: 11);
-    final borderColor = selected ? tokens.accent : (expired ? tokens.borderStrong : tokens.border);
+    final borderColor = selected
+        ? tokens.accent
+        : item.needsHuman && !item.isDone
+        ? tokens.warning
+        : (expired ? tokens.borderStrong : tokens.border);
     final progress = item.children.isEmpty ? item.checklist : item.children;
     final meta = _meta(context, tokens);
     return Opacity(
@@ -138,6 +143,17 @@ class ItemCard extends StatelessWidget {
     final parts = <Widget>[];
     if (item.isDone) {
       // Nothing to report on finished work except what it was about.
+    } else if (item.needsHuman) {
+      parts.add(
+        Tooltip(
+          message: 'An agent asked a question in the discussion',
+          child: Text(
+            '? Waits for you',
+            key: ValueKey('needs-human-${item.id}'),
+            style: base.copyWith(color: tokens.warning, fontWeight: FontWeight.w600),
+          ),
+        ),
+      );
     } else if (item.blocked) {
       parts.add(Text('Blocked by ${item.blockedBy.join(', ')}', style: base.copyWith(color: tokens.warning)));
     } else if (item.conflicting) {

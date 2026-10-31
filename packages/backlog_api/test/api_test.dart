@@ -94,6 +94,7 @@ void main() {
       children: const Progress(1, 3),
       checklist: const Progress(2, 5),
       claim: claim,
+      needsHuman: true,
       path: 'items/T-1-backups.md',
       body: '# Body',
     );
@@ -114,9 +115,17 @@ void main() {
         dependencies: const [ItemLinkDto(id: 'T-9')],
         conflicts: const [ItemLinkDto(id: 'T-3', title: 'Other', status: 'review')],
         waiting: const [ItemLinkDto(id: 'T-4', title: 'Later', status: 'todo')],
+        discussion: [CommentDto(author: 'w1', at: DateTime.utc(2026, 10, 31, 14), text: 'Which?', question: true)],
       );
       final detailCopy = roundTrip(detail.toJson(), ItemDetailDto.fromJson);
       expect(detailCopy.toJson(), detail.toJson());
+      expect(detailCopy.item.needsHuman, isTrue);
+      expect(detailCopy.discussion.single.at, DateTime.utc(2026, 10, 31, 14));
+      final request = roundTrip(
+        const CommentRequest('Hi', author: 'a', question: true).toJson(),
+        CommentRequest.fromJson,
+      );
+      expect((request.text, request.author, request.question), ('Hi', 'a', true));
       expect(detailCopy.dependencies.single.isMissing, isTrue);
 
       final view = ViewResultDto(

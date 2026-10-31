@@ -12,6 +12,7 @@ import '../application/item_body.dart';
 import '../application/item_controller.dart';
 import 'ask_text.dart';
 import 'detail_relations.dart';
+import 'discussion_section.dart';
 
 /// The scrolling part of the detail: title, state, fields, children,
 /// relations and the Markdown body, all editable.
@@ -38,6 +39,12 @@ class DetailContent extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _TitleField(title: item.title, onSave: (title) => controller.set('title', title)),
+              if (item.needsHuman)
+                ..._notice(
+                  _WaitsForYou(
+                    asker: detail.discussion.lastWhere((c) => c.question, orElse: () => detail.discussion.last).author,
+                  ),
+                ),
               if (item.blocked)
                 ..._notice(
                   _LinkNotice(
@@ -117,6 +124,8 @@ class DetailContent extends StatelessWidget {
               DetailRelations(controller: controller, onOpen: onOpen),
               const SizedBox(height: 16),
               _Body(body: item.body ?? '', onSave: controller.saveBody, enabled: !controller.busy),
+              const SizedBox(height: 16),
+              DiscussionSection(controller: controller),
               const SizedBox(height: 12),
               Text(
                 [
@@ -137,6 +146,38 @@ class DetailContent extends StatelessWidget {
 }
 
 List<Widget> _notice(Widget notice) => [const SizedBox(height: 8), notice];
+
+/// "Waits for you: (agent) asked a question in the discussion below."
+class _WaitsForYou extends StatelessWidget {
+  const _WaitsForYou({required this.asker});
+
+  final String asker;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    final style = Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.warning);
+    return Container(
+      key: const ValueKey('waits-for-you'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: tokens.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
+      ),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: 'Waits for you: ',
+              style: style?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            TextSpan(text: '$asker asked a question in the discussion below.', style: style),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// The title as a borderless text field; saved on Enter and when it loses
 /// focus, an empty title goes back to the saved one.
@@ -495,6 +536,7 @@ class _Status extends StatelessWidget {
     final tokens = BoardTokens.of(context);
     final claim = item.claim;
     final tags = [
+      if (item.needsHuman) Tag('waits for you', icon: Icons.help_outline, color: tokens.warning),
       if (item.ready) Tag('ready to pick', icon: Icons.play_arrow, color: tokens.success),
       if (claim != null)
         Tag(
@@ -619,6 +661,12 @@ class _Body extends StatefulWidget {
 class _BodyState extends State<_Body> {
   TextEditingController? _editor;
 
+  /// The body without its discussion, which [DiscussionSection] shows; saving
+  /// puts the discussion back after the edited description.
+  ({String description, String discussion}) get _parts => splitDiscussion(widget.body);
+
+  Future<bool> _saveDescription(String description) => widget.onSave(withDescription(description, _parts.discussion));
+
   @override
   void dispose() {
     _editor?.dispose();
@@ -627,7 +675,7 @@ class _BodyState extends State<_Body> {
 
   Future<void> _save() async {
     final text = _editor!.text;
-    if (await widget.onSave(text.endsWith('\n') || text.isEmpty ? text : '$text\n')) {
+    if (await _saveDescription(text.endsWith('\n') || text.isEmpty ? text : '$text\n')) {
       setState(() {
         _editor?.dispose();
         _editor = null;
@@ -670,6 +718,7 @@ class _BodyState extends State<_Body> {
     }
     final tokens = BoardTokens.of(context);
     final theme = Theme.of(context);
+    final description = _parts.description;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 4, 8, 12),
       decoration: BoxDecoration(
@@ -686,20 +735,20 @@ class _BodyState extends State<_Body> {
               LinkButton(
                 label: 'Edit',
                 icon: Icons.edit_note,
-                onPressed: () => setState(() => _editor = TextEditingController(text: widget.body)),
+                onPressed: () => setState(() => _editor = TextEditingController(text: description)),
               ),
             ],
           ),
-          if (widget.body.trim().isEmpty)
+          if (description.trim().isEmpty)
             Text('No description.', style: TextStyle(color: tokens.faint))
           else
-            for (final segment in splitChecklist(widget.body))
+            for (final segment in splitChecklist(description))
               switch (segment) {
                 MarkdownSegment(:final markdown) => MarkdownBody(data: markdown, selectable: true),
                 final ChecklistSegment item => _ChecklistItem(
                   item: item,
                   onChanged: widget.enabled
-                      ? () => unawaited(widget.onSave(toggleChecklistItem(widget.body, item.index)))
+                      ? () => unawaited(_saveDescription(toggleChecklistItem(description, item.index)))
                       : null,
                 ),
               },

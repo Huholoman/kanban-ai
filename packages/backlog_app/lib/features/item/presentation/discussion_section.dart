@@ -1,0 +1,183 @@
+import 'dart:async';
+
+import 'package:backlog_api/backlog_api.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+
+import '../../../shared/item_style.dart';
+import '../../../shared/tokens.dart';
+import '../../../shared/ui/ui.dart';
+import '../../dispatch/presentation/dispatch_scope.dart';
+import '../application/item_controller.dart';
+
+/// The item's discussion (the `## Discussion` section of its body): the
+/// comments of agents and people, an open question highlighted, and a field
+/// for a reply. With a dispatcher that can continue the item's last agent
+/// session, *Send and continue* (manual mode) also resumes the agent with
+/// the reply; in auto mode it continues by itself.
+class DiscussionSection extends StatefulWidget {
+  const DiscussionSection({super.key, required this.controller});
+
+  final ItemController controller;
+
+  @override
+  State<DiscussionSection> createState() => _DiscussionSectionState();
+}
+
+class _DiscussionSectionState extends State<DiscussionSection> {
+  final _reply = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _reply.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _reply.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send({bool resume = false}) async {
+    final text = _reply.text.trim();
+    if (text.isEmpty) return;
+    final controller = widget.controller;
+    final dispatch = DispatchScope.maybeOf(context);
+    if (!await controller.comment(text)) return;
+    _reply.clear();
+    if (resume && dispatch != null) await dispatch.startAgent(controller.item!.id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final detail = controller.detail!;
+    final item = detail.item;
+    final tokens = BoardTokens.of(context);
+    final theme = Theme.of(context);
+    final comments = detail.discussion;
+    final open = item.needsHuman ? comments.lastWhere((c) => c.question, orElse: () => comments.last) : null;
+    final dispatch = DispatchScope.maybeOf(context);
+    final session = dispatch?.plan.sessionFor(item.id);
+    final running = dispatch?.runFor(item.id) != null;
+    final resumable = dispatch != null && session != null && !running && !item.isDone;
+    final canSend = !controller.busy && _reply.text.trim().isNotEmpty;
+    return Container(
+      key: const ValueKey('discussion'),
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: open != null ? tokens.warning : tokens.border),
+        borderRadius: BorderRadius.circular(BoardTokens.radius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(comments.isEmpty ? 'Discussion' : 'Discussion · ${comments.length}', style: theme.textTheme.bodySmall),
+          for (final comment in comments)
+            _Comment(key: ValueKey('comment-${comment.at.toIso8601String()}'), comment: comment, open: comment == open),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('reply-field'),
+            controller: _reply,
+            minLines: 2,
+            maxLines: 8,
+            enabled: !controller.busy,
+            decoration: InputDecoration(
+              isDense: true,
+              border: const OutlineInputBorder(),
+              hintText: open != null
+                  ? 'Answer ${open.author}…'
+                  : resumable
+                  ? 'Write to the agent of ${item.id}…'
+                  : 'Add a comment…',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            alignment: WrapAlignment.end,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              if (resumable && !dispatch.plan.isManual)
+                Text(
+                  'The agent continues in ${session.worktree} by itself.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: tokens.muted),
+                ),
+              if (resumable && dispatch.plan.isManual) ...[
+                SecondaryButton(
+                  key: const ValueKey('send-comment'),
+                  label: 'Send',
+                  onPressed: canSend ? () => unawaited(_send()) : null,
+                ),
+                Tooltip(
+                  message: 'Resumes the session of its agent in ${session.worktree} with your reply',
+                  child: PrimaryButton(
+                    key: const ValueKey('send-and-continue'),
+                    label: 'Send and continue',
+                    icon: Icons.reply,
+                    onPressed: canSend ? () => unawaited(_send(resume: true)) : null,
+                  ),
+                ),
+              ] else
+                PrimaryButton(
+                  key: const ValueKey('send-comment'),
+                  label: 'Send',
+                  icon: Icons.send,
+                  onPressed: canSend ? () => unawaited(_send()) : null,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Comment extends StatelessWidget {
+  const _Comment({super.key, required this.comment, required this.open});
+
+  final CommentDto comment;
+
+  /// The question waits for an answer.
+  final bool open;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    final small = Theme.of(context).textTheme.bodySmall;
+    final local = comment.at.toLocal();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                comment.author,
+                style: small?.copyWith(color: tokens.text, fontWeight: FontWeight.w600),
+              ),
+              Text(
+                '${local.day}.${local.month}. ${two(local.hour)}:${two(local.minute)}',
+                style: small?.copyWith(color: tokens.muted),
+              ),
+              if (comment.question)
+                Tag(
+                  open ? 'question · waits for you' : 'question',
+                  icon: Icons.help_outline,
+                  color: open ? tokens.warning : tokens.muted,
+                ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          MarkdownBody(data: comment.text, selectable: true),
+        ],
+      ),
+    );
+  }
+}

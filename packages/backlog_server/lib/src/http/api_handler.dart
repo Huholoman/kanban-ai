@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_core/backlog_core.dart';
@@ -14,9 +15,11 @@ final class ApiHandler {
   ApiHandler(
     this._host, {
     this.defaultAgent = 'web',
+    String? defaultAuthor,
     Dispatcher? Function()? dispatcher,
     AgentLauncher? Function()? launcher,
-  }) : _dispatcher = dispatcher ?? (() => null),
+  }) : defaultAuthor = defaultAuthor ?? Platform.environment['USER'] ?? defaultAgent,
+       _dispatcher = dispatcher ?? (() => null),
        _launcher = launcher ?? (() => null);
 
   final BacklogHost _host;
@@ -28,6 +31,10 @@ final class ApiHandler {
 
   /// Who claims items when a request does not name an agent.
   final String defaultAgent;
+
+  /// Who comments when a request does not name an author: the server's user
+  /// (`$USER`), else [defaultAgent].
+  final String defaultAuthor;
 
   /// Routes relative to the project's prefix (`/api` or `/api/p/<id>`): the
   /// request's `url` is `items`, `views/board`, … (see `ProjectHub`).
@@ -45,6 +52,7 @@ final class ApiHandler {
           ..post('$items/<ref>/claim', _claim)
           ..post('$items/<ref>/release', _release)
           ..post('$items/<ref>/done', _complete)
+          ..post('$items/<ref>/comments', _comment)
           ..get(views, _views)
           ..post(views, _createView)
           ..get('$views/<id>', _view)
@@ -115,6 +123,18 @@ final class ApiHandler {
     final payload = ClaimRequest.fromJson(await _body(request));
     final backlog = await _host.backlog;
     final item = await backlog.claims.complete(ref, agent: payload.agent, status: payload.status, force: payload.force);
+    return _detailOf(backlog, item.id.value);
+  }
+
+  Future<Response> _comment(Request request, String ref) async {
+    final payload = CommentRequest.fromJson(await _body(request));
+    final backlog = await _host.backlog;
+    final item = await backlog.items.comment(
+      ref,
+      author: payload.author ?? defaultAuthor,
+      text: payload.text,
+      question: payload.question,
+    );
     return _detailOf(backlog, item.id.value);
   }
 
