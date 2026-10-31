@@ -315,7 +315,7 @@ dispatcher:
           items: [item('X-1')],
           workflow: parseWorkflowYaml(
             'dispatcher: {worktrees: [a], agent: mine, agents: {mine: {command: [my-agent, "{prompt}"], '
-            'env: {MY_NAME: "{worktree}-{id}"}}}, prompt: "Do {id} ({title}) as {worktree}."}',
+            'env: {MY_NAME: "{worktree}-{id}", GIT_EDITOR: vi}}}, prompt: "Do {id} ({title}) as {worktree}."}',
           ),
           claims: const [],
           now: DateTime.utc(2026, 10, 29),
@@ -325,7 +325,13 @@ dispatcher:
       final assignment = plan.assignments.single;
       expect(assignment.prompt, 'Do X-1 (Item X-1) as a.');
       expect(assignment.command, ['my-agent', 'Do X-1 (Item X-1) as a.']);
-      expect(assignment.environment, {'BACKLOG_AGENT': 'a', 'BACKLOG_DIR': '/w/backlog', 'MY_NAME': 'a-X-1'});
+      expect(assignment.environment, {
+        'GIT_EDITOR': 'vi', // the profile replaces the default
+        'GIT_SEQUENCE_EDITOR': 'true', // git never waits for an editor nobody sees
+        'BACKLOG_AGENT': 'a',
+        'BACKLOG_DIR': '/w/backlog',
+        'MY_NAME': 'a-X-1',
+      });
     });
 
     test('the legacy command is a plain profile without a prompt of its own', () {

@@ -310,21 +310,25 @@ final class MergeAction implements BuiltInAction {
     final again = context.trigger != ActionTrigger.onEnter || context.action.onEnter == null
         ? 'run the action "${context.action.name}" again'
         : 'move it to ${context.action.onEnter} again';
-    final publish = config.pr == null ? '' : ', publish the branch with `backlog pr $id --force`';
     final upstream = strategy == MergeStrategy.local ? base : '${config.merge.remote}/$base';
-    final fetch = strategy == MergeStrategy.local ? '' : '`git fetch ${config.merge.remote}`, then ';
+    final check = config.merge.check == null
+        ? 'run the project\'s checks'
+        : 'run `${CommandTemplate.join(config.merge.check!.render(context.values))}`';
+    // Every command must pass the agent's tool whitelist (`git *`, never
+    // `git -…`); GIT_EDITOR=true lets `git rebase --continue` run headless.
+    final steps = [
+      if (strategy != MergeStrategy.local) '`git fetch ${config.merge.remote}`',
+      '`git rebase $upstream` on $branch',
+      'resolve the conflicts git reports, `git add <file>` for each resolved file, then `git rebase --continue` '
+          '(repeat until the rebase is done; never `git rebase --abort` or `--skip`)',
+      '$check and commit what it needs',
+      if (config.pr != null) 'publish the branch with `backlog pr $id --force` (never `git push`)',
+      'leave $id in ${back ?? 'its status'}: do not change its status',
+    ];
+    final numbered = [for (final (i, step) in steps.indexed) '${i + 1}. $step'].join('\n');
     switch (failure.kind) {
-      case _FailureKind.conflict || _FailureKind.refused:
-        text.write(
-          '\n\nTo fix it: ${fetch}rebase $branch onto $upstream (`git rebase $upstream`), resolve the conflicts, '
-          'make the checks pass and commit$publish; leave $id in ${back ?? 'its status'}. '
-          'Then $again to merge it.',
-        );
-      case _FailureKind.check:
-        text.write(
-          '\n\nTo fix it: rebase $branch onto $upstream (`git rebase $upstream`) and make the check pass on top of '
-          'it$publish; leave $id in ${back ?? 'its status'}. Then $again to merge it.',
-        );
+      case _FailureKind.conflict || _FailureKind.refused || _FailureKind.check:
+        text.write('\n\nTo fix it, in the worktree of $branch:\n\n$numbered\n\nThen $again to merge it.');
       case _FailureKind.setup:
         text.write('\n\nNothing was merged; fix this and $again.');
     }

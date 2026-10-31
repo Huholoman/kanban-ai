@@ -286,6 +286,7 @@ final class DispatchAssignment {
       prompt: prompt,
       command: [...profile.command.render(full), if (session != null) ...profile.resume!.render(full)],
       environment: {
+        ...headlessGit,
         'BACKLOG_AGENT': worktree.name,
         'BACKLOG_DIR': backlogRoot,
         for (final MapEntry(:key, :value) in profile.environment.entries) key: value.render(full),
@@ -370,10 +371,14 @@ final class DispatchAssignment {
   /// The profile's command with its placeholders filled in.
   final List<String> command;
 
-  /// Set for the agent on top of the server's environment: `BACKLOG_AGENT`
-  /// (the worktree name), `BACKLOG_DIR` (the backlog folder) and the
-  /// profile's `env`.
+  /// Set for the agent on top of the server's environment: [headlessGit],
+  /// `BACKLOG_AGENT` (the worktree name), `BACKLOG_DIR` (the backlog folder)
+  /// and the profile's `env` (which may replace any of them).
   final Map<String, String> environment;
+
+  /// Git never opens an editor for agents and action commands, which nobody
+  /// could use (`git rebase --continue`, `git commit` without `-m`).
+  static const headlessGit = {'GIT_EDITOR': 'true', 'GIT_SEQUENCE_EDITOR': 'true'};
 
   /// The branch to check out in the worktree before the agent starts; null
   /// leaves the worktree as it is.
@@ -768,6 +773,7 @@ final class DispatchPlan {
         values: values,
         command: action.command?.render(values),
         environment: {
+          ...DispatchAssignment.headlessGit,
           'BACKLOG_DIR': backlogRoot,
           'BACKLOG_AGENT': ?home?.name,
           'KANBAN_AI_ITEM': id.value,

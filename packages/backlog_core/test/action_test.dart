@@ -231,6 +231,8 @@ dispatcher:
       expect(inWorktree.command, ['sh', '-c', 'check T-1 7 in w2']);
       expect(inWorktree.environment, containsPair('BACKLOG_AGENT', 'w2'));
       expect(inWorktree.environment, containsPair('KANBAN_AI_ACTION', 'Tests'));
+      expect(inWorktree.environment, containsPair('GIT_EDITOR', 'true'));
+      expect(inWorktree.environment, containsPair('GIT_SEQUENCE_EDITOR', 'true'));
 
       final inClone = _plan([
         _review('T-1'),

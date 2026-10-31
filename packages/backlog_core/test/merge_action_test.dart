@@ -215,7 +215,18 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       final comment = (await comments()).single;
       expect((comment.author, comment.note), ('kanban-ai', false), reason: 'the agent is to fix it');
       expect(comment.text, startsWith('Merging agent/T-0001 into main (local) failed: rebasing'));
-      expect(comment.text, contains('To fix it: rebase agent/T-0001 onto main (`git rebase main`), resolve'));
+      expect(
+        comment.text,
+        contains(
+          'To fix it, in the worktree of agent/T-0001:\n\n'
+          '1. `git rebase main` on agent/T-0001\n'
+          '2. resolve the conflicts git reports, `git add <file>` for each resolved file, then '
+          '`git rebase --continue` (repeat until the rebase is done; never `git rebase --abort` or `--skip`)\n'
+          '3. run the project\'s checks and commit what it needs\n'
+          '4. leave T-0001 in review: do not change its status\n\n',
+        ),
+        reason: 'no fetch and no pull request without a remote strategy and pr',
+      );
       expect(comment.text, contains('Then move it to deploy again to merge it.'));
       expect(await git(path('wt-1'), ['rev-parse', 'HEAD']), tip, reason: 'the branch is as before');
       expect(await git(path('wt-1'), ['status', '--porcelain']), isEmpty, reason: 'no rebase left behind');
@@ -235,7 +246,7 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       expect((await current()).status, 'review');
       final comment = (await comments()).single;
       expect(comment.text, contains('```text\nbroken build\n```'));
-      expect(comment.text, contains('make the check pass on top of it'));
+      expect(comment.text, contains("3. run `sh -c 'echo broken build; exit 2'` and commit what it needs\n"));
       expect(await git(path('wt-1'), ['rev-parse', 'HEAD']), tip);
       expect(await git(path('repo'), ['rev-parse', 'main']), main);
     });
@@ -376,8 +387,8 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       final comment = (await comments()).last;
       expect(comment.note, isFalse);
       expect(comment.text, contains('Pull request is not mergeable'));
-      expect(comment.text, contains('`git fetch origin`, then rebase agent/T-0001 onto origin/main'));
-      expect(comment.text, contains('publish the branch with `backlog pr T-0001 --force`'));
+      expect(comment.text, contains('1. `git fetch origin`\n2. `git rebase origin/main` on agent/T-0001\n'));
+      expect(comment.text, contains('5. publish the branch with `backlog pr T-0001 --force` (never `git push`)\n'));
       expect(await hasBranch('agent/T-0001'), isTrue);
     });
   });

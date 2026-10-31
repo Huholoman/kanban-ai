@@ -280,7 +280,9 @@ final class ActionJob {
   /// The rendered command; null for a built-in action.
   final List<String>? command;
 
-  /// Added to the server's environment.
+  /// Added to the server's environment: `DispatchAssignment.headlessGit`,
+  /// `BACKLOG_DIR`, `KANBAN_AI_ITEM`, `KANBAN_AI_ACTION` and, in a worktree,
+  /// `BACKLOG_AGENT`.
   final Map<String, String> environment;
 
   ItemId get id => item.id;
