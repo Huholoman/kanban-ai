@@ -522,7 +522,7 @@ There is no event bus or event sourcing: the state lives in files and git keeps 
 - `workflow`, `items` (`?all=true`)
 - `items/<id>`: GET (with its relations and the items it waits for or holds up through `touches`), and PATCH `{changes: ["status=done"], body}`
 - `items/<id>/claim|release|done`: POST `{agent, status, force}`
-- `items/<id>/comments`: POST `{text, author?, question?, note?}` (the detail has `discussion`, items `needs_human`)
+- `items/<id>/comments`: POST `{text, author?, question?, note?}` (the detail has `discussion`, items `needs_human`, `review` — `running` while an AI review runs — and `review_findings`)
 - `views`: GET, and POST `{name, section?, base?, conditions: [filter expressions]}` (save a filter as a view)
 - `views/<id>`: GET (`?group_by=field` regroups it for that request), and PATCH `{section?, columns?}` (only the given keys change; null removes them)
 - `lint`, `health` (global)

@@ -101,6 +101,8 @@ void main() {
       checklist: const Progress(2, 5),
       claim: claim,
       needsHuman: true,
+      review: 'changes',
+      reviewFindings: 2,
       path: 'items/T-1-backups.md',
       body: '# Body',
     );
@@ -121,12 +123,25 @@ void main() {
         dependencies: const [ItemLinkDto(id: 'T-9')],
         conflicts: const [ItemLinkDto(id: 'T-3', title: 'Other', status: 'review')],
         waiting: const [ItemLinkDto(id: 'T-4', title: 'Later', status: 'todo')],
-        discussion: [CommentDto(author: 'w1', at: DateTime.utc(2026, 10, 31, 14), text: 'Which?', question: true)],
+        discussion: [
+          CommentDto(author: 'w1', at: DateTime.utc(2026, 10, 31, 14), text: 'Which?', question: true),
+          CommentDto(
+            author: 'w2',
+            at: DateTime.utc(2026, 10, 31, 15),
+            text: 'Fix:\n\n1. a\n2. b',
+            review: 'changes',
+            commit: '1a2b3c4d5e6f',
+          ),
+        ],
       );
       final detailCopy = roundTrip(detail.toJson(), ItemDetailDto.fromJson);
       expect(detailCopy.toJson(), detail.toJson());
       expect(detailCopy.item.needsHuman, isTrue);
-      expect(detailCopy.discussion.single.at, DateTime.utc(2026, 10, 31, 14));
+      expect(detailCopy.discussion.first.at, DateTime.utc(2026, 10, 31, 14));
+      expect((detailCopy.item.review, detailCopy.item.reviewFindings), ('changes', 2));
+      final review = detailCopy.discussion.last;
+      expect((review.review, review.commit, review.findings), ('changes', '1a2b3c4d5e6f', 2));
+      expect(ItemDto.fromJson({...item.toJson()}..remove('review')).review, 'none', reason: 'older servers');
       final request = roundTrip(
         const CommentRequest('Hi', author: 'a', question: true).toJson(),
         CommentRequest.fromJson,

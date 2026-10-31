@@ -557,6 +557,40 @@ void main() {
       expect(launcher.jobs.single, contains('sh -c \'mise run check\''));
     });
 
+    test('the review state: from review comments, running while an AI review runs', () async {
+      final config = File(p.join(dir.path, 'backlog.yaml'));
+      config.writeAsStringSync(
+        config.readAsStringSync().replaceFirst(
+          '  command: agent {id}\n',
+          '  command: agent {id}\n  actions:\n    - {name: AI review, review: true, on_enter: review}\n',
+        ),
+      );
+      host.reload();
+      final api = dispatching();
+      expect((await api.workflow()).actions.single.review, isTrue);
+      final created = await api.createItem(const NewItemRequest(title: 'A', status: 'review'));
+      final id = created.item.id;
+      expect(created.item.review, 'none');
+
+      await api.runAction(id, 'AI review');
+      expect(launcher.started, ['$id@w1:AI review']);
+      expect((await api.item(id)).item.review, 'running');
+      expect((await api.items()).single.review, 'running');
+      expect((await api.view('board')).groups.expand((g) => g.items).single.review, 'running');
+
+      await (await host.backlog).items.comment(
+        id,
+        author: 'w1',
+        text: 'Two things.\n\n1. a\n2. b',
+        review: ReviewVerdict.changes,
+      );
+      await launcher.stop(ItemId(id));
+      await dispatcher.evaluate();
+      final detail = await api.item(id);
+      expect((detail.item.review, detail.item.reviewFindings), ('changes', 2));
+      expect((detail.discussion.last.review, detail.discussion.last.commit), ('changes', null));
+    });
+
     test('start and stop need a running dispatcher', () async {
       final api = HttpBacklogApi(
         Uri.parse('http://backlog.test'),

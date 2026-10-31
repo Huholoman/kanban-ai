@@ -9,6 +9,8 @@ final class CommentDto {
     required this.text,
     this.question = false,
     this.note = false,
+    this.review,
+    this.commit,
   });
 
   factory CommentDto.fromJson(Json json) => CommentDto(
@@ -17,6 +19,8 @@ final class CommentDto {
     text: json.string('text'),
     question: json.boolean('question'),
     note: json.boolean('note'),
+    review: json.optionalString('review'),
+    commit: json.optionalString('commit'),
   );
 
   final String author;
@@ -31,12 +35,24 @@ final class CommentDto {
   /// Only a note: it neither answers a question nor wakes the item's agent.
   final bool note;
 
+  /// The verdict of a review comment (`ok`, `changes`); null for others.
+  final String? review;
+
+  /// The commit a review looked at, when known.
+  final String? commit;
+
+  /// The findings of a review asking for changes: its numbered list items.
+  int get findings =>
+      review != 'changes' ? 0 : RegExp(r'^\s{0,3}\d{1,3}[.)]\s+\S', multiLine: true).allMatches(text).length;
+
   Json toJson() => {
     'author': author,
     'at': at.toUtc().toIso8601String(),
     'text': text,
     'question': question,
     'note': note,
+    'review': review,
+    'commit': commit,
   };
 }
 

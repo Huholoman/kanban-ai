@@ -86,6 +86,8 @@ final class ItemDto {
     this.checklist = Progress.none,
     this.claim,
     this.needsHuman = false,
+    this.review = 'none',
+    this.reviewFindings = 0,
     this.path,
     this.body,
   });
@@ -125,6 +127,8 @@ final class ItemDto {
       checklist: Progress(progress.integer('done'), progress.integer('total')),
       claim: claim == null ? null : ClaimDto.fromJson(claim),
       needsHuman: json.boolean('needs_human'),
+      review: json.optionalString('review') ?? 'none',
+      reviewFindings: json['review_findings'] == null ? 0 : json.integer('review_findings'),
       path: json.optionalString('path'),
       body: json.optionalString('body'),
     );
@@ -169,6 +173,14 @@ final class ItemDto {
   /// the item waits for a person (and is not ready).
   final bool needsHuman;
 
+  /// Where the review of the item's work stands: `none`, `running` (an AI
+  /// review runs or waits to run), `ok`, `changes` or `stale` (the branch
+  /// has commits the latest review did not see).
+  final String review;
+
+  /// Findings of the latest review when it asks for changes, else 0.
+  final int reviewFindings;
+
   /// Location of the file, relative to the backlog root.
   final String? path;
 
@@ -209,6 +221,8 @@ final class ItemDto {
     'progress': {'done': checklist.done, 'total': checklist.total},
     'claim': claim?.toJson(),
     'needs_human': needsHuman,
+    'review': review,
+    'review_findings': reviewFindings,
     'path': ?path,
     'body': ?body,
   };

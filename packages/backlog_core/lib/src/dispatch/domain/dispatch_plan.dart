@@ -4,6 +4,7 @@ import '../../claims/domain/claim.dart';
 import '../../items/domain/item_id.dart';
 import '../../planning/domain/backlog_snapshot.dart';
 import '../../planning/domain/planned_item.dart';
+import '../../planning/domain/review_state.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/action_definition.dart';
 import '../../workflow/domain/dispatcher_config.dart';
@@ -562,6 +563,19 @@ final class DispatchPlan {
 
   /// What runs for [id] now, if anything.
   AgentRun? runFor(ItemId id) => runs.firstWhereOrNull((run) => run.item == id);
+
+  /// Items an AI review ([ActionDefinition.review]) runs or waits to run
+  /// for.
+  Set<ItemId> get reviewing => {
+    for (final run in runs)
+      if (run.action != null && config.action(run.action!)?.review == true) run.item,
+    for (final waiting in pending)
+      if (config.action(waiting.action)?.review == true) waiting.item,
+  };
+
+  /// [planned]'s review state with what the dispatcher knows:
+  /// [ReviewState.running] while a review runs or waits to run for it.
+  ReviewState reviewOf(PlannedItem planned) => reviewing.contains(planned.id) ? ReviewState.running : planned.review;
 
   /// The actions that items in [planned]'s status offer as buttons.
   List<ActionDefinition> actionsFor(PlannedItem planned) => [
