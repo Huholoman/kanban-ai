@@ -12,5 +12,6 @@ Rules:
 - Domain code must not import `dart:io`; derived state (blocked, ready, …) belongs in `BacklogSnapshot`, not in adapters.
 - Item files are edited by hand too: the codec must keep comments, key order and unknown keys (`MarkdownItemCodec.update`).
 - Tools come from `mise.toml` (Flutter with its Dart, jq); Nix is system-level. Before finishing: `mise run format` and `mise run check` (format check, analysis and tests of every package). Try changes on the playground (`mise run playground`, `mise run serve`).
+- Every commit message contains the id of the backlog item it belongs to (e.g. `Board: … (KA-7f3a)`; several ids for several items, merge commits too). Work without an item gets one first (`backlog new`).
 - Small, atomic commits: one logical change per commit (a feature, a fix, a refactor), each passing `mise run check`. Independent changes made in one session go into separate commits, never one bundle.
 - `SPEC.md` (the reference) and `README.md` (the user-facing overview) must stay current: every commit that adds or changes visible behaviour updates both, in the same commit as the change. Pure refactors and fixes that restore documented behaviour need no doc change. Exception: when a PR is several commits that only make sense together, the doc update may be its own commit in that PR.
