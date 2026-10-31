@@ -577,6 +577,7 @@ claims:
 #     # merged); items in an active status with a pr are asked every
 #     # state_every minutes, a PR merged elsewhere makes them done.
 #     # state: gh pr view {pr} --json state --jq .state
+#     # state: tea api repos/{{owner}}/{{repo}}/pulls/{pr_number}   # Gitea
 #     # state_every: 2
 #   # How the built-in action merge merges (run: merge, typically
 #   # on_enter: deploy). Success: the item is done, its branch, created

@@ -21,6 +21,7 @@ import '../domain/agent_session.dart';
 import '../domain/dispatch_plan.dart';
 import 'built_in_actions.dart';
 import 'pull_request_opener.dart';
+import 'pull_request_watcher.dart';
 
 /// Starts agents as detached processes that outlive the server, and looks
 /// after them while they run.
@@ -64,7 +65,20 @@ final class ProcessAgentLauncher extends AgentLauncher {
        _clock = clock,
        _log = log ?? ((_) {}),
        _environment = environment ?? Platform.environment,
-       _builtIns = builtIns ?? BuiltInActions.standard;
+       _builtIns = builtIns ?? BuiltInActions.standard {
+    _pullRequests = PullRequestWatcher(
+      project: project,
+      stateDir: stateDir,
+      backlog: backlog,
+      running: (item) async => await _record(item) != null,
+      serialized: _serialized,
+      clock: clock,
+      environment: environment,
+      log: _log,
+    );
+  }
+
+  late final PullRequestWatcher _pullRequests;
 
   /// Who writes the launcher's notes in the discussion (results of actions).
   static const noteAuthor = 'kanban-ai';
@@ -115,8 +129,21 @@ final class ProcessAgentLauncher extends AgentLauncher {
   void attach(void Function() onChange) {
     _onChange = onChange;
     _timer?.cancel();
-    _timer = Timer.periodic(pollInterval, (_) => unawaited(tick()));
+    _timer = Timer.periodic(pollInterval, (_) {
+      unawaited(tick());
+      unawaited(pollPullRequests());
+    });
     unawaited(tick());
+  }
+
+  /// Asks `dispatcher.pr.state` about the pull requests of active items
+  /// (at most every `state_every`, unless [force]) and makes those merged
+  /// outside the board done ([PullRequestWatcher]); returns them.
+  Future<List<ItemId>> pollPullRequests({bool force = false}) async {
+    if (_closed) return const [];
+    final merged = await _pullRequests.poll(force: force);
+    if (merged.isNotEmpty) _onChange?.call();
+    return merged;
   }
 
   @override

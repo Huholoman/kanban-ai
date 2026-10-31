@@ -10,6 +10,7 @@ export 'src/dispatch/domain/action_run.dart';
 export 'src/dispatch/domain/agent_log_format.dart';
 export 'src/dispatch/domain/agent_session.dart';
 export 'src/dispatch/domain/dispatch_plan.dart';
+export 'src/dispatch/domain/pull_request_state.dart';
 export 'src/dispatch/infrastructure/action_files.dart';
 export 'src/dispatch/infrastructure/built_in_actions.dart';
 export 'src/dispatch/infrastructure/merge_action.dart';

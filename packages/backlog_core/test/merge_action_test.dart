@@ -398,6 +398,88 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
     expect(await launcher.agentLog(ItemId('T-0001')), isNotNull);
   });
 
+  group('pull requests merged outside the board (pr.state)', () {
+    late FixedClock clock;
+    late ProcessAgentLauncher launcher;
+
+    /// `pr.state` prints the content of the file `state` (and counts its calls).
+    Future<void> watch() async {
+      File(path('state.sh')).writeAsStringSync('echo "\$1" >> "${path('state-calls')}"\ncat "${path('pr-state')}"\n');
+      await configure(
+        merge: '{strategy: pr}',
+        pr: '{create: x, merge: x, state: [sh, ${path('state.sh')}, "{pr_number}"], state_every: 2}',
+      );
+      clock = FixedClock(DateTime.utc(2026, 10, 31, 12));
+      launcher = ProcessAgentLauncher(project: 'demo', backlog: () async => backlog, stateDir: stateDir, clock: clock);
+      addTearDown(launcher.close);
+      await item(worktree: 'wt-2');
+      await git(path('wt-2'), ['push', '-q', '--set-upstream', 'origin', 'agent/T-0001']);
+      await backlog.items.update('T-0001', [
+        FieldChange.parse('status=review'),
+        FieldChange.parse('pr=https://git.example/o/r/pulls/12'),
+      ]);
+    }
+
+    int calls() => File(path('state-calls')).existsSync() ? File(path('state-calls')).readAsLinesSync().length : 0;
+
+    test('a merged pull request makes the item done and cleans up, at most every state_every', () async {
+      await watch();
+      File(path('pr-state')).writeAsStringSync('OPEN\n');
+      expect(await launcher.pollPullRequests(), isEmpty);
+      expect(calls(), 1);
+      expect(File(path('state-calls')).readAsStringSync().trim(), '12', reason: '{pr_number}');
+
+      File(path('pr-state')).writeAsStringSync('{"state": "closed", "merged": true}');
+      clock.advance(const Duration(minutes: 1));
+      expect(await launcher.pollPullRequests(), isEmpty, reason: 'too soon');
+      expect(calls(), 1);
+
+      clock.advance(const Duration(minutes: 1));
+      expect(await launcher.pollPullRequests(), [ItemId('T-0001')]);
+      expect((await current()).status, 'done');
+      final note = (await comments()).single;
+      expect(note.note, isTrue);
+      expect(
+        note.text,
+        'The pull request https://git.example/o/r/pulls/12 was merged outside the board; T-0001 is done; '
+        'removed the worktree wt-2; deleted the branch agent/T-0001.',
+      );
+      expect(Directory(path('wt-2')).existsSync(), isFalse);
+
+      clock.advance(const Duration(minutes: 5));
+      expect(await launcher.pollPullRequests(), isEmpty, reason: 'done items are not asked');
+      expect(calls(), 2);
+    });
+
+    test('a closed pull request gets one note; items being worked on are not asked', () async {
+      await watch();
+      File(path('pr-state')).writeAsStringSync('closed\n');
+      expect(await launcher.pollPullRequests(force: true), isEmpty);
+      expect(await launcher.pollPullRequests(force: true), isEmpty);
+      final note = (await comments()).single;
+      expect(
+        note.text,
+        'The pull request https://git.example/o/r/pulls/12 was closed without being merged; T-0001 stays review.',
+      );
+      expect((await current()).status, 'review');
+
+      await backlog.claims.claim('T-0001', 'someone', force: true, mirror: false);
+      final before = calls();
+      await launcher.pollPullRequests(force: true);
+      expect(calls(), before, reason: 'a claimed item is not asked');
+    });
+  });
+
+  test('PullRequestState reads words and JSON', () {
+    expect(PullRequestState.parse('MERGED\n'), PullRequestState.merged);
+    expect(PullRequestState.parse('state: open'), PullRequestState.open);
+    expect(PullRequestState.parse('{"state":"closed","merged":false}'), PullRequestState.closed);
+    expect(PullRequestState.parse('{"state":"closed","merged":true}'), PullRequestState.merged);
+    expect(PullRequestState.parse('[{"state":"CLOSED","mergedAt":"2026-10-31T12:00:00Z"}]'), PullRequestState.merged);
+    expect(PullRequestState.parse('{"state":"open","merged_at":null}'), PullRequestState.open);
+    expect(PullRequestState.parse('404 Not Found'), PullRequestState.unknown);
+  });
+
   test('command: an own command merges', () async {
     File(path('ship.sh')).writeAsStringSync('echo "shipping \$1"\n[ "\$1" = agent/T-0001 ]\n');
     await configure(merge: '{strategy: command, command: [sh, ${path('ship.sh')}, "{branch}"]}');
