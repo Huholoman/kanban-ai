@@ -150,6 +150,29 @@ void main() {
     expect((await api.items(includeDone: true)).map((i) => i.id), contains(first.item.id));
   });
 
+  test('comments and questions: the discussion in the detail, needs a person', () async {
+    final created = await api.createItem(const NewItemRequest(title: 'Export', status: 'todo', body: 'Export it.\n'));
+    final id = created.item.id;
+    expect(created.discussion, isEmpty);
+    final asked = await api.comment(id, const CommentRequest('CSV or JSON?', author: 'w1', question: true));
+    expect(asked.item.needsHuman, isTrue);
+    expect(asked.item.ready, isFalse);
+    expect(asked.discussion.single.question, isTrue);
+    expect((await api.items()).single.needsHuman, isTrue);
+
+    final noted = await api.comment(id, const CommentRequest('Let me think.', note: true));
+    expect(noted.item.needsHuman, isTrue, reason: 'a note answers nothing');
+    expect(noted.discussion.last.note, isTrue);
+    expect(noted.item.body, contains(' · note\n\nLet me think.'));
+
+    final answered = await api.comment(id, const CommentRequest('CSV.'));
+    expect(answered.item.needsHuman, isFalse);
+    expect(answered.discussion.map((c) => c.text), ['CSV or JSON?', 'Let me think.', 'CSV.']);
+    expect(answered.discussion.last.author, isNot('w1'), reason: 'the server user or web');
+    expect(answered.item.body, startsWith('Export it.\n\n## Discussion\n\n### w1 · '));
+    await expectLater(api.comment(id, const CommentRequest(' ')), throwsA(apiError(400, 'invalid_input')));
+  });
+
   test('views are listed and evaluated', () async {
     await backlog.items.create(const NewItem(title: 'Doing', status: 'in-progress', priority: 'p0'));
     final views = await api.views();
@@ -344,4 +367,201 @@ void main() {
     host.reload();
     expect((await host.backlog).workflow.priorities, ['p0', 'p1', 'p2']);
   });
+
+  group('dispatch', () {
+    late BacklogHost host;
+    late _FakeLauncher launcher;
+    late Dispatcher dispatcher;
+
+    HttpBacklogApi dispatching() => HttpBacklogApi(
+      Uri.parse('http://backlog.test'),
+      client: inMemory(
+        BacklogServer.buildHandler(
+          projects: ProjectHub.single(host, dispatcher: dispatcher, launcher: launcher),
+        ),
+      ),
+    );
+
+    setUp(() async {
+      final config = File(p.join(dir.path, 'backlog.yaml'));
+      config.writeAsStringSync(
+        '${config.readAsStringSync()}\ndispatcher:\n  worktrees: [w1, w2]\n  max_agents: 1\n  command: agent {id}\n',
+      );
+      host = BacklogHost(dir.path, clock: clock);
+      launcher = _FakeLauncher(host);
+      dispatcher = Dispatcher(
+        snapshot: () async => (await host.backlog).planning.snapshot(),
+        backlogRoot: dir.path,
+        launcher: launcher,
+        clock: clock,
+      );
+      addTearDown(dispatcher.close);
+    });
+
+    test('without a dispatcher section the plan is off', () async {
+      File(p.join(dir.path, 'backlog.yaml')).writeAsStringSync('');
+      host.reload();
+      final plan = await dispatching().dispatch();
+      expect(plan.configured, isFalse);
+      expect(plan.canStart, isFalse);
+    });
+
+    test('the plan, a manual start, the log and a stop', () async {
+      final api = dispatching();
+      final a = await api.createItem(const NewItemRequest(title: 'A', status: 'todo', priority: 'p1'));
+      final b = await api.createItem(const NewItemRequest(title: 'B', status: 'todo'));
+      final plan = await api.dispatch();
+      expect(plan.configured, isTrue);
+      expect(plan.mode, 'manual');
+      expect(plan.agent, 'command');
+      expect(plan.maxAgents, 1);
+      expect(plan.canStart, isTrue);
+      expect(plan.worktrees.map((w) => w.name), ['w1', 'w2']);
+      expect(plan.assignments.single.item, a.item.id);
+      expect(plan.waiting, [b.item.id]);
+
+      final started = await api.startAgent(b.item.id);
+      expect(launcher.started, ['${b.item.id}@w1']);
+      expect(started.running, 1);
+      expect(started.canStart, isFalse);
+      expect(started.runFor(b.item.id)!.worktree, 'w1');
+      expect((await api.item(b.item.id)).item.claim!.agent, 'w1');
+
+      await expectLater(api.startAgent(a.item.id), throwsA(apiError(409, 'unavailable')));
+      final log = await api.agentLog(b.item.id);
+      expect(log.lines, ['working on ${b.item.id}']);
+      expect(log.running, isTrue);
+      await expectLater(api.agentLog(a.item.id), throwsA(apiError(404, 'not_found')));
+
+      final stopped = await api.stopAgent(b.item.id);
+      expect(launcher.stopped, [b.item.id]);
+      expect(stopped.running, 0);
+      await expectLater(api.stopAgent(b.item.id), throwsA(apiError(404, 'not_found')));
+    });
+
+    test('a start continues the last session of the item unless fresh', () async {
+      final config = File(p.join(dir.path, 'backlog.yaml'));
+      config.writeAsStringSync(
+        config.readAsStringSync().replaceFirst(
+          '  command: agent {id}\n',
+          '  agent: bot\n  agents:\n    bot:\n      command: bot {prompt}\n      output: claude-stream-json\n'
+              '      resume: --resume {session}\n',
+        ),
+      );
+      host.reload();
+      final api = dispatching();
+      final a = await api.createItem(const NewItemRequest(title: 'A', status: 'todo'));
+      launcher.sessions = {
+        ItemId(a.item.id): AgentSession(
+          item: ItemId(a.item.id),
+          id: 'sess-a',
+          worktree: 'w2',
+          agent: 'bot',
+          startedAt: DateTime.utc(2026, 10, 29, 10),
+          reason: 'was stopped by a person',
+        ),
+      };
+      final plan = await api.dispatch();
+      expect(plan.assignments.single.resume, 'sess-a');
+      expect(plan.assignments.single.worktree, 'w2');
+      expect(plan.sessionFor(a.item.id)!.worktree, 'w2');
+
+      await api.startAgent(a.item.id, fresh: true);
+      expect(launcher.started, ['${a.item.id}@w1']);
+      await api.stopAgent(a.item.id);
+      await api.startAgent(a.item.id);
+      expect(launcher.started.last, '${a.item.id}@w2+resume');
+    });
+
+    test('a reply on an item in review is proposed and starts its session again', () async {
+      final config = File(p.join(dir.path, 'backlog.yaml'));
+      config.writeAsStringSync(
+        config.readAsStringSync().replaceFirst(
+          '  command: agent {id}\n',
+          '  agent: bot\n  agents:\n    bot:\n      command: bot {prompt}\n      output: claude-stream-json\n'
+              '      resume: --resume {session}\n',
+        ),
+      );
+      host.reload();
+      final api = dispatching();
+      final a = await api.createItem(const NewItemRequest(title: 'A', status: 'review'));
+      launcher.sessions = {
+        ItemId(a.item.id): AgentSession(
+          item: ItemId(a.item.id),
+          id: 'sess-a',
+          worktree: 'w2',
+          agent: 'bot',
+          startedAt: DateTime.utc(2026, 10, 29, 10),
+        ),
+      };
+      expect((await api.dispatch()).assignments, isEmpty);
+      await api.comment(a.item.id, const CommentRequest('Why this way?', author: 'tobik'));
+      await dispatcher.evaluate(); // the change feed would trigger it
+      final plan = await api.dispatch();
+      expect(plan.assignments.single.item, a.item.id);
+      expect(plan.assignments.single.resume, 'sess-a');
+      await api.startAgent(a.item.id);
+      expect(launcher.started, ['${a.item.id}@w2+resume']);
+      expect((await api.item(a.item.id)).item.status, 'review', reason: 'claiming keeps an active status');
+    });
+
+    test('items that are not ready cannot be started', () async {
+      final api = dispatching();
+      final item = await api.createItem(const NewItemRequest(title: 'Later', status: 'backlog'));
+      await expectLater(api.startAgent(item.item.id), throwsA(apiError(400, 'invalid_input')));
+      await expectLater(api.startAgent('S-none'), throwsA(apiError(404, 'not_found')));
+    });
+
+    test('start and stop need a running dispatcher', () async {
+      final api = HttpBacklogApi(
+        Uri.parse('http://backlog.test'),
+        client: inMemory(BacklogServer.buildHandler(projects: ProjectHub.single(host))),
+      );
+      final item = await api.createItem(const NewItemRequest(title: 'A', status: 'todo'));
+      expect((await api.dispatch()).assignments.single.item, item.item.id);
+      await expectLater(api.startAgent(item.item.id), throwsA(apiError(404, 'not_found')));
+    });
+  });
+}
+
+/// Claims like the real launcher and pretends that an agent runs until stopped.
+final class _FakeLauncher extends AgentLauncher {
+  _FakeLauncher(this.host);
+
+  final BacklogHost host;
+  final started = <String>[];
+  final stopped = <String>[];
+  final _runs = <ItemId, AgentRun>{};
+  Map<ItemId, AgentSession> sessions = const {};
+
+  @override
+  Future<void> launch(DispatchAssignment assignment) async {
+    await (await host.backlog).claims.claim(assignment.id.value, assignment.agent);
+    started.add(assignment.key);
+    _runs[assignment.id] = AgentRun(
+      item: assignment.id,
+      worktree: assignment.agent,
+      pid: 42,
+      startedAt: DateTime.utc(2026, 10, 29, 12),
+      log: '/logs/${assignment.id}.log',
+      agent: assignment.agentProfile.name,
+    );
+  }
+
+  @override
+  Future<DispatchConditions> conditions(DispatcherConfig config, String backlogRoot, BacklogSnapshot snapshot) async =>
+      DispatchConditions(runs: _runs.values.toList(), sessions: sessions);
+
+  @override
+  Future<bool> stop(ItemId item) async {
+    final run = _runs.remove(item);
+    if (run == null) return false;
+    stopped.add(item.value);
+    await (await host.backlog).claims.release(item.value, agent: run.worktree);
+    return true;
+  }
+
+  @override
+  Future<AgentLog?> agentLog(ItemId item, {int lines = 100}) async =>
+      _runs.containsKey(item) ? AgentLog(path: _runs[item]!.log, lines: ['working on $item'], running: true) : null;
 }

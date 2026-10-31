@@ -1,5 +1,6 @@
 import '../../shared/errors.dart';
 import 'checklist.dart';
+import 'discussion.dart';
 import 'item_id.dart';
 
 /// A unit of planned work: an epic, story, task, bug, decision or idea.
@@ -98,6 +99,9 @@ final class Item {
   final String body;
 
   Checklist get checklist => Checklist.parse(body);
+
+  /// The `## Discussion` section of the [body].
+  late final Discussion discussion = Discussion.parse(body);
 
   /// Nullable fields take a function so that they can be cleared:
   /// `copyWith(assignee: () => null)`.

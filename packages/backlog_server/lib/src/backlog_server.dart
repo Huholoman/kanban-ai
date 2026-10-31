@@ -29,8 +29,9 @@ final class BacklogServer {
   /// fails the start.
   ///
   /// Each project's dispatcher re-plans after every change (debounced by
-  /// [dispatchDebounce]) and, in auto mode, hands assignments to [launcher];
-  /// without one it only logs what it would start.
+  /// [dispatchDebounce]) and, in auto mode, hands assignments to the
+  /// project's launcher made by [launcher]; without one it only logs what it
+  /// would start.
   static Future<BacklogServer> start({
     String? root,
     String? projectsFile,
@@ -43,7 +44,7 @@ final class BacklogServer {
     Clock clock = const SystemClock(),
     Duration debounce = const Duration(milliseconds: 150),
     void Function(String message)? log,
-    AgentLauncher? launcher,
+    LauncherFactory? launcher,
     Duration dispatchDebounce = const Duration(milliseconds: 500),
   }) async {
     if ((root == null) == (projectsFile == null)) {

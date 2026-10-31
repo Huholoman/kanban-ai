@@ -71,6 +71,7 @@ abstract final class DtoMapper {
       children: Progress(planned.childCount - planned.openChildCount, planned.childCount),
       checklist: Progress(planned.checklist.done, planned.checklist.total),
       claim: claim == null ? null : DtoMapper.claim(claim, expired: planned.isClaimExpired),
+      needsHuman: planned.needsHuman,
       path: path,
       body: withBody ? item.body : null,
     );
@@ -87,6 +88,16 @@ abstract final class DtoMapper {
       related: [for (final id in item.related) _link(id, snapshot)],
       conflicts: [for (final id in planned.conflictsWith) _link(id, snapshot)],
       waiting: [for (final other in snapshot.waitingOn(item.id)) _link(other.id, snapshot)],
+      discussion: [
+        for (final comment in item.discussion.comments)
+          CommentDto(
+            author: comment.author,
+            at: comment.at,
+            text: comment.text,
+            question: comment.question,
+            note: comment.note,
+          ),
+      ],
     );
   }
 
@@ -145,7 +156,69 @@ abstract final class DtoMapper {
     InvalidInputException() => BacklogApiException(400, 'invalid_input', error.message),
     ClaimConflictException() => BacklogApiException(409, 'claim_conflict', error.message),
     ConfigurationException() => BacklogApiException(500, 'configuration', error.message),
+    UnavailableException() => BacklogApiException(409, 'unavailable', error.message),
   };
+
+  static DispatchDto dispatch(DispatchPlan plan) => DispatchDto(
+    configured: true,
+    mode: plan.mode.name,
+    agent: plan.config.agent.name,
+    maxAgents: plan.config.maxAgents,
+    running: plan.running,
+    capacity: plan.capacity,
+    worktrees: [
+      for (final worktree in plan.worktrees)
+        DispatchWorktreeDto(
+          name: worktree.name,
+          path: worktree.path,
+          busy: worktree.isBusy,
+          claims: [for (final claim in worktree.claims) claim.itemId.value],
+          unavailable: worktree.unavailable,
+          created: worktree.created,
+          isNew: worktree.isNew,
+          run: switch (worktree.run) {
+            final run? => AgentRunDto(
+              item: run.item.value,
+              worktree: run.worktree,
+              pid: run.pid,
+              startedAt: run.startedAt,
+              log: run.log,
+              agent: run.agent,
+              branch: run.branch,
+            ),
+            null => null,
+          },
+        ),
+    ],
+    assignments: [
+      for (final assignment in plan.assignments)
+        DispatchAssignmentDto(
+          item: assignment.id.value,
+          title: assignment.item.item.title,
+          worktree: assignment.agent,
+          resume: assignment.resume?.id,
+          newWorktree: assignment.createFrom != null,
+        ),
+    ],
+    waiting: [for (final item in plan.waiting) item.id.value],
+    held: [
+      for (final (:item, :reason) in plan.held)
+        HeldItemDto(item: item.id.value, title: item.item.title, reason: reason),
+    ],
+    sessions: [
+      for (final id in plan.sessions.keys)
+        if (plan.resumableSession(id) case final session?)
+          AgentSessionDto(
+            item: id.value,
+            session: session.id,
+            worktree: session.worktree,
+            endedAt: session.endedAt,
+            reason: session.reason,
+          ),
+    ],
+    maxWorktrees: plan.config.newWorktrees?.maxWorktrees,
+    spareWorktrees: plan.spare.length,
+  );
 
   static ItemLinkDto _link(ItemId id, BacklogSnapshot snapshot) {
     final other = snapshot[id];

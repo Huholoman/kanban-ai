@@ -39,34 +39,59 @@ final class WorktreeDefinition {
   String resolvePath(String backlogRoot) => p.normalize(p.isAbsolute(path) ? path : p.join(backlogRoot, path));
 }
 
+/// A text with `{placeholder}`s filled in per item (the prompt, environment
+/// values). `{{` and `}}` stand for literal braces.
+final class TextTemplate {
+  /// Rejects placeholders other than [known]; [label] names the setting in
+  /// error messages.
+  TextTemplate(this.text, {required List<String> known, required String label}) {
+    _validate(text, known, label);
+  }
+
+  final String text;
+
+  /// [text] with placeholders replaced by [values] (a missing one becomes empty).
+  String render(Map<String, String> values) => _fill(text, (name) => values[name] ?? '');
+
+  @override
+  String toString() => text;
+}
+
 /// The command that starts an agent, as a list of arguments (no shell) whose
 /// `{placeholder}`s are filled in per item. `{{` and `}}` stand for literal
 /// braces.
 final class CommandTemplate {
-  CommandTemplate(List<String> arguments) : arguments = List.unmodifiable(arguments) {
+  CommandTemplate(List<String> arguments, {String label = 'dispatcher.command', List<String> known = placeholders})
+    : arguments = List.unmodifiable(arguments) {
     if (arguments.isEmpty || arguments.first.trim().isEmpty) {
-      throw ConfigurationException('dispatcher.command must not be empty.');
+      throw ConfigurationException('$label must not be empty.');
     }
     for (final argument in arguments) {
-      _fill(argument, (name) {
-        if (!placeholders.contains(name)) {
-          throw ConfigurationException(
-            'dispatcher.command: unknown placeholder "{$name}" (known: ${placeholders.map((p) => '{$p}').join(', ')}).',
-          );
-        }
-        return '';
-      });
+      _validate(argument, known, label);
     }
   }
 
   /// Splits [command] into arguments like a POSIX shell would (whitespace,
   /// '…' and "…" quotes, backslash escapes) without running one: there are
   /// no pipes, variables or globs, so filled-in values can never inject.
-  factory CommandTemplate.parse(String command) => CommandTemplate(splitWords(command));
+  factory CommandTemplate.parse(
+    String command, {
+    String label = 'dispatcher.command',
+    List<String> known = placeholders,
+  }) => CommandTemplate(
+    splitWords(command, label: label),
+    label: label,
+    known: known,
+  );
 
   /// What a command may refer to: the item id and title, the worktree name,
-  /// its absolute path and the absolute path of the backlog folder.
-  static const placeholders = ['id', 'title', 'worktree', 'path', 'backlog'];
+  /// its absolute path, the absolute path of the backlog folder and the
+  /// rendered prompt (`dispatcher.prompt`).
+  static const placeholders = [...DispatcherConfig.promptPlaceholders, 'prompt'];
+
+  /// What the arguments that resume a session may refer to: the command's
+  /// placeholders and the `{session}` id.
+  static const resumePlaceholders = [...placeholders, 'session'];
 
   final List<String> arguments;
 
@@ -76,29 +101,21 @@ final class CommandTemplate {
     for (final argument in arguments) _fill(argument, (name) => values[name] ?? ''),
   ];
 
+  /// The program, i.e. the first argument.
+  String get executable => arguments.first;
+
   @override
   String toString() => join(arguments);
 
   /// [arguments] as one shell-quoted line, for logs and display.
   static String join(List<String> arguments) => arguments.map(_quote).join(' ');
 
-  static final _token = RegExp(r'\{\{|\}\}|\{([A-Za-z_]+)\}');
-
-  static String _fill(String argument, String Function(String name) value) => argument.replaceAllMapped(
-    _token,
-    (match) => switch (match[0]) {
-      '{{' => '{',
-      '}}' => '}',
-      _ => value(match[1]!),
-    },
-  );
-
   static String _quote(String argument) => RegExp(r'''^[A-Za-z0-9_./:={}@%+,-]+$''').hasMatch(argument)
       ? argument
       : "'${argument.replaceAll("'", r"'\''")}'";
 
   /// Shell-like word splitting of [command]; see [CommandTemplate.parse].
-  static List<String> splitWords(String command) {
+  static List<String> splitWords(String command, {String label = 'dispatcher.command'}) {
     final words = <String>[];
     final word = StringBuffer();
     var inWord = false;
@@ -134,23 +151,183 @@ final class CommandTemplate {
         inWord = true;
       }
     }
-    if (quote != null) throw ConfigurationException('dispatcher.command: unterminated $quote quote.');
+    if (quote != null) throw ConfigurationException('$label: unterminated $quote quote.');
     if (inWord) words.add(word.toString());
     return words;
   }
 }
 
+final _token = RegExp(r'\{\{|\}\}|\{([A-Za-z_]+)\}');
+
+String _fill(String text, String Function(String name) value) => text.replaceAllMapped(
+  _token,
+  (match) => switch (match[0]) {
+    '{{' => '{',
+    '}}' => '}',
+    _ => value(match[1]!),
+  },
+);
+
+void _validate(String text, List<String> known, String label) => _fill(text, (name) {
+  if (!known.contains(name)) {
+    throw ConfigurationException(
+      '$label: unknown placeholder "{$name}" (known: ${known.map((p) => '{$p}').join(', ')}).',
+    );
+  }
+  return '';
+});
+
+/// How an agent writes its output; tells later readers of the log (session
+/// id, progress) how to parse it.
+enum AgentOutput {
+  /// Plain text.
+  text('text'),
+
+  /// Claude Code's `--output-format stream-json`: one JSON event per line,
+  /// ending with a `result` event that carries the `session_id`.
+  claudeStreamJson('claude-stream-json'),
+
+  /// Some other JSON object per line (e.g. `codex exec --json`).
+  jsonLines('json-lines');
+
+  const AgentOutput(this.id);
+
+  /// The name used in `backlog.yaml`.
+  final String id;
+
+  static AgentOutput parse(String value, {String label = 'output'}) => values.firstWhere(
+    (output) => output.id == value,
+    orElse: () =>
+        throw ConfigurationException('$label must be one of ${values.map((o) => o.id).join(', ')}, got "$value".'),
+  );
+}
+
+/// One way to start a coding agent: its command (with `{prompt}` and the
+/// item's placeholders), extra environment and output format. Built-in
+/// profiles ([builtIns]) can be used by name; `dispatcher.agents` adds or
+/// replaces profiles.
+final class AgentProfile {
+  AgentProfile({
+    required this.name,
+    required this.command,
+    Map<String, TextTemplate> environment = const {},
+    this.output = AgentOutput.text,
+    this.resume,
+    this.builtIn = false,
+    this.verified = true,
+  }) : environment = Map.unmodifiable(environment) {
+    for (final key in environment.keys) {
+      if (!_envName.hasMatch(key)) {
+        throw ConfigurationException('Agent "$name": "$key" is not a valid environment variable name.');
+      }
+    }
+  }
+
+  static final _envName = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
+
+  final String name;
+  final CommandTemplate command;
+
+  /// Set for the agent's process on top of the server's environment (and of
+  /// `BACKLOG_AGENT`, `BACKLOG_DIR`); values may use the command's placeholders.
+  final Map<String, TextTemplate> environment;
+  final AgentOutput output;
+
+  /// Arguments appended to [command] to continue an earlier session of the
+  /// agent (`{session}` is its id), e.g. `--resume {session}`; null when the
+  /// agent cannot resume. Sessions are only known from output the
+  /// launcher can read a session id from ([AgentOutput.claudeStreamJson]).
+  final CommandTemplate? resume;
+
+  /// Whether a session of this profile can be continued.
+  bool get canResume => resume != null && output == AgentOutput.claudeStreamJson;
+
+  /// Shipped with kanban-ai rather than defined in `backlog.yaml`.
+  final bool builtIn;
+
+  /// Tried with the real CLI; unverified presets may need adjusting.
+  final bool verified;
+
+  /// Tools Claude Code may use without asking: the backlog CLI, git, mise
+  /// tasks, the project's own scripts (`./greet.sh`, `./tool/x.sh`) and the
+  /// file tools. Everything else is refused (nobody answers
+  /// permission prompts in headless mode); pushing is forbidden outright.
+  static const claudeAllowedTools =
+      'Bash(backlog *) Bash(git *) Bash(mise run *) Bash(./*) Read Edit Write Grep Glob TodoWrite';
+
+  /// The profiles usable without defining them. Only `claude` is verified
+  /// (Claude Code 2.1); the others are presets after the CLIs' documentation.
+  static final Map<String, AgentProfile> builtIns = {
+    'claude': AgentProfile(
+      name: 'claude',
+      // Never --bare (it ignores the subscription login) and never
+      // --dangerously-skip-permissions: a tool whitelist and acceptEdits.
+      command: CommandTemplate([
+        'claude',
+        '-p',
+        '{prompt}',
+        '--output-format',
+        'stream-json',
+        '--verbose',
+        '--permission-mode',
+        'acceptEdits',
+        '--permission-prompts',
+        'none',
+        '--allowedTools',
+        claudeAllowedTools,
+        '--disallowedTools',
+        'Bash(git push *)',
+      ], label: 'agent claude'),
+      output: AgentOutput.claudeStreamJson,
+      resume: CommandTemplate(
+        ['--resume', '{session}'],
+        label: 'agent claude resume',
+        known: CommandTemplate.resumePlaceholders,
+      ),
+      builtIn: true,
+    ),
+    'codex': AgentProfile(
+      name: 'codex',
+      command: CommandTemplate(['codex', 'exec', '--full-auto', '--json', '{prompt}'], label: 'agent codex'),
+      output: AgentOutput.jsonLines,
+      builtIn: true,
+      verified: false,
+    ),
+    'gemini': AgentProfile(
+      name: 'gemini',
+      command: CommandTemplate(['gemini', '--approval-mode', 'auto_edit', '-p', '{prompt}'], label: 'agent gemini'),
+      builtIn: true,
+      verified: false,
+    ),
+    'aider': AgentProfile(
+      name: 'aider',
+      command: CommandTemplate(['aider', '--yes-always', '--message', '{prompt}'], label: 'agent aider'),
+      builtIn: true,
+      verified: false,
+    ),
+  };
+}
+
 /// The optional `dispatcher` section of `backlog.yaml`: which worktrees
-/// agents may run in, how many at once, how to start one and whether to do
-/// it automatically. Without the section there is no dispatcher.
+/// agents may run in, how many at once, which agent to start with which
+/// prompt and whether to do it automatically. Without the section there is
+/// no dispatcher.
 final class DispatcherConfig {
   factory DispatcherConfig({
     required List<WorktreeDefinition> worktrees,
-    required CommandTemplate command,
+    required AgentProfile agent,
+    TextTemplate? prompt,
+    TextTemplate? resumePrompt,
     DispatchMode mode = DispatchMode.manual,
     int? maxAgents,
+    String base = 'main',
+    NewWorktrees? newWorktrees,
   }) {
-    if (worktrees.isEmpty) throw const ConfigurationException('dispatcher.worktrees must list at least one worktree.');
+    if (worktrees.isEmpty && newWorktrees == null) {
+      throw const ConfigurationException(
+        'dispatcher.worktrees must list at least one worktree (or set dispatcher.repo).',
+      );
+    }
     final names = <String>{}, paths = <String>{};
     for (final worktree in worktrees) {
       if (!names.add(worktree.name)) throw ConfigurationException('Duplicate dispatcher worktree "${worktree.name}".');
@@ -158,21 +335,119 @@ final class DispatcherConfig {
         throw ConfigurationException('Dispatcher worktrees share the path "${worktree.path}".');
       }
     }
-    final limit = maxAgents ?? worktrees.length;
+    if (newWorktrees != null && newWorktrees.maxWorktrees < worktrees.length) {
+      throw ConfigurationException(
+        'dispatcher.max_worktrees (${newWorktrees.maxWorktrees}) is less than the ${worktrees.length} listed worktrees.',
+      );
+    }
+    final limit = maxAgents ?? newWorktrees?.maxWorktrees ?? worktrees.length;
     if (limit < 1) throw const ConfigurationException('dispatcher.max_agents must be at least 1.');
-    return DispatcherConfig._(List.unmodifiable(worktrees), command, mode, limit);
+    return DispatcherConfig._(
+      List.unmodifiable(worktrees),
+      agent,
+      prompt ?? TextTemplate(defaultPrompt, known: promptPlaceholders, label: 'dispatcher.prompt'),
+      resumePrompt ??
+          TextTemplate(defaultResumePrompt, known: resumePromptPlaceholders, label: 'dispatcher.resume_prompt'),
+      mode,
+      limit,
+      base,
+      newWorktrees,
+    );
   }
 
-  DispatcherConfig._(this.worktrees, this.command, this.mode, this.maxAgents);
+  DispatcherConfig._(
+    this.worktrees,
+    this.agent,
+    this.prompt,
+    this.resumePrompt,
+    this.mode,
+    this.maxAgents,
+    this.base,
+    this.newWorktrees,
+  );
+
+  /// What the prompt may refer to: the item id and title, the worktree name,
+  /// its absolute path, the absolute path of the backlog folder and the
+  /// branch prepared for the agent.
+  static const promptPlaceholders = ['id', 'title', 'worktree', 'path', 'backlog', 'branch'];
+
+  /// What the prompt of a resumed session may refer to: [promptPlaceholders]
+  /// and `{news}`, what happened since the agent's last run (how it ended,
+  /// new comments of others in the discussion).
+  static const resumePromptPlaceholders = [...promptPlaceholders, 'news'];
+
+  /// The prompt every agent gets unless `dispatcher.prompt` replaces it.
+  static const defaultPrompt =
+      'You are the coding agent {worktree}, working on backlog item {id} ("{title}") in this git worktree.\n'
+      '1. First run `backlog instructions` and `backlog show {id}` and follow them. The item is already claimed '
+      'for you (BACKLOG_AGENT={worktree}); do not take other items.\n'
+      '2. The worktree is on branch {branch}, prepared for this item: commit there and do not switch branches. '
+      'Make small commits; every commit message contains {id}.\n'
+      '3. When the work is finished, run `backlog set {id} status=review`.\n'
+      '4. Never push and never open pull requests.\n'
+      '5. If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"`, leave the status as '
+      'it is and stop; you will be resumed with the answer. Use `backlog comment {id} "…"` for notes a person '
+      'should read.\n'
+      '6. If a discussion in the item changes what it asks for, update its description or acceptance criteria in '
+      'the body above the `## Discussion` section (never edit the comments) and say so in a comment.';
+
+  /// The prompt for continuing an agent's earlier session on the same item
+  /// (unless `dispatcher.resume_prompt` replaces it).
+  static const defaultResumePrompt =
+      'You are the coding agent {worktree} again, continuing your earlier session on backlog item {id} ("{title}"). '
+      'The item is claimed for you again and the worktree is on branch {branch}.\n'
+      'Since your last run: {news}\n'
+      'Run `backlog show {id}` to see the item as it is now. Then:\n'
+      '- If the new comments only ask you something (e.g. why you did something), answer with '
+      '`backlog comment {id} "…"` and stop: change no code and leave the status as it is.\n'
+      '- If they answer your question or ask for changes, reply briefly with `backlog comment {id} "…"` and '
+      'continue the work under the same rules as before: small commits containing {id} on {branch}, '
+      '`backlog set {id} status=review` when finished, never push.\n'
+      '- Without new comments, continue the work under the same rules.\n'
+      '- If the discussion changed what the item asks for, update its description or acceptance criteria in the body '
+      'above `## Discussion` (never edit the comments) and say so in your comment.\n'
+      '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.';
 
   /// In order of preference: free work goes to the first free worktree.
   final List<WorktreeDefinition> worktrees;
-  final CommandTemplate command;
+
+  /// The agent profile started for each assignment.
+  final AgentProfile agent;
+
+  /// The prompt, shared by all agents; fills `{prompt}` in the command.
+  final TextTemplate prompt;
+
+  /// The prompt when an agent continues its earlier session on an item.
+  final TextTemplate resumePrompt;
   final DispatchMode mode;
 
   /// At most this many agents run at once (defaults to one per worktree;
   /// more than there are worktrees has no effect).
   final int maxAgents;
+
+  /// The branch new item branches start from (`dispatcher.base`, default
+  /// `main`).
+  final String base;
+
+  /// How the dispatcher adds worktrees of its own when none of [worktrees]
+  /// is free (`dispatcher.repo`); null when it only uses [worktrees].
+  final NewWorktrees? newWorktrees;
+
+  /// The command of [agent].
+  CommandTemplate get command => agent.command;
+
+  /// The same configuration with [worktrees] in place of the listed ones
+  /// (e.g. the listed ones plus those the dispatcher created).
+  DispatcherConfig withWorktrees(List<WorktreeDefinition> worktrees) => DispatcherConfig._(
+    List.unmodifiable(worktrees),
+    agent,
+    prompt,
+    resumePrompt,
+    mode,
+    maxAgents,
+    base,
+    newWorktrees,
+  );
 
   WorktreeDefinition? worktree(String name) {
     for (final worktree in worktrees) {
@@ -180,4 +455,57 @@ final class DispatcherConfig {
     }
     return null;
   }
+}
+
+/// Worktrees the dispatcher adds by itself (`dispatcher.repo`,
+/// `worktree_name`, `max_worktrees`, `cleanup_after_days`): when no worktree
+/// is free, it runs `git worktree add` in the primary clone [repo] for the
+/// next name of [name] (`{repo}-{n}` by default: the first number from 2 on
+/// whose name and folder are unused), next to the clone.
+final class NewWorktrees {
+  NewWorktrees({required this.repo, String? name, required this.maxWorktrees, this.cleanupAfter})
+    : name = TextTemplate(name ?? defaultName, known: const ['repo', 'n'], label: 'dispatcher.worktree_name') {
+    if (repo.trim().isEmpty) throw const ConfigurationException('dispatcher.repo must not be empty.');
+    if (!this.name.text.contains('{n}')) {
+      throw const ConfigurationException('dispatcher.worktree_name must contain {n}.');
+    }
+    if (maxWorktrees < 1) throw const ConfigurationException('dispatcher.max_worktrees must be at least 1.');
+    if (cleanupAfter case final after? when after <= Duration.zero) {
+      throw const ConfigurationException('dispatcher.cleanup_after_days must be at least 1.');
+    }
+    final example = nameFor(2);
+    if (!WorktreeDefinition._namePattern.hasMatch(example) || example.contains('/')) {
+      throw ConfigurationException(
+        'dispatcher.worktree_name gives "$example", which is not a worktree name '
+        '(letters, digits, ".", "_" and "-").',
+      );
+    }
+  }
+
+  static const defaultName = '{repo}-{n}';
+
+  /// The primary clone as written: absolute, or relative to the backlog folder.
+  final String repo;
+
+  /// Name of the n-th worktree; `{repo}` is the folder name of [repo].
+  final TextTemplate name;
+
+  /// At most this many worktrees in all: the listed ones plus those the
+  /// dispatcher created.
+  final int maxWorktrees;
+
+  /// Remove a worktree the dispatcher created after it was idle this long,
+  /// when that loses nothing (clean, nothing that is not in the base
+  /// branch); null keeps them.
+  final Duration? cleanupAfter;
+
+  /// [repo] made absolute against the backlog folder [backlogRoot].
+  String resolveRepo(String backlogRoot) => p.normalize(p.isAbsolute(repo) ? repo : p.join(backlogRoot, repo));
+
+  /// The name of the [n]-th worktree.
+  String nameFor(int n) => name.render({'repo': p.basename(p.normalize(repo)), 'n': '$n'});
+
+  /// The worktree called [worktreeName]: a folder next to the primary clone.
+  WorktreeDefinition worktree(String worktreeName, String backlogRoot) =>
+      WorktreeDefinition(worktreeName, p.join(p.dirname(resolveRepo(backlogRoot)), worktreeName));
 }

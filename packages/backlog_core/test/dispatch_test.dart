@@ -16,16 +16,71 @@ dispatcher:
   command: agent --item {id} --title "{title}" --in {path} --as {worktree} --backlog {backlog}
 ''');
 
-DispatchPlan _plan(List<Item> items, {Workflow? workflow, List<Claim> claims = const [], DateTime? now}) =>
-    DispatchPlan.of(
-      BacklogSnapshot.build(
-        items: items,
-        workflow: workflow ?? _workflow(),
-        claims: claims,
-        now: now ?? DateTime.utc(2026, 10, 29, 12),
-      ),
-      backlogRoot: _root,
-    )!;
+/// A dispatcher whose agent can resume sessions (`--resume {session}`).
+Workflow _resumingWorkflow({List<String> worktrees = const ['w1', 'w2', 'w3']}) => parseWorkflowYaml('''
+dispatcher:
+  worktrees: [${worktrees.join(', ')}]
+  agent: bot
+  agents:
+    bot:
+      command: bot -p {prompt}
+      output: claude-stream-json
+      resume: --resume {session}
+  resume_prompt: "Again {id} in {worktree}: {news}"
+''');
+
+/// A resuming dispatcher that also creates worktrees from `../repo`.
+Workflow _provisioningWorkflow() => parseWorkflowYaml('''
+dispatcher:
+  repo: ../repo
+  max_worktrees: 3
+  agent: bot
+  agents:
+    bot:
+      command: bot -p {prompt}
+      output: claude-stream-json
+      resume: --resume {session}
+''');
+
+/// Conditions of [_provisioningWorkflow]: `repo-2` was created earlier,
+/// `repo-3` may still be created.
+DispatchConditions _provisioned({
+  Map<ItemId, AgentSession> sessions = const {},
+  Map<String, String> unavailable = const {},
+}) => DispatchConditions(
+  sessions: sessions,
+  unavailable: unavailable,
+  created: [WorktreeDefinition('repo-2', '/work/repo-2')],
+  spare: [WorktreeDefinition('repo-3', '/work/repo-3')],
+);
+
+AgentSession _session(String id, String worktree, {String agent = 'bot'}) => AgentSession(
+  item: ItemId(id),
+  id: 'sess-$id',
+  worktree: worktree,
+  agent: agent,
+  startedAt: DateTime.utc(2026, 10, 29, 10),
+  endedAt: DateTime.utc(2026, 10, 29, 11),
+  reason: 'exited with code 1',
+  outcome: 'it left in-progress, released and held',
+);
+
+DispatchPlan _plan(
+  List<Item> items, {
+  Workflow? workflow,
+  List<Claim> claims = const [],
+  DateTime? now,
+  DispatchConditions conditions = DispatchConditions.none,
+}) => DispatchPlan.of(
+  BacklogSnapshot.build(
+    items: items,
+    workflow: workflow ?? _workflow(),
+    claims: claims,
+    now: now ?? DateTime.utc(2026, 10, 29, 12),
+  ),
+  backlogRoot: _root,
+  conditions: conditions,
+)!;
 
 Claim _claim(String id, String agent, {DateTime? at, Duration lease = const Duration(hours: 2)}) {
   final time = at ?? DateTime.utc(2026, 10, 29, 11);
@@ -103,6 +158,224 @@ void main() {
       expect(plan.assignments, isEmpty);
       expect(plan.capacity, 0);
       expect(plan.waiting.map((i) => '${i.id}'), ['T-2']);
+    });
+
+    test('an item with a session of the agent continues it in its worktree, others keep that worktree free', () {
+      final plan = _plan(
+        [item('T-1', priority: 'p0'), item('T-2', priority: 'p1')],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+      );
+      expect(plan.assignments.map((a) => a.key), ['T-1@w2', 'T-2@w1+resume']);
+      final resumed = plan.assignments.last;
+      expect(resumed.resume!.id, 'sess-T-2');
+      expect(resumed.command, [
+        'bot',
+        '-p',
+        'Again T-2 in w1: your last run exited with code 1; it left in-progress, released and held. '
+            'No new comments in the discussion.',
+        '--resume',
+        'sess-T-2',
+      ]);
+      expect(plan.assignments.first.command, hasLength(3), reason: 'a new session without --resume');
+      expect(plan.resumableSession(ItemId('T-2'))!.worktree, 'w1');
+    });
+
+    test('a new session when the agent cannot resume or the session worktree is busy', () {
+      final busy = _plan(
+        [item('T-1', status: 'in-progress'), item('T-2')],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        claims: [_claim('T-1', 'w1')],
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+      );
+      expect(busy.assignments.map((a) => a.key), ['T-2@w2']);
+
+      final otherAgent = _plan(
+        [item('T-2')],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1', agent: 'claude')}),
+      );
+      expect(otherAgent.assignments.single.resume, isNull);
+
+      final noResume = _plan([
+        item('T-2'),
+      ], conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1', agent: 'command')}));
+      expect(noResume.assignments.single.resume, isNull, reason: 'a plain command cannot resume');
+    });
+
+    test('a manual start continues the session unless fresh', () {
+      final plan = _plan(
+        [item('T-1')],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(sessions: {ItemId('T-1'): _session('T-1', 'w2')}),
+      );
+      expect(plan.assignmentFor('T-1').key, 'T-1@w2+resume');
+      expect(plan.assignmentFor('T-1', fresh: true).key, 'T-1@w1');
+    });
+
+    test('a reply of a person resumes the session first, whatever the status or hold', () {
+      const reply =
+          '## Discussion\n\n### w1 · 2026-10-29 10:30:00 UTC\n\nDone.\n\n'
+          '### tobik · 2026-10-29 11:30:00 UTC\n\nWhy CSV?\n';
+      final plan = _plan(
+        [item('T-1', priority: 'p0'), item('T-2', status: 'review', body: reply)],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        conditions: DispatchConditions(
+          sessions: {ItemId('T-2'): _session('T-2', 'w1')},
+          held: {ItemId('T-2'): 'stopped'},
+        ),
+      );
+      expect(plan.assignments.map((a) => a.key), ['T-2@w1+resume', 'T-1@w2']);
+      expect(plan.held, isEmpty);
+      final prompt = plan.assignments.first.prompt;
+      expect(
+        prompt,
+        contains('New comments in the item\'s discussion since then:\n\n### tobik · 2026-10-29 11:30:00 UTC'),
+      );
+      expect(prompt, contains('Why CSV?'));
+      expect(prompt, isNot(contains('Done.')), reason: 'the agent\'s own comments are not news');
+      expect(plan.assignmentFor('T-2').key, 'T-2@w1+resume');
+      expect(() => plan.assignmentFor('T-2', fresh: true), throwsA(isA<InvalidInputException>()));
+    });
+
+    test('a note of a person does not wake the agent; a resumed agent sees it as context', () {
+      const note = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC · note\n\nMaybe JSON later.\n';
+      final quiet = _plan(
+        [item('T-2', status: 'review', body: note)],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+      );
+      expect(quiet.assignments, isEmpty);
+      expect(quiet.waiting, isEmpty);
+
+      const both = '$note\n### tobik · 2026-10-29 11:40:00 UTC\n\nWhy CSV?\n';
+      final woken = _plan(
+        [item('T-2', status: 'review', body: both)],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+      );
+      expect(woken.assignments.single.key, 'T-2@w1+resume');
+      final prompt = woken.assignments.single.prompt;
+      expect(prompt, contains('### tobik · 2026-10-29 11:30:00 UTC · note\n\nMaybe JSON later.'));
+      expect(prompt, contains('Why CSV?'));
+      expect(prompt, contains('Comments marked "note" are context for you; they need no answer.'));
+    });
+
+    test('replies wait for the session worktree; own comments and old comments are no replies', () {
+      const reply = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nWhy?\n';
+      final busy = _plan(
+        [item('T-1', status: 'in-progress'), item('T-2', status: 'review', body: reply)],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        claims: [_claim('T-1', 'w1')],
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+      );
+      expect(busy.assignments, isEmpty);
+      expect(busy.waiting.map((i) => '${i.id}'), ['T-2']);
+      expect(() => busy.assignmentFor('T-2'), throwsA(isA<UnavailableException>()));
+
+      for (final body in [
+        '## Discussion\n\n### w1 · 2026-10-29 11:30:00 UTC\n\nNote to self.\n',
+        '## Discussion\n\n### tobik · 2026-10-29 09:30:00 UTC\n\nBefore the run.\n',
+      ]) {
+        final quiet = _plan(
+          [item('T-2', status: 'review', body: body)],
+          workflow: _resumingWorkflow(),
+          conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+        );
+        expect(quiet.assignments, isEmpty, reason: body);
+      }
+    });
+
+    test('with worktrees on demand a session resumes in its created worktree, new work gets a new one', () {
+      final plan = _plan(
+        [item('T-1', priority: 'p0'), item('T-2', priority: 'p1')],
+        workflow: _provisioningWorkflow(),
+        conditions: _provisioned(sessions: {ItemId('T-2'): _session('T-2', 'repo-2')}),
+      );
+      expect(plan.assignments.map((a) => '${a.key}:${a.createFrom != null}'), [
+        'T-1@repo-3:true',
+        'T-2@repo-2+resume:false',
+      ]);
+      expect(plan.worktrees.map((w) => (w.name, w.created, w.isNew)), [
+        ('repo-2', true, false),
+        ('repo-3', true, true),
+      ]);
+
+      const reply = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nWhy?\n';
+      final replied = _plan(
+        [item('T-1', priority: 'p0'), item('T-2', status: 'review', body: reply)],
+        workflow: _provisioningWorkflow(),
+        conditions: _provisioned(sessions: {ItemId('T-2'): _session('T-2', 'repo-2')}),
+      );
+      expect(replied.assignments.map((a) => a.key), ['T-2@repo-2+resume', 'T-1@repo-3']);
+      expect(replied.assignmentFor('T-2').key, 'T-2@repo-2+resume');
+    });
+
+    test('a reply never moves to a new worktree; it waits for its own', () {
+      const reply = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nWhy?\n';
+      final plan = _plan(
+        [item('T-1', status: 'in-progress'), item('T-2', status: 'review', body: reply), item('T-3')],
+        workflow: _provisioningWorkflow(),
+        claims: [_claim('T-1', 'repo-2')],
+        conditions: _provisioned(sessions: {ItemId('T-2'): _session('T-2', 'repo-2')}),
+      );
+      expect(plan.assignments.map((a) => '${a.key}:${a.createFrom != null}'), ['T-3@repo-3:true']);
+      expect(plan.waiting.map((i) => '${i.id}'), ['T-2']);
+      expect(() => plan.assignmentFor('T-2'), throwsA(isA<UnavailableException>()));
+
+      // A ready item whose session worktree is busy starts a new session, in a new worktree.
+      final ready = _plan(
+        [item('T-1', status: 'in-progress'), item('T-2')],
+        workflow: _provisioningWorkflow(),
+        claims: [_claim('T-1', 'repo-2')],
+        conditions: _provisioned(sessions: {ItemId('T-2'): _session('T-2', 'repo-2')}),
+      );
+      final start = ready.assignmentFor('T-2');
+      expect((start.key, start.resume, start.createFrom), ('T-2@repo-3', null, '/work/repo'));
+    });
+
+    test('the worktree of an agent waiting for an answer is left to it; new work gets a new worktree', () {
+      const asked = '## Discussion\n\n### repo-2 · 2026-10-29 10:30:00 UTC · question\n\nCSV or JSON?\n';
+      final plan = _plan(
+        [item('T-1', body: asked), item('T-3')],
+        workflow: _provisioningWorkflow(),
+        conditions: _provisioned(sessions: {ItemId('T-1'): _session('T-1', 'repo-2')}),
+      );
+      expect(plan.assignments.map((a) => '${a.key}:${a.createFrom != null}'), ['T-3@repo-3:true']);
+
+      final listed = _plan(
+        [item('T-1', body: asked.replaceAll('repo-2', 'w1')), item('T-3')],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        conditions: DispatchConditions(sessions: {ItemId('T-1'): _session('T-1', 'w1')}),
+      );
+      expect(listed.assignments.map((a) => a.key), ['T-3@w2']);
+    });
+
+    test('a session whose worktree is gone is forgotten: a new session, replies no longer resume', () {
+      const reply = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nWhy?\n';
+      final sessions = {ItemId('T-1'): _session('T-1', 'repo-5'), ItemId('T-2'): _session('T-2', 'repo-5')};
+      final plan = _plan(
+        [item('T-1'), item('T-2', status: 'review', body: reply)],
+        workflow: _provisioningWorkflow(),
+        conditions: _provisioned(sessions: sessions),
+      );
+      expect(plan.sessions, isEmpty);
+      expect(plan.resumableSession(ItemId('T-1')), isNull);
+      expect(plan.assignments.map((a) => a.key), ['T-1@repo-2']);
+      expect(plan.waiting, isEmpty, reason: 'the reply on T-2 waits for a person to start it again');
+      expect(() => plan.assignmentFor('T-2'), throwsA(isA<InvalidInputException>()));
+
+      // A listed worktree that is missing is only unavailable: its reply waits.
+      final listed = _plan(
+        [item('T-2', status: 'review', body: reply)],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        conditions: DispatchConditions(
+          sessions: {ItemId('T-2'): _session('T-2', 'w1')},
+          unavailable: {'w1': 'missing folder'},
+        ),
+      );
+      expect(listed.assignments, isEmpty);
+      expect(listed.waiting.map((i) => '${i.id}'), ['T-2']);
     });
 
     test('sameDecisionAs compares assignments, waiting items and busy worktrees', () {
@@ -230,6 +503,33 @@ dispatcher:
       expect(launcher.launched, ['T-0001@w1']);
     });
 
+    test('unavailable worktrees and held items are skipped; unavailable ones are checked again soon', () async {
+      final dispatcher = await start('auto');
+      await todo('A', priority: 'p0');
+      await todo('B');
+      launcher.given = DispatchConditions(
+        unavailable: {'w1': 'uncommitted changes (2 paths)'},
+        held: {ItemId('T-0001'): 'stopped'},
+      );
+      final plan = (await dispatcher.evaluate())!;
+      expect(launcher.launched, ['T-0002@w2']);
+      expect(plan.worktrees.first.isFree, isFalse);
+      expect(plan.held.single.item.id, ItemId('T-0001'));
+      expect(timers.pending.map((t) => t.delay), contains(dispatcher.unavailableRecheck));
+    });
+
+    test('a running agent occupies its worktree even without a claim', () async {
+      final dispatcher = await start('manual', worktrees: ['w1']);
+      await todo('A');
+      launcher.given = DispatchConditions(
+        runs: [AgentRun(item: ItemId('T-0009'), worktree: 'w1', pid: 1, startedAt: clock.now(), log: '/l', agent: 'x')],
+      );
+      final plan = (await dispatcher.evaluate())!;
+      expect(plan.running, 1);
+      expect(plan.assignments, isEmpty);
+      await expectLater(dispatcher.start('T-0001'), throwsA(isA<UnavailableException>()));
+    });
+
     test('a broken snapshot is reported and keeps the previous plan', () async {
       var fail = false;
       (backlog, clock) = await tempBacklog(config: 'dispatcher: {worktrees: [w1], command: agent}\n');
@@ -252,13 +552,18 @@ dispatcher:
 }
 
 /// Records launches; claims the item like a real launcher would, unless told not to.
-final class _RecordingLauncher implements AgentLauncher {
+final class _RecordingLauncher extends AgentLauncher {
   _RecordingLauncher(this.backlog);
 
   final Backlog backlog;
   final launched = <String>[];
   bool claims = true;
   bool failNext = false;
+  DispatchConditions given = DispatchConditions.none;
+
+  @override
+  Future<DispatchConditions> conditions(DispatcherConfig config, String backlogRoot, BacklogSnapshot snapshot) async =>
+      given;
 
   @override
   Future<void> launch(DispatchAssignment assignment) async {

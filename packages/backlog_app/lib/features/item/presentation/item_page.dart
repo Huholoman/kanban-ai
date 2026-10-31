@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../app/app_scope.dart';
+import '../../dispatch/presentation/agent_panel.dart';
 import '../application/detail_navigation.dart';
 import '../application/item_controller.dart';
 import 'detail_content.dart';
@@ -106,6 +107,7 @@ class _ItemDetailViewState extends State<ItemDetailView> {
             closeIcon: widget.closeIcon,
             onScope: widget.onScope,
           ),
+          if (controller.item case final item?) AgentPanel(key: ValueKey('agent-${item.id}'), item: item),
           const Divider(height: 1),
           Expanded(
             child: switch ((controller.detail, controller.error)) {

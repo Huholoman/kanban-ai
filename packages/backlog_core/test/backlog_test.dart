@@ -347,11 +347,32 @@ void main() {
 
     test('warns about dispatcher worktrees that are not folders', () async {
       final (backlog, _) = await tempBacklog(
-        config: 'dispatcher: {command: agent, worktrees: [{name: here, path: .}, {name: gone, path: ../nowhere}]}\n',
+        config: 'dispatcher: {command: sh, worktrees: [{name: here, path: .}, {name: gone, path: ../nowhere}]}\n',
       );
       final issues = await backlog.linter.run();
       expect(issues.map((i) => (i.severity, i.code)), [(Severity.warning, 'dispatcher-worktree')]);
       expect(issues.single.message, contains('"gone"'));
+    });
+
+    test('warns about a dispatcher repo that is not a folder', () async {
+      final (backlog, _) = await tempBacklog(config: 'dispatcher: {command: sh, repo: ../nowhere, max_worktrees: 2}\n');
+      final issues = await backlog.linter.run();
+      expect(issues.map((i) => (i.severity, i.code)), [(Severity.warning, 'dispatcher-repo')]);
+    });
+
+    test('warns about a dispatcher agent that is not on the PATH or an unverified preset', () async {
+      final (backlog, _) = await tempBacklog(
+        config:
+            'dispatcher: {agent: codex, agents: {codex: {command: no-such-agent-xyz}}, worktrees: [{name: here, path: .}]}\n',
+      );
+      final issues = await backlog.linter.run();
+      expect(issues.map((i) => i.code), ['dispatcher-agent']);
+      expect(issues.single.message, contains('"no-such-agent-xyz", which is not on the PATH'));
+
+      final (preset, _) = await tempBacklog(
+        config: 'dispatcher: {agent: gemini, worktrees: [{name: here, path: .}]}\n',
+      );
+      expect((await preset.linter.run()).map((i) => i.message), contains(contains('unverified preset')));
     });
   });
 

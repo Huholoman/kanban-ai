@@ -36,10 +36,20 @@ abstract final class JsonOutput {
       'children': {'total': planned.childCount, 'open': planned.openChildCount},
       'progress': {'done': checklist.done, 'total': checklist.total},
       'claim': planned.claim == null ? null : claim(planned.claim!, expired: planned.isClaimExpired),
+      'needs_human': planned.needsHuman,
       'path': ?path,
       if (withBody) 'body': item.body,
+      if (withBody) 'discussion': [for (final c in item.discussion.comments) comment(c)],
     };
   }
+
+  static Map<String, Object?> comment(Comment comment) => {
+    'author': comment.author,
+    'at': comment.at.toUtc().toIso8601String(),
+    'text': comment.text,
+    'question': comment.question,
+    'note': comment.note,
+  };
 
   static Map<String, Object?> claim(Claim claim, {bool? expired}) => {
     'item': claim.itemId.value,
@@ -82,6 +92,7 @@ abstract final class JsonOutput {
         InvalidInputException() => 'invalid_input',
         ClaimConflictException() => 'claim_conflict',
         ConfigurationException() => 'configuration',
+        UnavailableException() => 'unavailable',
       },
       'message': error.message,
       if (error is AmbiguousReferenceException) 'candidates': error.candidates,

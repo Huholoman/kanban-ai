@@ -1,5 +1,6 @@
 import '../../claims/domain/claim.dart';
 import '../../items/domain/checklist.dart';
+import '../../items/domain/discussion.dart';
 import '../../items/domain/item.dart';
 import '../../items/domain/item_id.dart';
 import '../../workflow/domain/workflow.dart';
@@ -18,6 +19,7 @@ final class PlannedItem {
     required this.isClaimExpired,
     required this.isReady,
     this.conflictsWith = const [],
+    this.needsHuman = false,
     this.ancestors = const [],
     this.epics = const [],
   });
@@ -47,6 +49,11 @@ final class PlannedItem {
   /// them so that two agents do not change the same files. Empty for items
   /// that are not open or have no `touches`.
   final List<ItemId> conflictsWith;
+
+  /// Not done, and an agent asked a question in the discussion that nobody
+  /// answered yet ([Discussion.openQuestion]): it waits for a person and is
+  /// not ready.
+  final bool needsHuman;
 
   /// Parent, grandparent, … up to the root (cycles cut off).
   final List<ItemId> ancestors;

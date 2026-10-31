@@ -27,6 +27,8 @@ ItemDto item(
   List<String> dependsOn = const [],
   List<String> touches = const [],
   List<String> conflictsWith = const [],
+  bool ready = false,
+  bool needsHuman = false,
 }) => ItemDto(
   id: id,
   title: 'Item $id',
@@ -40,6 +42,8 @@ ItemDto item(
   touches: touches,
   conflicting: conflictsWith.isNotEmpty,
   conflictsWith: conflictsWith,
+  ready: ready,
+  needsHuman: needsHuman,
   body: body,
 );
 
@@ -51,6 +55,10 @@ final class FakeBacklogApi implements BacklogApi {
   final Map<String, ItemDto> items_;
   final updates = <(String, ItemUpdateRequest)>[];
   final claims = <(String, String, ClaimRequest)>[];
+
+  /// The discussion of each item; [comment] appends (author `you` when the
+  /// request names none) and answers an open question.
+  final discussions = <String, List<CommentDto>>{};
   final _changes = StreamController<BacklogChangeEvent>.broadcast();
   int viewLoads = 0;
 
@@ -108,7 +116,25 @@ final class FakeBacklogApi implements BacklogApi {
         for (final other in items_.values)
           if (other.conflictsWith.contains(found.id)) link(other),
       ],
+      discussion: discussions[found.id] ?? const [],
     );
+  }
+
+  @override
+  Future<ItemDetailDto> comment(String reference, CommentRequest request) async {
+    final comments = discussions[reference] ??= [];
+    comments.add(
+      CommentDto(
+        author: request.author ?? 'you',
+        at: DateTime.utc(2026, 10, 31, 12, comments.length),
+        text: request.text,
+        question: request.question,
+        note: request.note,
+      ),
+    );
+    final waits = items_[reference]!.needsHuman;
+    items_[reference] = _with(items_[reference]!, needsHuman: request.question || (request.note && waits));
+    return item(reference);
   }
 
   @override
@@ -259,7 +285,77 @@ final class FakeBacklogApi implements BacklogApi {
   @override
   Stream<BacklogChangeEvent> changes() => _changes.stream;
 
-  static ItemDto _with(ItemDto item, {String? status, String? priority, String? body, Progress? children}) => ItemDto(
+  /// The dispatcher's plan; [startAgent] and [stopAgent] record their calls
+  /// and answer with [afterStart] / [afterStop] (or fail with [failStart]).
+  DispatchDto plan = DispatchDto.off;
+  DispatchDto? afterStart;
+  DispatchDto? afterStop;
+  Object? failStart;
+  final started = <String>[];
+
+  /// Items started with `fresh: true`.
+  final startedFresh = <String>[];
+  final stopped = <String>[];
+  AgentLogDto? log;
+
+  /// Simulates the server reporting a new plan.
+  void dispatchChange(DispatchDto next) {
+    plan = next;
+    _changes.add(const BacklogChangeEvent.dispatch());
+  }
+
+  @override
+  Future<DispatchDto> dispatch() async => plan;
+
+  @override
+  Future<DispatchDto> startAgent(String reference, {bool fresh = false}) async {
+    if (failStart case final error?) throw error;
+    started.add(reference);
+    if (fresh) startedFresh.add(reference);
+    return plan = afterStart ?? plan;
+  }
+
+  @override
+  Future<DispatchDto> stopAgent(String reference) async {
+    stopped.add(reference);
+    return plan = afterStop ?? plan;
+  }
+
+  @override
+  Future<AgentLogDto> agentLog(String reference, {int lines = 100}) async =>
+      log ?? (throw BacklogApiException(404, 'not_found', 'No agent has run for $reference.'));
+
+  /// What [followAgentLog] streams; add updates to it to simulate the server.
+  final agentLogUpdates = StreamController<AgentLogUpdateDto>.broadcast();
+
+  /// Items whose log is followed now.
+  final followedLogs = <String>[];
+
+  @override
+  Stream<AgentLogUpdateDto> followAgentLog(String reference, {int lines = 200}) {
+    late final StreamController<AgentLogUpdateDto> controller;
+    StreamSubscription<AgentLogUpdateDto>? subscription;
+    controller = StreamController<AgentLogUpdateDto>(
+      onListen: () {
+        followedLogs.add(reference);
+        subscription = agentLogUpdates.stream.where((u) => u.item == reference).listen(controller.add);
+      },
+      onCancel: () {
+        followedLogs.remove(reference);
+        return subscription?.cancel();
+      },
+    );
+    return controller.stream;
+  }
+
+  static ItemDto _with(
+    ItemDto item, {
+    String? status,
+    String? priority,
+    String? body,
+    Progress? children,
+    bool? needsHuman,
+  }) => ItemDto(
     id: item.id,
     title: item.title,
     type: item.type,
@@ -270,9 +366,11 @@ final class FakeBacklogApi implements BacklogApi {
     touches: item.touches,
     conflicting: item.conflicting,
     conflictsWith: item.conflictsWith,
+    ready: item.ready,
     parent: item.parent,
     dependsOn: item.dependsOn,
     children: children ?? item.children,
+    needsHuman: needsHuman ?? item.needsHuman,
     body: body ?? item.body,
   );
 }

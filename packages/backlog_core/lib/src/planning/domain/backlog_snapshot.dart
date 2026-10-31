@@ -73,6 +73,7 @@ final class BacklogSnapshot {
       final pickable = workflow.status(item.status)?.pickable ?? false;
       final ancestors = ancestorsOf(item);
       final conflicts = conflictsOf(item);
+      final needsHuman = category != StatusCategory.done && item.discussion.openQuestion != null;
       planned[item.id] = PlannedItem(
         item: item,
         category: category,
@@ -82,8 +83,10 @@ final class BacklogSnapshot {
         openChildCount: openKids,
         claim: claim,
         isClaimExpired: expired,
-        isReady: pickable && !blocked && conflicts.isEmpty && openKids == 0 && (claim == null || expired),
+        isReady:
+            pickable && !blocked && conflicts.isEmpty && !needsHuman && openKids == 0 && (claim == null || expired),
         conflictsWith: conflicts,
+        needsHuman: needsHuman,
         ancestors: ancestors,
         epics: [
           for (final id in [item.id, ...ancestors])
@@ -112,6 +115,9 @@ final class BacklogSnapshot {
   List<PlannedItem> get ready => items.where((i) => i.isReady).toList();
 
   List<PlannedItem> get blocked => items.where((i) => i.isBlocked).toList();
+
+  /// Unfinished items with a question for a person.
+  List<PlannedItem> get needingHuman => items.where((i) => i.needsHuman).toList();
 
   /// Open items waiting for overlapping work in progress.
   List<PlannedItem> get conflicting => items.where((i) => i.isConflicting).toList();

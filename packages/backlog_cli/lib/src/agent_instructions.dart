@@ -36,6 +36,18 @@ have not claimed; if `claim` reports a conflict, someone else has it.
 Edit the body of your item file directly (context, plan, checklist with
 `- [ ]` / `- [x]`, notes). Do not edit `status`, `assignee` or `id` by hand.
 
+## Questions and comments
+
+    backlog ask T-7f3a "CSV or JSON for the export?"   # waits for a person
+    backlog comment T-7f3a "Done the CSV part; JSON is T-9k2d."
+
+Both add to the `## Discussion` section at the end of the item's body
+(author = your agent name). After `ask`, stop: the item needs a person and
+is not ready until someone answers with a comment. When the discussion
+changes what the item asks for, update the description or acceptance
+criteria above `## Discussion` and say so in a comment; never edit
+comments.
+
 ## Finishing
 
     backlog done T-7f3a                  # done, claim dropped, prints what got unblocked

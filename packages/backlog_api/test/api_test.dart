@@ -7,6 +7,73 @@ import 'package:test/test.dart';
 
 void main() {
   group('DTOs survive a JSON round trip', () {
+    test('dispatch plan, agent log and the dispatch event', () {
+      final plan = DispatchDto(
+        configured: true,
+        mode: 'manual',
+        agent: 'claude',
+        maxAgents: 2,
+        running: 1,
+        capacity: 1,
+        worktrees: [
+          DispatchWorktreeDto(
+            name: 'w1',
+            path: '/w/w1',
+            busy: true,
+            claims: const ['X-1'],
+            run: AgentRunDto(
+              item: 'X-1',
+              worktree: 'w1',
+              pid: 7,
+              startedAt: DateTime.utc(2026, 10, 31, 12),
+              log: '/l/X-1.log',
+              agent: 'claude',
+              branch: 'agent/X-1',
+            ),
+          ),
+          const DispatchWorktreeDto(name: 'w2', path: '/w/w2', busy: false, unavailable: 'uncommitted changes'),
+        ],
+        assignments: const [
+          DispatchAssignmentDto(item: 'X-2', title: 'Two', worktree: 'w2', resume: 'sess-2'),
+          DispatchAssignmentDto(item: 'X-5', title: 'Five', worktree: 'app-3', newWorktree: true),
+        ],
+        maxWorktrees: 3,
+        spareWorktrees: 0,
+        waiting: const ['X-3'],
+        held: const [HeldItemDto(item: 'X-4', title: 'Four', reason: 'stopped')],
+        sessions: [
+          AgentSessionDto(item: 'X-4', session: 'sess-4', worktree: 'w1', endedAt: DateTime.utc(2026), reason: 'x'),
+        ],
+      );
+      final copy = DispatchDto.fromJson(jsonDecode(jsonEncode(plan.toJson())) as Json);
+      expect(copy.toJson(), plan.toJson());
+      expect(copy.runFor('X-1')!.startedAt, DateTime.utc(2026, 10, 31, 12));
+      expect(copy.heldReason('X-4'), 'stopped');
+      expect(copy.sessionFor('X-4')!.session, 'sess-4');
+      expect(copy.sessionFor('X-2'), isNull);
+      expect(copy.assignments.map((a) => (a.resume, a.newWorktree)), [('sess-2', false), (null, true)]);
+      expect((copy.maxWorktrees, copy.spareWorktrees), (3, 0));
+      expect(copy.canStart, isFalse, reason: 'w2 is unavailable, no worktree may be created');
+      expect(DispatchDto.fromJson(DispatchDto.off.toJson()).configured, isFalse);
+
+      final log = AgentLogDto(
+        item: 'X-1',
+        path: '/l',
+        running: false,
+        lines: const ['a'],
+        last: AgentRunEndDto(exitCode: 0, outcome: 'review', endedAt: DateTime.utc(2026), sessionId: 's'),
+      );
+      expect(AgentLogDto.fromJson(jsonDecode(jsonEncode(log.toJson())) as Json).toJson(), log.toJson());
+      expect(BacklogChangeEvent.fromJson(const BacklogChangeEvent.dispatch().toJson()).isDispatch, isTrue);
+      expect(
+        BacklogChangeEvent.fromJson(const {
+          'type': 'changed',
+          'paths': ['a'],
+        }).isDispatch,
+        isFalse,
+      );
+    });
+
     final claim = ClaimDto(
       item: 'T-1',
       agent: 'm2',
@@ -33,6 +100,7 @@ void main() {
       children: const Progress(1, 3),
       checklist: const Progress(2, 5),
       claim: claim,
+      needsHuman: true,
       path: 'items/T-1-backups.md',
       body: '# Body',
     );
@@ -53,9 +121,17 @@ void main() {
         dependencies: const [ItemLinkDto(id: 'T-9')],
         conflicts: const [ItemLinkDto(id: 'T-3', title: 'Other', status: 'review')],
         waiting: const [ItemLinkDto(id: 'T-4', title: 'Later', status: 'todo')],
+        discussion: [CommentDto(author: 'w1', at: DateTime.utc(2026, 10, 31, 14), text: 'Which?', question: true)],
       );
       final detailCopy = roundTrip(detail.toJson(), ItemDetailDto.fromJson);
       expect(detailCopy.toJson(), detail.toJson());
+      expect(detailCopy.item.needsHuman, isTrue);
+      expect(detailCopy.discussion.single.at, DateTime.utc(2026, 10, 31, 14));
+      final request = roundTrip(
+        const CommentRequest('Hi', author: 'a', question: true).toJson(),
+        CommentRequest.fromJson,
+      );
+      expect((request.text, request.author, request.question), ('Hi', 'a', true));
       expect(detailCopy.dependencies.single.isMissing, isTrue);
 
       final view = ViewResultDto(

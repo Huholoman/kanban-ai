@@ -79,7 +79,21 @@ Workflow parseWorkflowYaml(String source, {String origin = 'backlog.yaml'}) {
 DispatcherConfig? _dispatcher(Object? node, String origin) {
   if (node == null) return null;
   final yaml = _map(node, 'dispatcher', origin);
-  const known = {'mode', 'max_agents', 'worktrees', 'command'};
+  const known = {
+    'mode',
+    'max_agents',
+    'worktrees',
+    'repo',
+    'worktree_name',
+    'max_worktrees',
+    'cleanup_after_days',
+    'base',
+    'agent',
+    'agents',
+    'prompt',
+    'resume_prompt',
+    'command',
+  };
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
       throw ConfigurationException('$origin: unknown key "dispatcher.$key" (expected ${known.join(', ')}).');
@@ -90,28 +104,46 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     if (maxAgents != null && maxAgents is! int) {
       throw const ConfigurationException('dispatcher.max_agents must be an integer.');
     }
-    final command = yaml['command'];
-    if (command == null) throw const ConfigurationException('dispatcher.command is required.');
     final worktrees = yaml['worktrees'];
-    if (worktrees == null) throw const ConfigurationException('dispatcher.worktrees is required.');
+    final newWorktrees = _newWorktrees(yaml, origin);
+    if (worktrees == null && newWorktrees == null) {
+      throw const ConfigurationException('dispatcher.worktrees (or dispatcher.repo) is required.');
+    }
+    final prompt = yaml['prompt'];
+    final resumePrompt = yaml['resume_prompt'];
     return DispatcherConfig(
       mode: DispatchMode.parse('${yaml['mode'] ?? 'manual'}'.trim()),
       maxAgents: maxAgents as int?,
-      command: command is List
-          ? CommandTemplate(_strings(command, 'dispatcher.command', origin))
-          : CommandTemplate.parse(_string(command, 'dispatcher.command', origin)),
-      worktrees: [
-        for (final entry in _list(worktrees, 'dispatcher.worktrees', origin))
-          if (entry is Map)
-            WorktreeDefinition(
-              _string(entry['name'], 'dispatcher.worktrees[].name', origin),
-              _string(entry['path'] ?? '../${entry['name']}', 'dispatcher.worktrees[].path', origin),
-            )
-          else
-            WorktreeDefinition(
-              _string(entry, 'dispatcher.worktrees[]', origin),
-              '../${_string(entry, 'dispatcher.worktrees[]', origin)}',
+      newWorktrees: newWorktrees,
+      base: yaml['base'] == null ? 'main' : _base(_string(yaml['base'], 'dispatcher.base', origin)),
+      agent: _agent(yaml, origin),
+      prompt: prompt == null
+          ? null
+          : TextTemplate(
+              _string(prompt, 'dispatcher.prompt', origin),
+              known: DispatcherConfig.promptPlaceholders,
+              label: 'dispatcher.prompt',
             ),
+      resumePrompt: resumePrompt == null
+          ? null
+          : TextTemplate(
+              _string(resumePrompt, 'dispatcher.resume_prompt', origin),
+              known: DispatcherConfig.resumePromptPlaceholders,
+              label: 'dispatcher.resume_prompt',
+            ),
+      worktrees: [
+        if (worktrees != null)
+          for (final entry in _list(worktrees, 'dispatcher.worktrees', origin))
+            if (entry is Map)
+              WorktreeDefinition(
+                _string(entry['name'], 'dispatcher.worktrees[].name', origin),
+                _string(entry['path'] ?? '../${entry['name']}', 'dispatcher.worktrees[].path', origin),
+              )
+            else
+              WorktreeDefinition(
+                _string(entry, 'dispatcher.worktrees[]', origin),
+                '../${_string(entry, 'dispatcher.worktrees[]', origin)}',
+              ),
       ],
     );
   } on ConfigurationException catch (e) {
@@ -119,6 +151,109 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     throw ConfigurationException('$origin: ${e.message}');
   }
 }
+
+/// `dispatcher.repo` with `worktree_name`, `max_worktrees` (default
+/// `max_agents`) and `cleanup_after_days`; null without `repo`.
+NewWorktrees? _newWorktrees(YamlMap yaml, String origin) {
+  final repo = yaml['repo'];
+  if (repo == null) {
+    for (final key in ['worktree_name', 'max_worktrees', 'cleanup_after_days']) {
+      if (yaml[key] != null) throw ConfigurationException('dispatcher.$key needs dispatcher.repo.');
+    }
+    return null;
+  }
+  int? integer(String key) => switch (yaml[key]) {
+    null => null,
+    final int value => value,
+    _ => throw ConfigurationException('dispatcher.$key must be an integer.'),
+  };
+  final max = integer('max_worktrees') ?? integer('max_agents');
+  if (max == null) {
+    throw const ConfigurationException('dispatcher.repo needs dispatcher.max_worktrees (or max_agents) as a limit.');
+  }
+  final days = integer('cleanup_after_days');
+  return NewWorktrees(
+    repo: _string(repo, 'dispatcher.repo', origin),
+    name: yaml['worktree_name'] == null ? null : _string(yaml['worktree_name'], 'dispatcher.worktree_name', origin),
+    maxWorktrees: max,
+    cleanupAfter: days == null ? null : Duration(days: days),
+  );
+}
+
+String _base(String base) => base.startsWith('-') || base.contains(RegExp(r'\s'))
+    ? throw ConfigurationException('dispatcher.base "$base" is not a branch name.')
+    : base;
+
+/// The profile named by `dispatcher.agent` (built-in or from
+/// `dispatcher.agents`), or the legacy `dispatcher.command` as a profile.
+AgentProfile _agent(YamlMap yaml, String origin) {
+  final command = yaml['command'];
+  final name = yaml['agent'];
+  if (command != null && name != null) {
+    throw const ConfigurationException(
+      'give either dispatcher.agent (a profile) or dispatcher.command (a plain command), not both.',
+    );
+  }
+  final custom = <String, AgentProfile>{
+    for (final MapEntry(:key, :value) in _map(yaml['agents'], 'dispatcher.agents', origin).entries)
+      '$key': _profile('$key', value, origin),
+  };
+  if (command != null) {
+    return AgentProfile(name: 'command', command: _command(command as Object, 'dispatcher.command', origin));
+  }
+  final chosen = name == null ? 'claude' : _string(name, 'dispatcher.agent', origin);
+  final profile = custom[chosen] ?? AgentProfile.builtIns[chosen];
+  if (profile == null) {
+    final names = {...AgentProfile.builtIns.keys, ...custom.keys};
+    throw ConfigurationException('dispatcher.agent: unknown agent "$chosen" (known: ${names.join(', ')}).');
+  }
+  return profile;
+}
+
+AgentProfile _profile(String name, Object? node, String origin) {
+  final path = 'dispatcher.agents.$name';
+  final yaml = _map(node, path, origin);
+  const known = {'command', 'env', 'output', 'resume'};
+  for (final key in yaml.keys) {
+    if (!known.contains('$key')) {
+      throw ConfigurationException('unknown key "$path.$key" (expected ${known.join(', ')}).');
+    }
+  }
+  final command = yaml['command'];
+  if (command == null) throw ConfigurationException('$path.command is required.');
+  return AgentProfile(
+    name: name,
+    command: _command(command as Object, '$path.command', origin),
+    environment: {
+      for (final MapEntry(:key, :value) in _map(yaml['env'], '$path.env', origin).entries)
+        '$key': TextTemplate(
+          value == null ? '' : _string(value, '$path.env.$key', origin),
+          known: CommandTemplate.placeholders,
+          label: '$path.env.$key',
+        ),
+    },
+    output: yaml['output'] == null
+        ? AgentOutput.text
+        : AgentOutput.parse(_string(yaml['output'], '$path.output', origin), label: '$path.output'),
+    resume: switch (yaml['resume']) {
+      null => null,
+      final List<Object?> list => CommandTemplate(
+        _strings(list, '$path.resume', origin),
+        label: '$path.resume',
+        known: CommandTemplate.resumePlaceholders,
+      ),
+      final Object text => CommandTemplate.parse(
+        _string(text, '$path.resume', origin),
+        label: '$path.resume',
+        known: CommandTemplate.resumePlaceholders,
+      ),
+    },
+  );
+}
+
+CommandTemplate _command(Object node, String path, String origin) => node is List
+    ? CommandTemplate(_strings(node, path, origin), label: path)
+    : CommandTemplate.parse(_string(node, path, origin), label: path);
 
 Appearance _appearance(Object? node, String origin) {
   if (node == null) return Appearance.none;
@@ -248,8 +383,9 @@ claims:
 
 # Dispatcher: hands ready items to agents in free worktrees (optional; off
 # without this section). A worktree is free when no live claim is held under
-# its name. Placeholders in the command: {id}, {title}, {worktree}, {path}
-# (absolute path of the worktree), {backlog} (absolute path of this folder).
+# its name. Placeholders in prompt, commands and env: {id}, {title},
+# {worktree}, {path} (absolute path of the worktree), {backlog} (absolute path
+# of this folder), {branch}; commands and env also {prompt}.
 # dispatcher:
 #   mode: manual          # manual: propose, a person starts | auto: start by itself
 #   max_agents: 2         # at most this many at once (default: one per worktree)
@@ -257,5 +393,25 @@ claims:
 #     - name: monorepo-2
 #       path: ../monorepo-2
 #     - monorepo-3
-#   command: claude -p "Work on backlog item {id}, run backlog show {id} first and follow backlog instructions"
+#   # Or (also on top of the list): add worktrees when none is free.
+#   repo: ../monorepo     # primary clone; new worktrees go next to it
+#   worktree_name: "{repo}-{n}"   # default; the first unused n from 2 on
+#   max_worktrees: 4      # listed + created (default: max_agents)
+#   cleanup_after_days: 14   # remove created ones idle this long that lose nothing (default: keep)
+#   base: main            # new branches agent/<id> start here (an item's own branch field wins)
+#   agent: claude         # built-in: claude; unverified presets: codex, gemini, aider
+#   # Own profiles (or replacing a built-in one), chosen with agent: <name>:
+#   agents:
+#     claude-sonnet:
+#       command: 'claude -p {prompt} --model sonnet --output-format stream-json --verbose --permission-mode acceptEdits --allowedTools "Bash(backlog *) Bash(git *) Read Edit Write Grep Glob"'
+#       env: {MY_SETTING: "{worktree}"}   # BACKLOG_AGENT and BACKLOG_DIR are always set
+#       output: claude-stream-json        # text | claude-stream-json | json-lines
+#       resume: --resume {session}        # appended to continue the item's last session
+#   # The prompt every agent gets (default: claim is yours, read backlog
+#   # instructions and backlog show {id}, small commits with the id, then
+#   # status=review, never push, ask in the item when unclear):
+#   prompt: "You are {worktree}. Work on backlog item {id}: run backlog show {id} first."
+#   # The prompt when an agent continues its last session on the item; {news}
+#   # tells what happened since (how the run ended, new comments):
+#   resume_prompt: "Continue on {id}. Since your last run: {news}"
 ''';

@@ -115,3 +115,43 @@ Iterable<(String, bool)> _lines(String body) sync* {
     }
   }
 }
+
+final _discussionHeading = RegExp(r'^##\s+Discussion\s*$', caseSensitive: false);
+final _higherHeading = RegExp(r'^#{1,2}\s');
+
+/// [body] split into the description and its `## Discussion` section (the
+/// heading up to the next level-1 or level-2 heading; empty without one),
+/// the way the backlog writes comments. The description keeps everything
+/// else, also sections after the discussion.
+({String description, String discussion}) splitDiscussion(String body) {
+  final lines = body.split('\n');
+  int? start;
+  var end = lines.length;
+  var position = 0;
+  for (final (line, outsideFence) in _lines(body)) {
+    if (outsideFence && !_fence.hasMatch(line)) {
+      if (start == null) {
+        if (_discussionHeading.hasMatch(line.trimRight())) start = position;
+      } else if (_higherHeading.hasMatch(line)) {
+        end = position;
+        break;
+      }
+    }
+    position++;
+  }
+  if (start == null) return (description: body, discussion: '');
+  final before = lines.sublist(0, start).join('\n').trimRight();
+  final after = lines.sublist(end).join('\n').trim();
+  return (
+    description: [before, after].where((part) => part.isNotEmpty).join('\n\n'),
+    discussion: lines.sublist(start, end).join('\n').trimRight(),
+  );
+}
+
+/// The body with [description] in place of the old one and the
+/// [discussion] section (from [splitDiscussion]) after it, unchanged.
+String withDescription(String description, String discussion) {
+  if (discussion.isEmpty) return description;
+  final text = description.trimRight();
+  return '${text.isEmpty ? '' : '$text\n\n'}$discussion\n';
+}

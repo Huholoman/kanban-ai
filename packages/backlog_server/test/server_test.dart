@@ -216,14 +216,16 @@ void main() {
       port: 0,
       debounce: const Duration(milliseconds: 50),
       dispatchDebounce: const Duration(milliseconds: 20),
-      launcher: _StreamLauncher(launched),
+      launcher: (_, _, _) => _StreamLauncher(launched),
       log: logs.add,
     );
     addTearDown(server.close);
 
+    final dispatchEvent = server.projects.defaultProject!.events.firstWhere((event) => event.isDispatch);
     final backlog = await Backlog.open(dir.path);
     final item = await backlog.items.create(const NewItem(title: 'Work', status: 'todo'));
     final assignment = await launched.stream.first.timeout(const Duration(seconds: 10));
+    expect((await dispatchEvent.timeout(const Duration(seconds: 10))).toJson(), {'type': 'dispatch', 'paths': []});
     expect(assignment.id, item.id);
     expect(assignment.agent, 'repo-2');
     expect(assignment.command, ['agent', '${item.id}']);
@@ -232,7 +234,7 @@ void main() {
   });
 }
 
-final class _StreamLauncher implements AgentLauncher {
+final class _StreamLauncher extends AgentLauncher {
   _StreamLauncher(this._sink);
 
   final StreamController<DispatchAssignment> _sink;

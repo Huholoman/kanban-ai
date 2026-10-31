@@ -8,6 +8,7 @@ final class CliContext {
     required this.cwd,
     this.environment = const {},
     this.clock = const SystemClock(),
+    this.readInput,
   });
 
   final StringSink out;
@@ -15,4 +16,8 @@ final class CliContext {
   final String cwd;
   final Map<String, String> environment;
   final Clock clock;
+
+  /// Reads standard input to the end (for text given as `-`); null when
+  /// there is none.
+  final Future<String> Function()? readInput;
 }

@@ -175,12 +175,16 @@ backlog heartbeat MA-7f3a       # renew the claim (default lease 4 h)
 backlog set MA-7f3a branch=feat/x status=review
 backlog done MA-7f3a            # finished: drops the claim, prints what got unblocked
 backlog release MA-7f3a         # give it back unfinished
+backlog ask MA-7f3a "CSV or JSON?"   # a question for a person; then stop
+backlog comment MA-7f3a "Done, see the commit."   # a comment in the item's discussion
 backlog lint                    # before ending the session
 ```
 
 **Claims:** `claim` and `next` atomically create `.locks/<id>.lock` (O_EXCL), so when several agents race for an item exactly one wins. This is verified by a test with 12 isolates and by hand with 10 parallel processes. Without a `heartbeat` the lock expires after its lease and another agent may take the item over. The item file mirrors `status: in-progress` and `assignee`, so humans see who works on what. Locks are machine-local state (gitignored) and work on a local disk, not on network file systems.
 
-**Ready** means the status is `pickable` (`todo` by default), all `depends_on` items are done, there are no open children, nobody holds a claim, and the item's `touches` do not overlap an item in progress.
+**Ready** means the status is `pickable` (`todo` by default), all `depends_on` items are done, there are no open children, nobody holds a claim, the item's `touches` do not overlap an item in progress, and no question in it waits for a person.
+
+**Discussion:** `backlog comment <id> "text"` and `backlog ask <id> "question"` append to a `## Discussion` section at the end of the item's body (author = `--as`, `BACKLOG_AGENT` or `$USER`; text `-` reads stdin). A question that nobody else has answered yet makes the item **need a person** (`needs_human`): it is not ready, so `next` and the dispatcher skip it, until someone answers with a comment. `backlog comment --note` adds only a note: it answers no question and does not wake the item's agent (see *Talking to the agent*). `backlog list -w needs_human=true` lists them; `show` says `NEEDS A PERSON`. When a discussion changes what the item asks for, the description or acceptance criteria above `## Discussion` are updated and the comments stay as the history.
 
 **Touches keep agents apart:** an open item whose `touches` overlap the `touches` of an item in an active status (in progress, review) *waits for* it — `backlog list` shows `waits for MA-7f3a (touches overlap)`, JSON has `conflicting` and `conflicts_with`. It is not ready, so `next` skips it and `claim` needs `--force`, until the other item is done or released. Items without `touches` never wait. Two items in progress that overlap are a lint warning.
 
@@ -221,14 +225,16 @@ The open project is in the URL after `#`: `http://host:8640/?token=…#/p/kanban
 - **Layout:** from 1200 px the views are in a left panel and the open item in a panel on the right; on tablets the views are tabs under the header and the item is a bottom sheet; on phones a bottom bar holds the pinned views. On very wide screens (from 2000 px, e.g. 27" 4K) text is 15 % larger.
 - **Projects:** the project's name tops the left panel (and the drawer on tablets and phones); with several projects on the server it is a menu for switching between them. A project the server cannot open is listed with the reason and cannot be chosen.
 - **Left panel:** saved views with their item counts and a button for new items. Views with a `section` are listed under foldable section headings. The ⋮ menu of a view moves it to an existing or new section, and the server writes `section:` into its YAML. Below 1200 px the views are tabs under the header (and in a drawer behind ☰); on phones a bottom bar shows the views pinned with the ⋮ menu ("Pin to bottom bar") plus *More*.
-- **Cards:** id and priority on top, the title, and one meta line that tells the state: *Ready*, *Blocked by …*, *Waits for …* (touches overlap work in progress), the claim holder with the time left, an expired claim (faint, dashed border) or else the labels; a thin bar shows progress of the checklist or children.
+- **Cards:** id and priority on top, the title, and one meta line that tells the state: *? Waits for you* (an agent asked a question; warning-coloured border), *Ready*, *Blocked by …*, *Waits for …* (touches overlap work in progress), the claim holder with the time left, an expired claim (faint, dashed border) or else the labels; a thin bar shows progress of the checklist or children.
 - **Ids:** clicking an item id (on a card or in the detail) copies it to the clipboard.
+- **Discussion:** under the description the detail shows the item's comments (questions of agents highlighted while open, *Waits for you* under the title) and a reply field. *Send* adds a comment; when the item's last agent session can be continued, `manual` mode also offers **Send and continue** (resumes the agent with your reply), `auto` mode continues by itself. **Note only** (shown with such a session or an open question) saves a note that wakes nobody and answers nothing. Editing the description leaves the discussion as it is.
 - **Pull requests:** an item's `pr` link shows as a "PR #42" tag that opens it in a new tab; it can be set in the detail or by an agent (`backlog set <id> pr=<url>`).
 - **Kanban:** the board scrolls as one page, columns grow with their cards and share the width. On a phone you see one column at a time and swipe (or tap the column switcher on top) to the others; a long press on a card moves it to another column. Dragging a card to another column sets the field the view is grouped by (status, priority, …). A parent with nested items in a column (an epic, a story) has a fold toggle that hides them and shows how many are hidden. Within a column, children are indented under their parent. When the parent (an epic, say) sits in another column, it appears as a muted "↑ Epic title" line above its children, so you can see which epic a story in progress belongs to.
-- **Filter bar:** search (id, title, branch) and a Filters popover (long sections show the six most used values, *Show all* and a search box) for labels, epic (everything under the chosen epic, at any depth), type, priority, milestone and people (assignee or claim holder), plus the segments *Ready* (pickable status, dependencies done, no open children, nobody holds it), *Blocked* (waits for an unfinished dependency), *Waiting* (its touches overlap an item in progress) and *Claimed* (someone holds it, i.e. it is being worked on). Values within one section are alternatives; everything else must match. The filter works on any view and is kept when switching views; status is left out because views show it already. **Save as view** stores the current view plus the filter as a new view (name and optional section; the new file in `views/` keeps the layout, grouping, columns and sorting of the current view and ANDs its filter with yours).
+- **Filter bar:** search (id, title, branch) and a Filters popover (long sections show the six most used values, *Show all* and a search box) for labels, epic (everything under the chosen epic, at any depth), type, priority, milestone and people (assignee or claim holder), plus the segments *Needs you* (an agent's question waits for an answer), *Ready* (pickable status, dependencies done, no open children, nobody holds it), *Blocked* (waits for an unfinished dependency), *Waiting* (its touches overlap an item in progress) and *Claimed* (someone holds it, i.e. it is being worked on). Values within one section are alternatives; everything else must match. The filter works on any view and is kept when switching views; status is left out because views show it already. **Save as view** stores the current view plus the filter as a new view (name and optional section; the new file in `views/` keeps the layout, grouping, columns and sorting of the current view and ANDs its filter with yours).
 - **Detail:** opens in a right-hand panel on wide windows, in a bottom sheet over the board on medium ones and full-screen on narrow ones (Esc closes it). You can edit all fields, labels, touches (paths or globs, as chips), relations (parent, dependencies, related), the Markdown description, and claim, release or finish the item: the title right where it is shown, status and priority from their dropdowns, the rest from the list of fields below them. Checklist items in the description are checkboxes: ticking one rewrites its `- [ ]` line in the file. The header shows the parent chain as a breadcrumb (*Launch hardening › X-2c91 Restore drill*) and the item's place among its siblings (*Story 2 of 5*, with ‹ › to step to the neighbours). Children are listed with their progress (*Tasks 1 of 3 done*); ▸ expands a child in place to the start of its description and its own children, *Open X →* shows it. A line names what the item is blocked by or waits for (overlapping touches), or which open items wait for it. Parent, depends on, blocks and related are folded rows with a count; empty kinds are left out and new links are added from the *Link:* row. Whatever you open from the detail — an ancestor, a sibling, a child, a linked item — replaces it in the same panel, and ← goes back the way you came. An epic's *Scope board* button narrows the board to everything under it. Esc closes the panel.
 - **The `graph` layout** (default view "Dependencies") shows each item with an expandable tree of its dependencies, including their titles and statuses. Clicking a dependency opens its detail.
 - **People:** the left panel lists the agents that hold claims right now with their item counts; a click shows what that agent works on.
+- **Agents (dispatcher):** with a `dispatcher` section the left panel shows *Agents · mode · running/max*: each worktree with the item its agent works on, *free*, *new* (to be created for a proposed start) or *unavailable* (the reason in the tooltip, e.g. uncommitted changes), with `repo` also how many worktrees exist of `max_worktrees`, the proposed next starts (▶ starts one in `manual` mode; ↻ continues the item's last session, *(new)* creates the worktree first) and held items. A ready item's detail has **Start agent** when a worktree is free or can be created (in either mode) — or **Continue agent** and **Start fresh** when its last agent session can be continued (in that session's worktree); while an agent works on an item, its detail shows the agent, worktree, start time and branch, **Stop** (terminates it; the item goes back to the queue, held) and its **live log**: what Claude says, each tool call on one line (`▸ Bash git status`, `▸ Edit lib/a.dart`), failures, and at the end turns, time, cost and the session id; other agents' output as it is. It stays at the newest line and pauses while you scroll up. After the run the box keeps the last run's log and how it ended (exit code, outcome, `claude --resume <session>`). Held items show why. The plan updates live.
 - **Group by:** the header's *Group: …* menu regroups the current view for the session (status, priority, type, milestone, assignee, labels, epic or none) without changing its YAML; dragging a card then sets that field.
 - **Columns:** for a view grouped by a field, the columns button in the header picks which groups are shown and in what order (drag to reorder); it is saved as `columns:` in the view's YAML, *Default* removes it.
 - **Theme:** light / dark / system switch in the header (for the session; the default comes from `appearance.mode`).
@@ -279,6 +285,16 @@ estimate: 3d             # unknown keys are kept and can be filtered on
 ## Acceptance criteria
 - [x] pick a tool
 - [ ] tested restore         ← progress is computed from the checkboxes
+
+## Discussion
+
+### monorepo-2 · 2026-10-30 14:05:12 UTC · question
+
+Restic or borg?
+
+### tobik · 2026-10-30 14:20:03 UTC
+
+Restic, we already use it elsewhere.
 ```
 
 **Types:**
@@ -293,7 +309,9 @@ The hierarchy comes from `parent`. The type is just a label, so you can define y
 
 Files may be edited by hand. When the tool writes a file, it keeps comments, key order and unknown keys and changes only what changed, so git diffs stay small. Ids can be shortened: `7f3a` or `MA-7f` is enough when unambiguous.
 
-Derived properties are computed, never stored: `blocked`, `conflicting` (waits for overlapping work in progress), `ready`, and the progress of the checklist and of the children.
+**The discussion** is the last section, `## Discussion`, written by `backlog comment` / `backlog ask` (and the board): one `### <author> · <date time> UTC` heading per comment, ` · question` for a question that waits for a person, ` · note` for a note. It is plain Markdown, so it can be read and edited by hand (seconds and `UTC` may be left out); a comment ends at the next comment heading, the section at the next `#`/`##` heading.
+
+Derived properties are computed, never stored: `blocked`, `conflicting` (waits for overlapping work in progress), `needs_human` (an unanswered question), `ready`, and the progress of the checklist and of the children.
 
 ### Workflow (`backlog.yaml`)
 
@@ -320,7 +338,7 @@ appearance:
 
 The board picks up changes to it live.
 
-**Dispatcher** (optional): which worktrees agents may run in, how many at once and how to start one. Without the section there is no dispatcher. A worktree is free when nobody holds a live claim under its name.
+**Dispatcher** (optional): which worktrees agents may run in, how many at once, which coding agent to start and with what prompt. Without the section there is no dispatcher. A worktree is free when nobody holds a live claim under its name.
 
 ```yaml
 dispatcher:
@@ -330,10 +348,44 @@ dispatcher:
     - name: monorepo-2
       path: ../monorepo-2
     - monorepo-3
-  command: claude -p "Work on backlog item {id}, run backlog show {id} first"
+  repo: ../monorepo     # optional: create worktrees from this clone when none is free
+  max_worktrees: 4      # with repo: listed + created
+  base: main            # new branches agent/<id> start here
+  agent: claude         # a profile; claude is the default
+  agents:               # optional: own profiles, or replacements of built-in ones
+    claude-sonnet:
+      command: 'claude -p {prompt} --model sonnet --output-format stream-json --verbose --permission-mode acceptEdits --allowedTools "Bash(backlog *) Bash(git *) Read Edit Write Grep Glob"'
+      env: {MY_SETTING: "{worktree}"}
+      output: claude-stream-json   # text | claude-stream-json | json-lines
+      resume: --resume {session}   # optional: continue the item's last session
+  prompt: |             # optional; the default is below
+    You are {worktree}. Work on backlog item {id}: run backlog show {id} first.
+  resume_prompt: |      # optional; when an agent continues its session
+    Continue on {id}. Since your last run: {news}
 ```
 
-The command is split into arguments like in a shell, but no shell runs it (use `[sh, -c, "…"]` if you need one). Placeholders: `{id}`, `{title}`, `{worktree}`, `{path}` (absolute path of the worktree), `{backlog}`. Mistakes in the section are configuration errors; `lint` warns about worktree paths that do not exist. A running `backlog-server` re-plans after every change and whenever a claim expires: ready items in the order of `backlog next` go to free worktrees, at most `max_agents` at once, and it logs the plan. In `auto` mode each new assignment goes to the agent launcher; for now that only logs the command it would run (claiming and starting the agent, and a Start button for `manual` mode, come next).
+**Agent profiles.** A profile is a command template, extra environment (`env`) and the format of its output. Built in:
+
+| Profile | Command | Status |
+|---|---|---|
+| `claude` (default) | `claude -p {prompt} --output-format stream-json --verbose --permission-mode acceptEdits --permission-prompts none --allowedTools "Bash(backlog *) Bash(git *) Bash(mise run *) Bash(./*) Read Edit Write Grep Glob TodoWrite" --disallowedTools "Bash(git push *)"` | verified with Claude Code 2.1 |
+| `codex` | `codex exec --full-auto --json {prompt}` | unverified preset |
+| `gemini` | `gemini --approval-mode auto_edit -p {prompt}` | unverified preset |
+| `aider` | `aider --yes-always --message {prompt}` | unverified preset |
+
+The `claude` profile runs Claude Code headless on your subscription login: no API key, never `--bare` (it ignores the login) and never `--dangerously-skip-permissions` — edits are accepted, a whitelist of tools is allowed (`backlog`, `git`, `mise run`, the project's own scripts run as `./…`, the file tools), everything else is refused and `git push` is forbidden. It is also the one profile that can **resume**: its `resume` arguments (`--resume {session}`) continue an earlier session. For other tools (tests of another language, …) define your own profile. The unverified presets follow the CLIs' documentation and have not been run here; `lint` reminds you of that.
+
+**The prompt** (`dispatcher.prompt`) is shared by all profiles and fills `{prompt}`. By default it tells the agent its name and item, to run `backlog instructions` and `backlog show {id}` first, to commit on the branch prepared for it in small commits with the item id, to finish with `backlog set {id} status=review`, never to push, when something is unclear to ask with `backlog ask` and stop, and to update the description when a discussion changes the assignment.
+
+**Continuing a session.** Starting the same item again — after *Stop*, after an agent ended without finishing, or by hand later — continues its last agent's session instead of starting a new one, when the profile can resume (`resume:`; only `claude`, whose session id kanban-ai reads from the `claude-stream-json` output) and that session's worktree is free: the agent sessions live per folder, so it runs in the same worktree again (other items leave that worktree to it when they can, also while its agent waits for an answer). It then gets `dispatcher.resume_prompt` (default: you are continuing item {id}, `{news}` — how the last run ended —, look at the item again and go on under the same rules). Otherwise, or with *Start fresh* (`POST /api/dispatch/start {"item", "fresh": true}`), a new session starts.
+
+**Talking to the agent of an item.** When someone other than the agent comments on an unfinished item whose last session can be continued — an answer to the agent's `backlog ask`, or a question like "why did you do it this way?" on an item in review — the dispatcher resumes that session in its worktree with the new comments in `{news}`: right away in `auto` mode, as a proposal (*Send and continue* on the board) in `manual` mode, before other work and even for held items. The default resume prompt tells the agent to answer with `backlog comment` and stop when it was only asked something, or to reply and continue the work when it got an answer or a change request, and to bring the description up to date when the discussion changed the assignment. If the session's worktree is busy, the reply waits for it. A **note** (`backlog comment --note`, *Note only* on the board, `note: true` in the API) is the exception: it does not wake the agent and does not answer its question; the agent sees notes as context in `{news}` the next time it continues.
+
+Commands are split into arguments like in a shell, but no shell runs them (use `[sh, -c, "…"]` if you need one). Placeholders in the prompt, commands and `env`: `{id}`, `{title}`, `{worktree}`, `{path}` (absolute path of the worktree), `{backlog}`, `{branch}`; commands and `env` also `{prompt}`. The agent always gets `BACKLOG_AGENT=<worktree>` and `BACKLOG_DIR=<backlog folder>`. The older `command: …` (instead of `agent`) still works as a plain profile. Mistakes in the section are configuration errors; `lint` warns about worktree paths that do not exist, a `repo` that is not a folder, an agent command that is not on the `PATH` and unverified presets. A running `backlog-server` re-plans after every change and whenever a claim expires: ready items in the order of `backlog next` go to free worktrees, at most `max_agents` at once, and it logs the plan. In `auto` mode it starts each new assignment by itself; in `manual` mode it only proposes and a person presses *Start agent* on the board (or `POST /api/dispatch/start`).
+
+**Worktrees on demand.** With `repo` (the primary clone) the dispatcher does not need a fixed list: when no worktree is free it adds one next to the clone with `git worktree add` from `base`, named `{repo}-{n}` (change it with `worktree_name`; the first unused number from 2 on), up to `max_worktrees` worktrees in all, listed ones included. It remembers which worktrees it created (`~/.local/state/kanban-ai/worktrees/<project>/`) and reuses them; folders it did not create are left alone. The plan says when a start will create a worktree (*→ monorepo-3 (new)*). `cleanup_after_days: 14` removes created worktrees idle that long, but only when that loses nothing: no uncommitted changes and nothing that is not merged into `base` (`git worktree remove`, never forced; branches stay). Off by default. A continued session always runs in its own worktree, never in a new one: new work takes free worktrees first, then new ones, and leaves the worktree of a session that is about to continue — a ready item's, or that of an agent waiting for the answer to its question — alone when it can. So cleanup also keeps every worktree that holds the last session of an unfinished item, however idle, and does not reuse its name. If such a worktree is gone anyway (removed by hand), its session cannot be continued: the next start of the item is a new session, and a reply on an item that is not ready (e.g. in review) waits until a person starts it again; a *listed* worktree that is missing is only unavailable, and its sessions wait for it.
+
+**How an agent runs.** The server checks that the worktree is a clean git worktree (uncommitted changes or untracked files make it unavailable until cleaned up), claims the item under the worktree's name (if someone was faster, nothing starts), switches the worktree to the item's branch (its `branch` field, else `agent/<id>` created from `base` and written into the item) and starts the agent there as a detached process: it keeps running when the server restarts, and a restarted server finds it again. Its output goes to `~/.local/state/kanban-ai/logs/<project>/<id>-<time>.log`, its pid and details to `~/.local/state/kanban-ai/agents/<project>/<id>.json` (`$XDG_STATE_HOME` or `$KANBAN_AI_STATE_DIR` move them). While it runs, the server renews the claim. When it ends: an item the agent moved to `review` keeps its status and loses the claim; an item still `in-progress` is released back to `todo` and *held* — `auto` mode does not start it again until a person does (no retry loops on errors or rate limits) — except when the agent asked a question: then it is only released, and it is not ready until somebody answers. For Claude the log's session id is kept in `<id>.last.json`: the next start of the item continues it (see above), and `claude --resume <session>` in the worktree continues it by hand. The `backlog` on the agent's `PATH` must be new enough to read your `backlog.yaml`.
 
 ### View (`views/*.yaml`)
 
@@ -352,7 +404,7 @@ columns: [todo, in-progress, review, done]
 sort: [priority, -updated]
 ```
 
-Views can filter and group by every item field, by custom keys and by the computed fields `ready`, `blocked`, `conflicting`, `conflicts_with`, `claimed`, `claimed_by`, `category`, `has_children`, `ancestors` (the parent chain) and `epic` (epics among the item and its ancestors, so `epic: X-m4an` is everything under that epic).
+Views can filter and group by every item field, by custom keys and by the computed fields `ready`, `blocked`, `conflicting`, `conflicts_with`, `claimed`, `claimed_by`, `needs_human`, `category`, `has_children`, `ancestors` (the parent chain) and `epic` (epics among the item and its ancestors, so `epic: X-m4an` is everything under that epic).
 
 ## CLI reference
 
@@ -367,8 +419,9 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `next [-w …] --as <agent>` | claim the most urgent ready item |
 | `claim / heartbeat / release / done <id> --as <agent>` | work with claims (`--force` overrides the checks) |
 | `claims` | who works on what |
+| `comment <id> "text" [--as a] [--note]`, `ask <id> "question" [--as a]` | add to the item's discussion; `ask` makes it need a person until answered, `--note` neither answers nor wakes the agent (text `-` reads stdin) |
 | `view [name]` | saved views |
-| `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches, dispatcher worktrees (exit 1 on errors) |
+| `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches, dispatcher worktrees and agent (exit 1 on errors) |
 | `instructions` | the guide for agents, in Markdown |
 | `projects`, `projects add [dir] [--id] [--name]`, `projects remove <id>` | the registry of backlogs on this machine (`~/.config/kanban-ai/projects.yaml`), see below |
 
@@ -404,12 +457,12 @@ backlog_cli ──────────────────────�
 
 | Module | domain | application | infrastructure |
 |---|---|---|---|
-| `workflow` | `Workflow`, statuses and categories, `DispatcherConfig` | – | `backlog.yaml` parser |
+| `workflow` | `Workflow`, statuses and categories, `DispatcherConfig`, `AgentProfile` | – | `backlog.yaml` parser |
 | `projects` | `ProjectRegistry`, `ProjectEntry`, port `ProjectRegistryStore` | `ProjectService` | `projects.yaml` (`yaml_edit`, keeps comments) |
 | `items` | `Item`, `ItemId`, `Checklist`, ports `ItemRepository`, `IdGenerator` | `ItemService`, `FieldChange` | Markdown codec (`yaml_edit`, keeps formatting), file-system repository |
-| `claims` | `Claim` (lease), port `ClaimStore` | `ClaimService` (claim, next, heartbeat, release, done) | lock files |
+| `claims` | `Claim` (lease), port `ClaimStore` | `ClaimService` (claim, next, heartbeat, release, drop, done) | lock files |
 | `planning` | `BacklogSnapshot`, `PlannedItem`: blocked, conflicting, ready, cycles, children | `PlanningService` | – |
-| `dispatch` | `DispatchPlan` (ready items → free worktrees), port `AgentLauncher` | `Dispatcher` (debounce, wake-up on claim expiry, auto launch), `LoggingLauncher` | – |
+| `dispatch` | `DispatchPlan` (ready items → free worktrees; held items, unavailable worktrees, running agents), port `AgentLauncher` | `Dispatcher` (debounce, wake-up on claim expiry, auto launch, manual start/stop), `LoggingLauncher` | `ProcessAgentLauncher` (detached processes, state files, heartbeat, end of run), `WorktreeProvisioner` (worktrees on demand, cleanup) |
 | `views` | `Filter`, `ViewDefinition`, `ViewEngine` | `ViewService` | YAML views |
 | `validation` | `LintIssue` | `Linter` | – |
 
@@ -422,13 +475,14 @@ There is no event bus or event sourcing: the state lives in files and git keeps 
 
 **The server** is a driving adapter. `ApiHandler` parses requests, calls the core services and maps the results through `DtoMapper` to the DTOs of `backlog_api`. `ChangeFeed` watches the folder, debounces bursts of changes and ignores `.git` and temporary files. `BacklogHost` reloads the workflow after `backlog.yaml` changes, the core's `Dispatcher` re-plans on the same change events. The server opens backlogs with an in-memory item cache: each request still lists and `stat`s the item files but parses only those whose modification time, ctime or size changed (recently written files are always re-read, because file times are coarse), so edits by agents, editors or `git` are seen without relying on the watcher; claims are always read fresh (SPEC §8). Each backlog is a `HostedProject` (host, feed, dispatcher, API); `ProjectHub` keeps them in registry order and routes `/api/p/<id>/…`, `RegistryWatcher` applies registry edits live, and `BacklogServer` is the composition root.
 
-**The app** is split by feature (`features/board`, `features/item`, `features/projects`). Each feature has `application/` (`ChangeNotifier` controllers without widgets, and pure logic such as `ColumnArrangement`) and `presentation/`. It depends only on the `BacklogApi` interface, which `AppScope` provides. `ProjectsController` picks the open project from the `ProjectsApi`; each project gets its own session (its `BacklogApi` in `AppScope`, theme, board), thrown away as a whole when another project is opened.
+**The app** is split by feature (`features/board`, `features/item`, `features/projects`, `features/dispatch`). Each feature has `application/` (`ChangeNotifier` controllers without widgets, and pure logic such as `ColumnArrangement`) and `presentation/`. It depends only on the `BacklogApi` interface, which `AppScope` provides. `ProjectsController` picks the open project from the `ProjectsApi`; each project gets its own session (its `BacklogApi` in `AppScope`, theme, board), thrown away as a whole when another project is opened.
 
 **The REST API** (`/api/…` for the default project, the same under `/api/p/<id>/…` for each project):
 - `projects` (global: `[{id, name, path, error}]`)
 - `workflow`, `items` (`?all=true`)
 - `items/<id>`: GET (with its relations and the items it waits for or holds up through `touches`), and PATCH `{changes: ["status=done"], body}`
 - `items/<id>/claim|release|done`: POST `{agent, status, force}`
+- `items/<id>/comments`: POST `{text, author?, question?, note?}` (the detail has `discussion`, items `needs_human`)
 - `views`: GET, and POST `{name, section?, base?, conditions: [filter expressions]}` (save a filter as a view)
 - `views/<id>`: GET (`?group_by=field` regroups it for that request), and PATCH `{section?, columns?}` (only the given keys change; null removes them)
 - `lint`, `health` (global)

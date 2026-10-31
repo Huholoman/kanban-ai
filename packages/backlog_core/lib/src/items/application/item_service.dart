@@ -1,6 +1,7 @@
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/workflow.dart';
+import '../domain/discussion.dart';
 import '../domain/item.dart';
 import '../domain/item_id.dart';
 import '../domain/item_repository.dart';
@@ -121,6 +122,22 @@ final class ItemService {
     }
     await _repository.save(item);
     return item;
+  }
+
+  /// Adds a comment by [author] to the item's discussion (the `## Discussion`
+  /// section of its body); a [question] makes the item wait for a person
+  /// until someone else comments; a [note] neither answers it nor wakes the
+  /// item's agent.
+  Future<Item> comment(
+    String reference, {
+    required String author,
+    required String text,
+    bool question = false,
+    bool note = false,
+  }) async {
+    final item = await get(reference);
+    final comment = Comment(author: author, at: _clock.now(), text: text, question: question, note: note);
+    return update(item.id.value, const [], body: Discussion.append(item.body, comment));
   }
 
   Item find(List<Item> items, String reference) {
