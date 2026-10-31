@@ -39,34 +39,48 @@ final class WorktreeDefinition {
   String resolvePath(String backlogRoot) => p.normalize(p.isAbsolute(path) ? path : p.join(backlogRoot, path));
 }
 
+/// A text with `{placeholder}`s filled in per item (the prompt, environment
+/// values). `{{` and `}}` stand for literal braces.
+final class TextTemplate {
+  /// Rejects placeholders other than [known]; [label] names the setting in
+  /// error messages.
+  TextTemplate(this.text, {required List<String> known, required String label}) {
+    _validate(text, known, label);
+  }
+
+  final String text;
+
+  /// [text] with placeholders replaced by [values] (a missing one becomes empty).
+  String render(Map<String, String> values) => _fill(text, (name) => values[name] ?? '');
+
+  @override
+  String toString() => text;
+}
+
 /// The command that starts an agent, as a list of arguments (no shell) whose
 /// `{placeholder}`s are filled in per item. `{{` and `}}` stand for literal
 /// braces.
 final class CommandTemplate {
-  CommandTemplate(List<String> arguments) : arguments = List.unmodifiable(arguments) {
+  CommandTemplate(List<String> arguments, {String label = 'dispatcher.command'})
+    : arguments = List.unmodifiable(arguments) {
     if (arguments.isEmpty || arguments.first.trim().isEmpty) {
-      throw ConfigurationException('dispatcher.command must not be empty.');
+      throw ConfigurationException('$label must not be empty.');
     }
     for (final argument in arguments) {
-      _fill(argument, (name) {
-        if (!placeholders.contains(name)) {
-          throw ConfigurationException(
-            'dispatcher.command: unknown placeholder "{$name}" (known: ${placeholders.map((p) => '{$p}').join(', ')}).',
-          );
-        }
-        return '';
-      });
+      _validate(argument, placeholders, label);
     }
   }
 
   /// Splits [command] into arguments like a POSIX shell would (whitespace,
   /// '…' and "…" quotes, backslash escapes) without running one: there are
   /// no pipes, variables or globs, so filled-in values can never inject.
-  factory CommandTemplate.parse(String command) => CommandTemplate(splitWords(command));
+  factory CommandTemplate.parse(String command, {String label = 'dispatcher.command'}) =>
+      CommandTemplate(splitWords(command, label: label), label: label);
 
   /// What a command may refer to: the item id and title, the worktree name,
-  /// its absolute path and the absolute path of the backlog folder.
-  static const placeholders = ['id', 'title', 'worktree', 'path', 'backlog'];
+  /// its absolute path, the absolute path of the backlog folder and the
+  /// rendered prompt (`dispatcher.prompt`).
+  static const placeholders = [...DispatcherConfig.promptPlaceholders, 'prompt'];
 
   final List<String> arguments;
 
@@ -76,29 +90,21 @@ final class CommandTemplate {
     for (final argument in arguments) _fill(argument, (name) => values[name] ?? ''),
   ];
 
+  /// The program, i.e. the first argument.
+  String get executable => arguments.first;
+
   @override
   String toString() => join(arguments);
 
   /// [arguments] as one shell-quoted line, for logs and display.
   static String join(List<String> arguments) => arguments.map(_quote).join(' ');
 
-  static final _token = RegExp(r'\{\{|\}\}|\{([A-Za-z_]+)\}');
-
-  static String _fill(String argument, String Function(String name) value) => argument.replaceAllMapped(
-    _token,
-    (match) => switch (match[0]) {
-      '{{' => '{',
-      '}}' => '}',
-      _ => value(match[1]!),
-    },
-  );
-
   static String _quote(String argument) => RegExp(r'''^[A-Za-z0-9_./:={}@%+,-]+$''').hasMatch(argument)
       ? argument
       : "'${argument.replaceAll("'", r"'\''")}'";
 
   /// Shell-like word splitting of [command]; see [CommandTemplate.parse].
-  static List<String> splitWords(String command) {
+  static List<String> splitWords(String command, {String label = 'dispatcher.command'}) {
     final words = <String>[];
     final word = StringBuffer();
     var inWord = false;
@@ -134,19 +140,155 @@ final class CommandTemplate {
         inWord = true;
       }
     }
-    if (quote != null) throw ConfigurationException('dispatcher.command: unterminated $quote quote.');
+    if (quote != null) throw ConfigurationException('$label: unterminated $quote quote.');
     if (inWord) words.add(word.toString());
     return words;
   }
 }
 
+final _token = RegExp(r'\{\{|\}\}|\{([A-Za-z_]+)\}');
+
+String _fill(String text, String Function(String name) value) => text.replaceAllMapped(
+  _token,
+  (match) => switch (match[0]) {
+    '{{' => '{',
+    '}}' => '}',
+    _ => value(match[1]!),
+  },
+);
+
+void _validate(String text, List<String> known, String label) => _fill(text, (name) {
+  if (!known.contains(name)) {
+    throw ConfigurationException(
+      '$label: unknown placeholder "{$name}" (known: ${known.map((p) => '{$p}').join(', ')}).',
+    );
+  }
+  return '';
+});
+
+/// How an agent writes its output; tells later readers of the log (session
+/// id, progress) how to parse it.
+enum AgentOutput {
+  /// Plain text.
+  text('text'),
+
+  /// Claude Code's `--output-format stream-json`: one JSON event per line,
+  /// ending with a `result` event that carries the `session_id`.
+  claudeStreamJson('claude-stream-json'),
+
+  /// Some other JSON object per line (e.g. `codex exec --json`).
+  jsonLines('json-lines');
+
+  const AgentOutput(this.id);
+
+  /// The name used in `backlog.yaml`.
+  final String id;
+
+  static AgentOutput parse(String value, {String label = 'output'}) => values.firstWhere(
+    (output) => output.id == value,
+    orElse: () =>
+        throw ConfigurationException('$label must be one of ${values.map((o) => o.id).join(', ')}, got "$value".'),
+  );
+}
+
+/// One way to start a coding agent: its command (with `{prompt}` and the
+/// item's placeholders), extra environment and output format. Built-in
+/// profiles ([builtIns]) can be used by name; `dispatcher.agents` adds or
+/// replaces profiles.
+final class AgentProfile {
+  AgentProfile({
+    required this.name,
+    required this.command,
+    Map<String, TextTemplate> environment = const {},
+    this.output = AgentOutput.text,
+    this.builtIn = false,
+    this.verified = true,
+  }) : environment = Map.unmodifiable(environment) {
+    for (final key in environment.keys) {
+      if (!_envName.hasMatch(key)) {
+        throw ConfigurationException('Agent "$name": "$key" is not a valid environment variable name.');
+      }
+    }
+  }
+
+  static final _envName = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
+
+  final String name;
+  final CommandTemplate command;
+
+  /// Set for the agent's process on top of the server's environment (and of
+  /// `BACKLOG_AGENT`, `BACKLOG_DIR`); values may use the command's placeholders.
+  final Map<String, TextTemplate> environment;
+  final AgentOutput output;
+
+  /// Shipped with kanban-ai rather than defined in `backlog.yaml`.
+  final bool builtIn;
+
+  /// Tried with the real CLI; unverified presets may need adjusting.
+  final bool verified;
+
+  /// Tools Claude Code may use without asking: the backlog CLI, git, mise
+  /// tasks and the file tools. Everything else is refused (nobody answers
+  /// permission prompts in headless mode); pushing is forbidden outright.
+  static const claudeAllowedTools = 'Bash(backlog *) Bash(git *) Bash(mise run *) Read Edit Write Grep Glob TodoWrite';
+
+  /// The profiles usable without defining them. Only `claude` is verified
+  /// (Claude Code 2.1); the others are presets after the CLIs' documentation.
+  static final Map<String, AgentProfile> builtIns = {
+    'claude': AgentProfile(
+      name: 'claude',
+      // Never --bare (it ignores the subscription login) and never
+      // --dangerously-skip-permissions: a tool whitelist and acceptEdits.
+      command: CommandTemplate([
+        'claude',
+        '-p',
+        '{prompt}',
+        '--output-format',
+        'stream-json',
+        '--verbose',
+        '--permission-mode',
+        'acceptEdits',
+        '--permission-prompts',
+        'none',
+        '--allowedTools',
+        claudeAllowedTools,
+        '--disallowedTools',
+        'Bash(git push *)',
+      ], label: 'agent claude'),
+      output: AgentOutput.claudeStreamJson,
+      builtIn: true,
+    ),
+    'codex': AgentProfile(
+      name: 'codex',
+      command: CommandTemplate(['codex', 'exec', '--full-auto', '--json', '{prompt}'], label: 'agent codex'),
+      output: AgentOutput.jsonLines,
+      builtIn: true,
+      verified: false,
+    ),
+    'gemini': AgentProfile(
+      name: 'gemini',
+      command: CommandTemplate(['gemini', '--approval-mode', 'auto_edit', '-p', '{prompt}'], label: 'agent gemini'),
+      builtIn: true,
+      verified: false,
+    ),
+    'aider': AgentProfile(
+      name: 'aider',
+      command: CommandTemplate(['aider', '--yes-always', '--message', '{prompt}'], label: 'agent aider'),
+      builtIn: true,
+      verified: false,
+    ),
+  };
+}
+
 /// The optional `dispatcher` section of `backlog.yaml`: which worktrees
-/// agents may run in, how many at once, how to start one and whether to do
-/// it automatically. Without the section there is no dispatcher.
+/// agents may run in, how many at once, which agent to start with which
+/// prompt and whether to do it automatically. Without the section there is
+/// no dispatcher.
 final class DispatcherConfig {
   factory DispatcherConfig({
     required List<WorktreeDefinition> worktrees,
-    required CommandTemplate command,
+    required AgentProfile agent,
+    TextTemplate? prompt,
     DispatchMode mode = DispatchMode.manual,
     int? maxAgents,
   }) {
@@ -160,19 +302,48 @@ final class DispatcherConfig {
     }
     final limit = maxAgents ?? worktrees.length;
     if (limit < 1) throw const ConfigurationException('dispatcher.max_agents must be at least 1.');
-    return DispatcherConfig._(List.unmodifiable(worktrees), command, mode, limit);
+    return DispatcherConfig._(
+      List.unmodifiable(worktrees),
+      agent,
+      prompt ?? TextTemplate(defaultPrompt, known: promptPlaceholders, label: 'dispatcher.prompt'),
+      mode,
+      limit,
+    );
   }
 
-  DispatcherConfig._(this.worktrees, this.command, this.mode, this.maxAgents);
+  DispatcherConfig._(this.worktrees, this.agent, this.prompt, this.mode, this.maxAgents);
+
+  /// What the prompt may refer to: the item id and title, the worktree name,
+  /// its absolute path and the absolute path of the backlog folder.
+  static const promptPlaceholders = ['id', 'title', 'worktree', 'path', 'backlog'];
+
+  /// The prompt every agent gets unless `dispatcher.prompt` replaces it.
+  static const defaultPrompt =
+      'You are the coding agent {worktree}, working on backlog item {id} ("{title}") in this git worktree.\n'
+      '1. First run `backlog instructions` and `backlog show {id}` and follow them. The item is already claimed '
+      'for you (BACKLOG_AGENT={worktree}); do not take other items.\n'
+      '2. Work on your own branch, never on the main branch. Make small commits; every commit message contains {id}.\n'
+      '3. When the work is finished, run `backlog set {id} status=review`.\n'
+      '4. Never push and never open pull requests.\n'
+      '5. If something is unclear or blocks you, write your question into the body of the item (its file is shown '
+      'by `backlog show {id}`), leave its status as it is and stop.';
 
   /// In order of preference: free work goes to the first free worktree.
   final List<WorktreeDefinition> worktrees;
-  final CommandTemplate command;
+
+  /// The agent profile started for each assignment.
+  final AgentProfile agent;
+
+  /// The prompt, shared by all agents; fills `{prompt}` in the command.
+  final TextTemplate prompt;
   final DispatchMode mode;
 
   /// At most this many agents run at once (defaults to one per worktree;
   /// more than there are worktrees has no effect).
   final int maxAgents;
+
+  /// The command of [agent].
+  CommandTemplate get command => agent.command;
 
   WorktreeDefinition? worktree(String name) {
     for (final worktree in worktrees) {

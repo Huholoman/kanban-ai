@@ -98,8 +98,15 @@ dispatcher:                            # optional; without it there is no dispat
     - name: monorepo-2                 # also the agent name of its claims
       path: ../monorepo-2              # absolute, or relative to the backlog folder
     - monorepo-3                       # bare name = {name: monorepo-3, path: ../monorepo-3}
-  command: claude -p "Work on backlog item {id}, run backlog show {id} first"
-  # or as a list of arguments: [claude, -p, "Work on {id}"]
+  agent: claude                        # agent profile (default claude): built-in or from agents
+  agents:                              # optional own profiles (may replace a built-in one)
+    my-claude:
+      command: claude -p {prompt} --model sonnet   # string (split like a shell) or list of arguments
+      env: {MY_VAR: "{worktree}"}      # extra environment, placeholders allowed
+      output: claude-stream-json       # text (default) | claude-stream-json | json-lines
+  prompt: |                            # optional; shared by all profiles, fills {prompt}
+    Work on backlog item {id}, run backlog show {id} first.
+  # legacy: command: claude -p "Work on {id}"  (instead of agent; a plain profile, output text)
 ```
 
 Semantics:
@@ -111,7 +118,7 @@ Semantics:
 - **Types** are labels; the hierarchy comes from `parent`, not from the type. `epic` is special only in the UI (epic filter, the default Board view hides epics).
 - **Statuses are the board columns.** Add, rename or reorder them here; each view chooses which to show with `columns:` (§6), also editable from the app.
 - **Appearance** only affects the web board: the palette is generated from `seed` per brightness, `primary`/`secondary`/`background` override parts of it; status, priority, type and label colours replace the built-in ones (columns, card stripes, tags). Invalid colours or modes are configuration errors.
-- **Dispatcher** hands ready items to agents running in the listed worktrees. A worktree is *free* when no live claim is held under its name; at most `max_agents` of the listed worktrees are busy at once. `command` is split into arguments like a shell would (quotes, backslashes) but never run through one, so pipes or variables need an explicit `[sh, -c, "…"]`; in every argument `{id}`, `{title}`, `{worktree}`, `{path}` (absolute worktree path) and `{backlog}` (absolute backlog path) are replaced, `{{`/`}}` are literal braces. The agent runs inside the worktree folder. Unknown keys and placeholders, a missing `command` or `worktrees`, duplicate names or paths, names other than `[A-Za-z0-9._-]`, `max_agents` < 1 and a `mode` other than `auto`/`manual` are configuration errors; `lint` warns about worktree paths that are not folders. The running server plans with it (§8.2); agents are not started yet, it only logs what it would start.
+- **Dispatcher** hands ready items to agents running in the listed worktrees. A worktree is *free* when no live claim is held under its name; at most `max_agents` of the listed worktrees are busy at once. **Agent profiles:** `agent` names the profile to start (default `claude`); built in are `claude` (`claude -p {prompt} --output-format stream-json --verbose --permission-mode acceptEdits --permission-prompts none --allowedTools "Bash(backlog *) Bash(git *) Bash(mise run *) Read Edit Write Grep Glob TodoWrite" --disallowedTools "Bash(git push *)"`, output `claude-stream-json`; verified with Claude Code 2.1, runs on the subscription login — never `--bare`, never `--dangerously-skip-permissions`) and the unverified presets `codex` (`codex exec --full-auto --json {prompt}`, `json-lines`), `gemini` (`gemini --approval-mode auto_edit -p {prompt}`) and `aider` (`aider --yes-always --message {prompt}`). `agents: {name: {command, env, output}}` defines more profiles or replaces built-in ones (`command` required; `env` a map of variable → value; `output` `text` | `claude-stream-json` | `json-lines`, default `text`). **Prompt:** `prompt` is one template shared by all profiles; the default tells the agent its name ({worktree}) and item, to run `backlog instructions` and `backlog show {id}` first, to work on its own branch in small commits containing the id, to finish with `backlog set {id} status=review`, never to push, and to write a question into the item and stop when something is unclear. The legacy `command` (instead of `agent`) is a plain profile with output `text`. Commands are split into arguments like a shell would (quotes, backslashes) but never run through one, so pipes or variables need an explicit `[sh, -c, "…"]`; `{id}`, `{title}`, `{worktree}`, `{path}` (absolute worktree path) and `{backlog}` (absolute backlog path) are replaced in the prompt, every command argument and `env` value, `{prompt}` (the rendered prompt) in commands and `env`; `{{`/`}}` are literal braces. The agent runs inside the worktree folder with `BACKLOG_AGENT=<worktree>`, `BACKLOG_DIR=<backlog>` and the profile's `env` added to the server's environment. Unknown keys and placeholders, both `agent` and `command`, an unknown `agent`, a profile without `command`, an unknown `output`, invalid variable names, missing `worktrees`, duplicate names or paths, names other than `[A-Za-z0-9._-]`, `max_agents` < 1 and a `mode` other than `auto`/`manual` are configuration errors; `lint` warns about worktree paths that are not folders (`dispatcher-worktree`), an agent program not on the `PATH` and unverified presets (`dispatcher-agent`). The running server plans with it (§8.2); agents are not started yet, it only logs what it would start.
 - Changes to `backlog.yaml` are picked up by a running server (and the board's theme) without restart.
 
 ## 3. Items — `items/<id>-<slug>.md`
@@ -263,7 +270,7 @@ Default views from `init`: **Board** (kanban by status, epics hidden), **Ready t
 
 Errors and warnings with a code, item and location:
 
-`unreadable` (broken file / front matter), `duplicate-id`, `file-name`, `unknown-status`, `unknown-priority`, `unknown-type`, `unknown-milestone`, `dangling-reference` (parent/depends_on/related to a missing item), `self-reference`, `dependency-cycle`, `parent-cycle`, `invalid-touches` (warning, §3.2), `touches-overlap` (warning: two active items with overlapping `touches`), `invalid-view`, `expired-claim`, `stale-claim`, `orphan-claim`, `dispatcher-worktree` (a dispatcher worktree path is not a folder).
+`unreadable` (broken file / front matter), `duplicate-id`, `file-name`, `unknown-status`, `unknown-priority`, `unknown-type`, `unknown-milestone`, `dangling-reference` (parent/depends_on/related to a missing item), `self-reference`, `dependency-cycle`, `parent-cycle`, `invalid-touches` (warning, §3.2), `touches-overlap` (warning: two active items with overlapping `touches`), `invalid-view`, `expired-claim`, `stale-claim`, `orphan-claim`, `dispatcher-worktree` (a dispatcher worktree path is not a folder), `dispatcher-agent` (warning: the agent's program is not on the `PATH`, or the profile is an unverified preset).
 
 A broken `backlog.yaml` (including the `dispatcher` section) is not a lint issue: every command, `lint` included, fails with the configuration error (exit 1).
 

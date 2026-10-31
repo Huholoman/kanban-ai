@@ -87,8 +87,20 @@ final class Backlog {
         clock: clock,
         root: layout.root,
         directoryExists: (path) => Directory(path).exists(),
+        programExists: programOnPath,
       ),
     );
+  }
+
+  /// Whether [program] can be started: an existing file when it contains a
+  /// slash, else found in one of the `PATH` folders.
+  static Future<bool> programOnPath(String program) async {
+    if (program.contains('/')) return File(program).exists();
+    final path = Platform.environment['PATH'] ?? '';
+    for (final folder in path.split(Platform.isWindows ? ';' : ':')) {
+      if (folder.isNotEmpty && await File(p.join(folder, program)).exists()) return true;
+    }
+    return false;
   }
 
   /// Creates the folder structure with a default configuration and views.

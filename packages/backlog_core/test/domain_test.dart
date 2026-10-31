@@ -134,6 +134,59 @@ dispatcher:
       expect(dispatcher.command.render({'id': 'X-1'}), ['sh', '-c', 'echo {literal} X-1']);
     });
 
+    test('agent profiles: claude by default, built-in by name, own ones in agents', () {
+      final byDefault = parseWorkflowYaml('dispatcher: {worktrees: [a]}').dispatcher!;
+      expect(byDefault.agent.name, 'claude');
+      expect(byDefault.agent.output, AgentOutput.claudeStreamJson);
+      expect(byDefault.prompt.text, DispatcherConfig.defaultPrompt);
+      final claude = byDefault.command.arguments;
+      expect(claude.take(3), ['claude', '-p', '{prompt}']);
+      expect(claude, containsAllInOrder(['--permission-mode', 'acceptEdits', '--allowedTools']));
+      expect(claude, isNot(contains('--bare')));
+      expect(claude, isNot(contains('--dangerously-skip-permissions')));
+
+      expect(parseWorkflowYaml('dispatcher: {agent: codex, worktrees: [a]}').dispatcher!.agent.verified, isFalse);
+
+      final own = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  agent: mine
+  agents:
+    mine:
+      command: [my-agent, --task, "{prompt}"]
+      env: {MY_NAME: "{worktree}-{id}"}
+      output: json-lines
+    claude: {command: 'claude -p {prompt}'}
+  prompt: Do {id} ({title}) as {worktree}.
+''').dispatcher!;
+      expect(own.agent.name, 'mine');
+      expect(own.agent.output, AgentOutput.jsonLines);
+      expect(own.agent.builtIn, isFalse);
+      final plan = DispatchPlan.of(
+        BacklogSnapshot.build(
+          items: [item('X-1')],
+          workflow: parseWorkflowYaml(
+            'dispatcher: {worktrees: [a], agent: mine, agents: {mine: {command: [my-agent, "{prompt}"], '
+            'env: {MY_NAME: "{worktree}-{id}"}}}, prompt: "Do {id} ({title}) as {worktree}."}',
+          ),
+          claims: const [],
+          now: DateTime.utc(2026, 10, 29),
+        ),
+        backlogRoot: '/w/backlog',
+      )!;
+      final assignment = plan.assignments.single;
+      expect(assignment.prompt, 'Do X-1 (Item X-1) as a.');
+      expect(assignment.command, ['my-agent', 'Do X-1 (Item X-1) as a.']);
+      expect(assignment.environment, {'BACKLOG_AGENT': 'a', 'BACKLOG_DIR': '/w/backlog', 'MY_NAME': 'a-X-1'});
+    });
+
+    test('the legacy command is a plain profile without a prompt of its own', () {
+      final dispatcher = parseWorkflowYaml('dispatcher: {worktrees: [a], command: "run {id} {prompt}"}').dispatcher!;
+      expect(dispatcher.agent.name, 'command');
+      expect(dispatcher.agent.output, AgentOutput.text);
+      expect(dispatcher.command.arguments, ['run', '{id}', '{prompt}']);
+    });
+
     test('splits a command string like a shell, without running one', () {
       expect(CommandTemplate.splitWords(r"""a  'b c' "d \"e\" \$f" g\ h ''"""), ['a', 'b c', r'd "e" $f', 'g h', '']);
       expect(() => CommandTemplate.splitWords('a "b'), throwsA(isA<ConfigurationException>()));
@@ -144,7 +197,32 @@ dispatcher:
         () => parseWorkflowYaml(yaml),
         throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
       );
-      rejects('dispatcher: {worktrees: [a]}', 'dispatcher.command is required');
+      rejects('dispatcher: {agent: claude, command: x, worktrees: [a]}', 'not both');
+      rejects(
+        'dispatcher: {agent: robot, worktrees: [a]}',
+        'unknown agent "robot" (known: claude, codex, gemini, aider)',
+      );
+      rejects('dispatcher: {agents: {x: {env: {}}}, worktrees: [a]}', 'dispatcher.agents.x.command is required');
+      rejects(
+        'dispatcher: {agents: {x: {command: y, mode: z}}, worktrees: [a]}',
+        'unknown key "dispatcher.agents.x.mode"',
+      );
+      rejects(
+        'dispatcher: {agents: {x: {command: y, output: xml}}, worktrees: [a]}',
+        'dispatcher.agents.x.output must be one of',
+      );
+      rejects(
+        'dispatcher: {agents: {x: {command: "y {item}"}}, worktrees: [a]}',
+        'dispatcher.agents.x.command: unknown placeholder',
+      );
+      rejects(
+        'dispatcher: {agents: {x: {command: y, env: {"A-B": c}}}, worktrees: [a]}',
+        'not a valid environment variable',
+      );
+      rejects(
+        'dispatcher: {prompt: "do {prompt}", worktrees: [a]}',
+        'dispatcher.prompt: unknown placeholder "{prompt}"',
+      );
       rejects('dispatcher: {command: x}', 'dispatcher.worktrees is required');
       rejects('dispatcher: {command: x, worktrees: []}', 'at least one worktree');
       rejects('dispatcher: {command: x, worktrees: [a, a]}', 'Duplicate dispatcher worktree "a"');

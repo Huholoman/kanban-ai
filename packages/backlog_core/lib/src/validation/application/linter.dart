@@ -27,13 +27,15 @@ final class Linter {
     required Clock clock,
     String? root,
     Future<bool> Function(String path)? directoryExists,
+    Future<bool> Function(String program)? programExists,
   }) : _items = items,
        _claims = claims,
        _views = views,
        _workflow = workflow,
        _clock = clock,
        _root = root,
-       _directoryExists = directoryExists;
+       _directoryExists = directoryExists,
+       _programExists = programExists;
 
   final ItemRepository _items;
   final ClaimStore _claims;
@@ -45,6 +47,10 @@ final class Linter {
   /// dispatcher's worktree folders are not checked.
   final String? _root;
   final Future<bool> Function(String path)? _directoryExists;
+
+  /// Whether a program can be started (found on the PATH); without it the
+  /// dispatcher's agent command is not checked.
+  final Future<bool> Function(String program)? _programExists;
 
   Future<List<LintIssue>> run() async {
     final issues = <LintIssue>[];
@@ -156,6 +162,31 @@ final class Linter {
             ),
           );
         }
+      }
+    }
+    final programExists = _programExists;
+    if (dispatcher != null && programExists != null) {
+      final agent = dispatcher.agent;
+      if (!await programExists(agent.command.executable)) {
+        issues.add(
+          LintIssue(
+            Severity.warning,
+            'dispatcher-agent',
+            'Dispatcher agent "${agent.name}" runs "${agent.command.executable}", which is not on the PATH.',
+            location: 'backlog.yaml',
+          ),
+        );
+      }
+      if (!agent.verified) {
+        issues.add(
+          LintIssue(
+            Severity.warning,
+            'dispatcher-agent',
+            'Dispatcher agent "${agent.name}" is an unverified preset; check its command or define your own in '
+                'dispatcher.agents.',
+            location: 'backlog.yaml',
+          ),
+        );
       }
     }
 

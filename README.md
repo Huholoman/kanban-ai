@@ -320,7 +320,7 @@ appearance:
 
 The board picks up changes to it live.
 
-**Dispatcher** (optional): which worktrees agents may run in, how many at once and how to start one. Without the section there is no dispatcher. A worktree is free when nobody holds a live claim under its name.
+**Dispatcher** (optional): which worktrees agents may run in, how many at once, which coding agent to start and with what prompt. Without the section there is no dispatcher. A worktree is free when nobody holds a live claim under its name.
 
 ```yaml
 dispatcher:
@@ -330,10 +330,30 @@ dispatcher:
     - name: monorepo-2
       path: ../monorepo-2
     - monorepo-3
-  command: claude -p "Work on backlog item {id}, run backlog show {id} first"
+  agent: claude         # a profile; claude is the default
+  agents:               # optional: own profiles, or replacements of built-in ones
+    claude-sonnet:
+      command: 'claude -p {prompt} --model sonnet --output-format stream-json --verbose --permission-mode acceptEdits --allowedTools "Bash(backlog *) Bash(git *) Read Edit Write Grep Glob"'
+      env: {MY_SETTING: "{worktree}"}
+      output: claude-stream-json   # text | claude-stream-json | json-lines
+  prompt: |             # optional; the default is below
+    You are {worktree}. Work on backlog item {id}: run backlog show {id} first.
 ```
 
-The command is split into arguments like in a shell, but no shell runs it (use `[sh, -c, "…"]` if you need one). Placeholders: `{id}`, `{title}`, `{worktree}`, `{path}` (absolute path of the worktree), `{backlog}`. Mistakes in the section are configuration errors; `lint` warns about worktree paths that do not exist. A running `backlog-server` re-plans after every change and whenever a claim expires: ready items in the order of `backlog next` go to free worktrees, at most `max_agents` at once, and it logs the plan. In `auto` mode each new assignment goes to the agent launcher; for now that only logs the command it would run (claiming and starting the agent, and a Start button for `manual` mode, come next).
+**Agent profiles.** A profile is a command template, extra environment (`env`) and the format of its output. Built in:
+
+| Profile | Command | Status |
+|---|---|---|
+| `claude` (default) | `claude -p {prompt} --output-format stream-json --verbose --permission-mode acceptEdits --permission-prompts none --allowedTools "Bash(backlog *) Bash(git *) Bash(mise run *) Read Edit Write Grep Glob TodoWrite" --disallowedTools "Bash(git push *)"` | verified with Claude Code 2.1 |
+| `codex` | `codex exec --full-auto --json {prompt}` | unverified preset |
+| `gemini` | `gemini --approval-mode auto_edit -p {prompt}` | unverified preset |
+| `aider` | `aider --yes-always --message {prompt}` | unverified preset |
+
+The `claude` profile runs Claude Code headless on your subscription login: no API key, never `--bare` (it ignores the login) and never `--dangerously-skip-permissions` — edits are accepted, a whitelist of tools is allowed, everything else is refused and `git push` is forbidden. For other tools (tests of another language, …) define your own profile. The unverified presets follow the CLIs' documentation and have not been run here; `lint` reminds you of that.
+
+**The prompt** (`dispatcher.prompt`) is shared by all profiles and fills `{prompt}`. By default it tells the agent its name and item, to run `backlog instructions` and `backlog show {id}` first, to work on its own branch in small commits with the item id, to finish with `backlog set {id} status=review`, never to push, and when something is unclear to write the question into the item and stop.
+
+Commands are split into arguments like in a shell, but no shell runs them (use `[sh, -c, "…"]` if you need one). Placeholders in the prompt, commands and `env`: `{id}`, `{title}`, `{worktree}`, `{path}` (absolute path of the worktree), `{backlog}`; commands and `env` also `{prompt}`. The agent always gets `BACKLOG_AGENT=<worktree>` and `BACKLOG_DIR=<backlog folder>`. The older `command: …` (instead of `agent`) still works as a plain profile. Mistakes in the section are configuration errors; `lint` warns about worktree paths that do not exist, an agent command that is not on the `PATH` and unverified presets. A running `backlog-server` re-plans after every change and whenever a claim expires: ready items in the order of `backlog next` go to free worktrees, at most `max_agents` at once, and it logs the plan. In `auto` mode each new assignment goes to the agent launcher; for now that only logs the command it would run (claiming and starting the agent, and a Start button for `manual` mode, come next).
 
 ### View (`views/*.yaml`)
 
@@ -368,7 +388,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `claim / heartbeat / release / done <id> --as <agent>` | work with claims (`--force` overrides the checks) |
 | `claims` | who works on what |
 | `view [name]` | saved views |
-| `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches, dispatcher worktrees (exit 1 on errors) |
+| `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches, dispatcher worktrees and agent (exit 1 on errors) |
 | `instructions` | the guide for agents, in Markdown |
 | `projects`, `projects add [dir] [--id] [--name]`, `projects remove <id>` | the registry of backlogs on this machine (`~/.config/kanban-ai/projects.yaml`), see below |
 
@@ -404,7 +424,7 @@ backlog_cli ──────────────────────�
 
 | Module | domain | application | infrastructure |
 |---|---|---|---|
-| `workflow` | `Workflow`, statuses and categories, `DispatcherConfig` | – | `backlog.yaml` parser |
+| `workflow` | `Workflow`, statuses and categories, `DispatcherConfig`, `AgentProfile` | – | `backlog.yaml` parser |
 | `projects` | `ProjectRegistry`, `ProjectEntry`, port `ProjectRegistryStore` | `ProjectService` | `projects.yaml` (`yaml_edit`, keeps comments) |
 | `items` | `Item`, `ItemId`, `Checklist`, ports `ItemRepository`, `IdGenerator` | `ItemService`, `FieldChange` | Markdown codec (`yaml_edit`, keeps formatting), file-system repository |
 | `claims` | `Claim` (lease), port `ClaimStore` | `ClaimService` (claim, next, heartbeat, release, done) | lock files |

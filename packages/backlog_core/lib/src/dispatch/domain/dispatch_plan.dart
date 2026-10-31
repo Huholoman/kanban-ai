@@ -25,9 +25,51 @@ final class WorktreeState {
 }
 
 /// "Start [item] in [worktree]": the agent takes the claim under the
-/// worktree's name and runs [command] inside [path].
+/// worktree's name and runs [command] inside [path] with [environment].
 final class DispatchAssignment {
-  const DispatchAssignment({required this.item, required this.worktree, required this.path, required this.command});
+  const DispatchAssignment({
+    required this.item,
+    required this.worktree,
+    required this.path,
+    required this.agentProfile,
+    required this.prompt,
+    required this.command,
+    this.environment = const {},
+  });
+
+  /// Fills the [config]'s prompt, command and environment for [item] in
+  /// [worktree] (absolute [path]); [backlogRoot] is the backlog folder.
+  factory DispatchAssignment.render(
+    DispatcherConfig config, {
+    required PlannedItem item,
+    required WorktreeDefinition worktree,
+    required String path,
+    required String backlogRoot,
+  }) {
+    final values = {
+      'id': item.id.value,
+      'title': item.item.title,
+      'worktree': worktree.name,
+      'path': path,
+      'backlog': backlogRoot,
+    };
+    final prompt = config.prompt.render(values);
+    final full = {...values, 'prompt': prompt};
+    final profile = config.agent;
+    return DispatchAssignment(
+      item: item,
+      worktree: worktree,
+      path: path,
+      agentProfile: profile,
+      prompt: prompt,
+      command: profile.command.render(full),
+      environment: {
+        'BACKLOG_AGENT': worktree.name,
+        'BACKLOG_DIR': backlogRoot,
+        for (final MapEntry(:key, :value) in profile.environment.entries) key: value.render(full),
+      },
+    );
+  }
 
   final PlannedItem item;
   final WorktreeDefinition worktree;
@@ -35,8 +77,19 @@ final class DispatchAssignment {
   /// Absolute path of the worktree; the working directory of [command].
   final String path;
 
-  /// The configured command with its placeholders filled in.
+  /// The agent profile [command] comes from.
+  final AgentProfile agentProfile;
+
+  /// The rendered `dispatcher.prompt`.
+  final String prompt;
+
+  /// The profile's command with its placeholders filled in.
   final List<String> command;
+
+  /// Set for the agent on top of the server's environment: `BACKLOG_AGENT`
+  /// (the worktree name), `BACKLOG_DIR` (the backlog folder) and the
+  /// profile's `env`.
+  final Map<String, String> environment;
 
   ItemId get id => item.id;
 
@@ -86,17 +139,12 @@ final class DispatchPlan {
 
     final assignments = <DispatchAssignment>[
       for (var i = 0; i < slots && i < ready.length; i++)
-        DispatchAssignment(
+        DispatchAssignment.render(
+          config,
           item: ready[i],
           worktree: free[i].worktree,
           path: free[i].path,
-          command: config.command.render({
-            'id': ready[i].id.value,
-            'title': ready[i].item.title,
-            'worktree': free[i].name,
-            'path': free[i].path,
-            'backlog': backlogRoot,
-          }),
+          backlogRoot: backlogRoot,
         ),
     ];
 
