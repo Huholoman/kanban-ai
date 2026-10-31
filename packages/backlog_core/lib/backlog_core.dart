@@ -5,6 +5,8 @@ library;
 export 'src/backlog.dart';
 export 'src/claims/application/claim_service.dart';
 export 'src/claims/domain/claim.dart';
+export 'src/dispatch/application/dispatcher.dart';
+export 'src/dispatch/domain/dispatch_plan.dart';
 export 'src/infrastructure/backlog_layout.dart' show BacklogLayout;
 export 'src/items/application/field_change.dart';
 export 'src/items/application/item_service.dart';

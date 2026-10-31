@@ -77,7 +77,10 @@ final class CommandTemplate {
   ];
 
   @override
-  String toString() => arguments.map(_quote).join(' ');
+  String toString() => join(arguments);
+
+  /// [arguments] as one shell-quoted line, for logs and display.
+  static String join(List<String> arguments) => arguments.map(_quote).join(' ');
 
   static final _token = RegExp(r'\{\{|\}\}|\{([A-Za-z_]+)\}');
 
