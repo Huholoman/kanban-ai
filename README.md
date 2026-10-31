@@ -122,7 +122,7 @@ git clone https://github.com/Huholoman/kanban-ai && cd kanban-ai
 dart pub get
 dart compile exe packages/backlog_cli/bin/backlog.dart -o ~/.local/bin/backlog
 dart compile exe packages/backlog_server/bin/backlog_server.dart -o ~/.local/bin/backlog-server
-(cd packages/backlog_app && flutter pub get && flutter build web)
+(cd packages/backlog_app && flutter pub get && flutter build web --no-web-resources-cdn --pwa-strategy=none && tool/precompress.sh)
 # the server looks for the app in packages/backlog_app/build/web; otherwise --web <dir> or BACKLOG_WEB
 ```
 
@@ -585,6 +585,7 @@ mise tasks                      # analyze, test, format, build, build-web, playg
 
 | Task | What it does |
 |---|---|
+| `mise run build-web` | the web app in `packages/backlog_app/build/web`: CanvasKit bundled (nothing from Google's CDN), no service worker, Brotli/gzip copies for the server (`brotli` optional) |
 | `mise run build` | the web app plus `build/backlog` and `build/backlog-server` |
 | `mise run playground` | regenerate `playground/` with demo data |
 | `mise run serve` | serve the playground (or `BACKLOG_DIR`) with the built web app |
