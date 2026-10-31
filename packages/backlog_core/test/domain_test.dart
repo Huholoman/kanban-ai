@@ -195,6 +195,14 @@ dispatcher:
       rejects('{create: x, merge: "tea {description}"}', 'dispatcher.pr.merge: unknown placeholder "{description}"');
       rejects('{create: x, state_every: 0}', 'state_every must be at least 1');
       rejects('{create: "tea {worktree}"}', 'unknown placeholder "{worktree}"');
+      rejects('{create: "tea {pr_number}"}', 'unknown placeholder "{pr_number}"');
+      rejects('{create: x, review: "tea comment {description}"}', 'unknown placeholder "{description}"');
+      expect(
+        parseWorkflowYaml(
+          'dispatcher:\n  worktrees: [a]\n  pr: {create: x, review: "tea comment {pr_number} {body} {verdict} {pr}"}\n',
+        ).dispatcher!.pr!.review!.executable,
+        'tea',
+      );
       rejects('{create: x, remote: --force}', 'not a remote name');
       rejects('{create: x, url_pattern: "("}', 'url_pattern is not a regular expression');
       rejects('{create: ""}', 'must not be empty');
@@ -220,6 +228,9 @@ dispatcher:
       expect(PullRequestConfig.numberOf('https://git.example/o/r/pulls/12'), '12');
       expect(PullRequestConfig.numberOf('https://github.com/o/r/pull/7/'), '7');
       expect(PullRequestConfig.numberOf('https://gitlab.example/o/r/-/merge_requests/3#note'), '3');
+      expect(PullRequestConfig.numberOf('https://git.example/o/r/pulls/7?tab=files'), '7');
+      expect(PullRequestConfig.numberOf('#7'), '7');
+      expect(PullRequestConfig.numberOf('7'), '7');
       expect(PullRequestConfig.numberOf('https://git.example/o/r'), isNull);
     });
 
@@ -399,6 +410,20 @@ dispatcher:
         'cd /w && mise run check # X-1 7 main',
       ]);
       expect(dispatcher.action('Merge'), same(merge));
+      expect([fix.review, review.review], [false, false]);
+
+      final [builtIn, extra] = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  actions:
+    - {name: AI review, review: true, on_enter: review}
+    - {name: Security review, review: true, statuses: [review], agent: claude, prompt: "Focus on {branch}.", auto_fix: 2}
+''').dispatcher!.actions;
+      expect((builtIn.kind, builtIn.review, builtIn.fresh, builtIn.prompt), (ActionKind.prompt, true, true, null));
+      expect(builtIn.summary, 'AI review, agent, new session');
+      expect(builtIn.autoFix, 0);
+      expect((extra.review, extra.prompt!.render({'branch': 'b'}), extra.autoFix), (true, 'Focus on b.', 2));
+      expect(extra.summary, 'AI review (auto-fix 2), agent claude, new session');
       expect(dispatcher.action('merge'), isNull);
     });
 
@@ -407,8 +432,14 @@ dispatcher:
         () => parseWorkflowYaml('dispatcher: {worktrees: [a], actions: [$actions]}'),
         throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
       );
-      rejects('{name: A}', 'give exactly one of prompt and run');
-      rejects('{name: A, prompt: x, run: noop}', 'give exactly one of prompt and run');
+      rejects('{name: A}', 'give exactly one of prompt, run and review');
+      rejects('{name: A, prompt: x, run: noop}', 'give exactly one of prompt, run and review');
+      rejects('{name: A, review: true, run: noop}', 'a review runs an agent; it takes no run');
+      rejects('{name: A, review: true, fresh: false}', 'a review always runs in a new session');
+      rejects('{name: A, review: yes please}', 'review must be true or false');
+      rejects('{name: A, prompt: x, auto_fix: 2}', 'auto_fix only applies to a review');
+      rejects('{name: A, review: true, auto_fix: -1}', 'auto_fix must be 0 or more rounds');
+      rejects('{name: A, review: true, auto_fix: two}', 'auto_fix must be a number of rounds');
       rejects('{name: A, run: "mise run check"}', 'unknown built-in action "mise run check" (known: noop, merge)');
       rejects('{name: A, prompt: x}, {name: A, run: noop}', 'Duplicate dispatcher action "A"');
       rejects('{name: A, prompt: x, on_enter: reviewed}', 'unknown status "reviewed"');

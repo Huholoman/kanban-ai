@@ -10,6 +10,8 @@ final class ActionDto {
     this.onEnter,
     this.agent,
     this.fresh = false,
+    this.review = false,
+    this.autoFix = 0,
   });
 
   factory ActionDto.fromJson(Json json) => ActionDto(
@@ -19,6 +21,8 @@ final class ActionDto {
     onEnter: json.optionalString('on_enter'),
     agent: json.optionalString('agent'),
     fresh: json.boolean('fresh'),
+    review: json.boolean('review'),
+    autoFix: json['auto_fix'] == null ? 0 : json.integer('auto_fix'),
   );
 
   final String name;
@@ -39,6 +43,14 @@ final class ActionDto {
   /// A prompt action starts a new session instead of continuing the item's.
   final bool fresh;
 
+  /// An AI review (`review: true`): a prompt action with the built-in review
+  /// task that ends with `backlog review`.
+  final bool review;
+
+  /// For a [review]: at most this many automatic fix rounds by the item's
+  /// agent when it asks for changes (0: none).
+  final int autoFix;
+
   bool get isPrompt => kind == 'prompt';
 
   /// Whether items in [status] show it as a button.
@@ -54,6 +66,8 @@ final class ActionDto {
     'on_enter': onEnter,
     'agent': agent,
     'fresh': fresh,
+    'review': review,
+    'auto_fix': autoFix,
   };
 }
 

@@ -192,14 +192,18 @@ final class Linter {
         );
       }
       if (dispatcher.pr case final pr?) {
-        for (final command in [pr.create, ?pr.find, ?pr.merge, ?pr.state]) {
+        for (final command in [pr.create, ?pr.find, ?pr.merge, ?pr.state, ?pr.review]) {
           if (!await programExists(command.executable)) {
             issues.add(
               LintIssue(
                 Severity.warning,
                 'dispatcher-pr',
                 'dispatcher.pr runs "${command.executable}", which is not on the PATH'
-                    '${command == pr.create ? '; pull requests cannot be opened' : ''}.',
+                    '${command == pr.create
+                        ? '; pull requests cannot be opened'
+                        : command == pr.review
+                        ? '; reviews are not posted to pull requests'
+                        : ''}.',
                 location: 'backlog.yaml',
               ),
             );

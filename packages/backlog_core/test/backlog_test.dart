@@ -398,11 +398,13 @@ void main() {
     test('warns about a pull request command that is not on the PATH', () async {
       final (backlog, _) = await tempBacklog(
         config:
-            'dispatcher: {command: sh, worktrees: [{name: here, path: .}], pr: {create: no-such-tea-xyz, find: sh}}\n',
+            'dispatcher: {command: sh, worktrees: [{name: here, path: .}], pr: {create: no-such-tea-xyz, find: sh, review: no-such-gh-xyz}}\n',
       );
       final issues = await backlog.linter.run();
-      expect(issues.map((i) => i.code), ['dispatcher-pr']);
-      expect(issues.single.message, contains('"no-such-tea-xyz", which is not on the PATH'));
+      expect(issues.map((i) => i.code), ['dispatcher-pr', 'dispatcher-pr']);
+      expect(issues.first.message, contains('"no-such-tea-xyz", which is not on the PATH'));
+      expect(issues.first.message, contains('pull requests cannot be opened'));
+      expect(issues.last.message, contains('"no-such-gh-xyz", which is not on the PATH; reviews are not posted'));
     });
 
     test('warns about merge commands that are not on the PATH', () async {

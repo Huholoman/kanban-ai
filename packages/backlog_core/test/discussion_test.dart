@@ -69,6 +69,52 @@ void main() {
       );
     });
 
+    test('a review is marked with its verdict and commit, answers no question and is context for the agent', () {
+      final question = _comment('w2', 1, 'Which?', question: true);
+      final review = Comment(
+        author: 'w3',
+        at: DateTime.utc(2026, 10, 31, 14, 2, 7),
+        text:
+            'Two findings:\n\n1. lib/a.dart:3 – off by one.\n2) No test.\n    3. nested is no finding\n\n```\n4. code\n```',
+        review: ReviewVerdict.changes,
+        commit: '1A2B3C4D5E6F',
+      );
+      final body = Discussion.append(Discussion.append('', question), review);
+      expect(body, contains('### w3 · 2026-10-31 14:02:07 UTC · review changes @1a2b3c4d5e6f\n\nTwo findings:'));
+      final parsed = Discussion.parse(body);
+      final back = parsed.comments.last;
+      expect(
+        (back.review, back.commit, back.findings, back.isContext),
+        (ReviewVerdict.changes, '1a2b3c4d5e6f', 2, true),
+      );
+      expect(parsed.lastReview, isNotNull);
+      expect(parsed.openQuestion!.text, 'Which?', reason: 'a review does not answer');
+      final since = DateTime.utc(2026, 10, 31, 14);
+      expect(parsed.after(since, except: 'w2'), isEmpty, reason: 'a review is no reply');
+      expect(
+        parsed.after(since, except: 'w3', notes: true).map((c) => c.author),
+        ['w2', 'w3'],
+        reason: 'the agent sees a review even when the reviewer ran under its worktree name',
+      );
+
+      final ok = Discussion.parse(
+        '## Discussion\n\n### w3 · 2026-10-31 15:00 · review ok\n\nFine.\n\n### x · 2026-10-31 15:01 · review maybe\n\nY.\n',
+      );
+      expect(ok.comments.single.review, ReviewVerdict.ok, reason: 'an unknown verdict is no heading');
+      expect(ok.comments.single.text, contains('review maybe'));
+      expect((ok.comments.single.commit, ok.comments.single.findings), (null, 0));
+      expect(Discussion.empty.lastReview, isNull);
+      expect(
+        () => Comment(author: 'a', at: since, text: 'x', note: true, review: ReviewVerdict.ok),
+        throwsA(isA<InvalidInputException>()),
+      );
+      expect(() => Comment(author: 'a', at: since, text: 'x', commit: 'abcd'), throwsA(isA<InvalidInputException>()));
+      expect(
+        () => Comment(author: 'a', at: since, text: 'x', review: ReviewVerdict.ok, commit: 'main'),
+        throwsA(isA<InvalidInputException>()),
+      );
+    });
+
     test('keeps text after the section and hand-written comments; code fences are never structure', () {
       const body =
           '## Context\n\nText.\n\n'

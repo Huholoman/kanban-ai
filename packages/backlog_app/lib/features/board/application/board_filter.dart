@@ -8,7 +8,8 @@ enum FilterFacet {
   type('Type'),
   priority('Priority'),
   milestone('Milestone'),
-  person('People');
+  person('People'),
+  review('AI review');
 
   const FilterFacet(this.title);
 
@@ -24,12 +25,17 @@ enum FilterFacet {
     priority => [item.priority],
     milestone => [?item.milestone],
     person => {?item.assignee, ?item.claim?.agent},
+    review => [if (item.review != 'none') item.review],
   };
+
+  /// The review states in the order the menu offers them, with their names.
+  static const reviewStates = {'running': 'Running', 'changes': 'Changes', 'stale': 'Outdated', 'ok': 'OK'};
 
   /// How a value is shown in the menu: epics by title, labels with `#`.
   String describe(String value, Map<String, ItemDto> index) => switch (this) {
     epic => index[value]?.title ?? value,
     label => '#$value',
+    review => reviewStates[value] ?? value,
     _ => value,
   };
 
@@ -214,6 +220,7 @@ final class BoardFilter {
       FilterFacet.priority => workflow?.priorities,
       FilterFacet.type => workflow?.types,
       FilterFacet.milestone => workflow?.milestones.map((milestone) => milestone.id).toList(),
+      FilterFacet.review => FilterFacet.reviewStates.keys.toList(),
       _ => null,
     };
     int rank(String value) {

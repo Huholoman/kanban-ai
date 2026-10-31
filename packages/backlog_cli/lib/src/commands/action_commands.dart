@@ -47,6 +47,8 @@ final class ActionCommand extends BacklogCommand {
               'statuses': action.statuses,
               'agent': action.kind == ActionKind.prompt ? config.profileFor(action).name : null,
               'fresh': action.fresh,
+              'review': action.review,
+              'auto_fix': action.autoFix,
             },
         ]);
         return 0;

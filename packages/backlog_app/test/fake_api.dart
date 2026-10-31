@@ -29,6 +29,8 @@ ItemDto item(
   List<String> conflictsWith = const [],
   bool ready = false,
   bool needsHuman = false,
+  String review = 'none',
+  int reviewFindings = 0,
 }) => ItemDto(
   id: id,
   title: 'Item $id',
@@ -44,6 +46,8 @@ ItemDto item(
   conflictsWith: conflictsWith,
   ready: ready,
   needsHuman: needsHuman,
+  review: review,
+  reviewFindings: reviewFindings,
   body: body,
 );
 
@@ -392,6 +396,8 @@ final class FakeBacklogApi implements BacklogApi {
     dependsOn: item.dependsOn,
     children: children ?? item.children,
     needsHuman: needsHuman ?? item.needsHuman,
+    review: item.review,
+    reviewFindings: item.reviewFindings,
     body: body ?? item.body,
   );
 }

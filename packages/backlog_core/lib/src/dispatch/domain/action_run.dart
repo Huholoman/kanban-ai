@@ -69,15 +69,72 @@ final class PendingAction {
   };
 }
 
+/// Where the review ↔ fix loop of an AI review with `auto_fix` stands.
+enum ReviewLoopPhase {
+  /// The review runs or is queued; its verdict decides what follows.
+  reviewing,
+
+  /// The item's agent fixes the findings; once it has ended, new commits
+  /// queue the review again.
+  fixing,
+
+  /// The review still asks for changes after `auto_fix` rounds; a person
+  /// decides (a review started later begins a new loop).
+  exhausted;
+
+  static ReviewLoopPhase parse(Object? value) => values.firstWhere((p) => p.name == value, orElse: () => exhausted);
+}
+
+/// The review ↔ fix loop of [item] with the review action [action]: how
+/// many fix rounds ran ([round]), and since when the current [phase] holds.
+final class ReviewLoop {
+  const ReviewLoop({
+    required this.item,
+    required this.action,
+    required this.round,
+    required this.phase,
+    required this.since,
+  });
+
+  factory ReviewLoop.fromJson(Map<String, Object?> json) => ReviewLoop(
+    item: ItemId(json['item']! as String),
+    action: json['action']! as String,
+    round: json['round'] as int? ?? 0,
+    phase: ReviewLoopPhase.parse(json['phase']),
+    since: DateTime.parse(json['since']! as String),
+  );
+
+  final ItemId item;
+  final String action;
+
+  /// Fix rounds started so far.
+  final int round;
+  final ReviewLoopPhase phase;
+  final DateTime since;
+
+  ReviewLoop to(ReviewLoopPhase phase, DateTime since, {int? round}) =>
+      ReviewLoop(item: item, action: action, round: round ?? this.round, phase: phase, since: since);
+
+  Map<String, Object?> toJson() => {
+    'item': item.value,
+    'action': action,
+    'round': round,
+    'phase': phase.name,
+    'since': since.toUtc().toIso8601String(),
+  };
+}
+
 /// What the dispatcher remembers about status hooks between evaluations
-/// and restarts: the status each item had when it was last looked at, and
-/// the `on_enter` actions still waiting to run.
+/// and restarts: the status each item had when it was last looked at, the
+/// `on_enter` actions still waiting to run and the review ↔ fix loops of
+/// AI reviews with `auto_fix`.
 final class ActionState {
-  const ActionState({this.statuses, this.pending = const []});
+  const ActionState({this.statuses, this.pending = const [], this.loops = const {}});
 
   /// Item → status at the last evaluation; null before the first one.
   final Map<ItemId, String>? statuses;
   final List<PendingAction> pending;
+  final Map<ItemId, ReviewLoop> loops;
 
   /// Compares [snapshot] with [statuses]: every item whose status changed
   /// to the `on_enter` status of an action gets that action queued (once
@@ -106,14 +163,19 @@ final class ActionState {
       for (final waiting in pending)
         if (!queued.any((q) => q.item == waiting.item && q.action == waiting.action)) waiting,
     ];
-    return (ActionState(statuses: after, pending: [...kept, ...queued]), queued);
+    return (ActionState(statuses: after, pending: [...kept, ...queued], loops: loops), queued);
   }
 
-  ActionState withPending(List<PendingAction> pending) => ActionState(statuses: statuses, pending: pending);
+  ActionState withPending(List<PendingAction> pending) =>
+      ActionState(statuses: statuses, pending: pending, loops: loops);
+
+  ActionState withLoops(Map<ItemId, ReviewLoop> loops) =>
+      ActionState(statuses: statuses, pending: pending, loops: loops);
 
   Map<String, Object?> toJson() => {
     'statuses': {for (final MapEntry(:key, :value) in (statuses ?? const {}).entries) key.value: value},
     'pending': [for (final action in pending) action.toJson()],
+    'loops': [for (final loop in loops.values) loop.toJson()],
   };
 
   factory ActionState.fromJson(Map<String, Object?> json) => ActionState(
@@ -125,6 +187,10 @@ final class ActionState {
       for (final entry in (json['pending'] as List<Object?>? ?? const []))
         PendingAction.fromJson((entry! as Map).cast<String, Object?>()),
     ],
+    loops: {
+      for (final entry in (json['loops'] as List<Object?>? ?? const []))
+        if (ReviewLoop.fromJson((entry! as Map).cast<String, Object?>()) case final loop) loop.item: loop,
+    },
   );
 }
 

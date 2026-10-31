@@ -663,6 +663,7 @@ final class PullRequestConfig {
     this.remote = 'origin',
     required this.create,
     this.find,
+    this.review,
     String? urlPattern,
     this.merge,
     this.state,
@@ -692,13 +693,19 @@ final class PullRequestConfig {
 
   /// What [merge] and [state] may refer to: the item id and title, the
   /// branch, the base, the remote, the pull request's URL `{pr}` and its
-  /// number `{pr_number}` (the last number in the URL).
+  /// number `{pr_number}` ([numberOf]).
   static const mergePlaceholders = ['id', 'title', 'branch', 'base', 'remote', 'pr', 'pr_number'];
 
-  /// The number of the pull request at [url] (`…/pulls/12`, `…/pull/12`,
-  /// `…/merge_requests/12`): its last path segment made of digits; null
-  /// when there is none.
-  static String? numberOf(String url) => RegExp(r'/(\d+)/?(?:[?#].*)?$').firstMatch(url.trim())?.group(1);
+  /// What [review] may refer to: the item id and title, the branch, the base
+  /// branch, the remote, the pull request (`{pr}`: the item's `pr` field,
+  /// `{pr_number}`: [numberOf] it), the verdict (`ok`, `changes`) and the
+  /// text posted (`{body}`, also on its standard input).
+  static const reviewPlaceholders = ['id', 'title', 'branch', 'base', 'remote', 'pr', 'pr_number', 'verdict', 'body'];
+
+  /// The number of the pull request [url] names (`…/pulls/12`, `…/pull/12`,
+  /// `…/merge_requests/12`, `#7`, `7`): its last path segment made of
+  /// digits; null when it names none.
+  static String? numberOf(String url) => RegExp(r'(?:^#?|/)(\d+)/?(?:[?#].*)?$').firstMatch(url.trim())?.group(1);
 
   /// The first http(s) URL.
   static final defaultUrlPattern = RegExp(r'https?://[^\s<>"`)\]]+');
@@ -725,6 +732,11 @@ final class PullRequestConfig {
   /// How often [state] is asked per item at most (`state_every`, minutes;
   /// default 2).
   final Duration stateEvery;
+
+  /// Posts the summary of a review (`backlog review`) to the item's pull
+  /// request as a comment (`dispatcher.pr.review`); null when not
+  /// configured.
+  final CommandTemplate? review;
 
   /// Finds the URL in the output of [create] or [find]: its first group,
   /// else the whole match.

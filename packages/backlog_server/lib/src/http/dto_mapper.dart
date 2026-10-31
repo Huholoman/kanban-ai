@@ -42,7 +42,9 @@ abstract final class DtoMapper {
     );
   }
 
-  static ItemDto item(PlannedItem planned, {String? path, bool withBody = false}) {
+  /// [reviewing]: the items an AI review runs or waits to run for (from the
+  /// dispatcher's plan, [DispatchPlan.reviewing]).
+  static ItemDto item(PlannedItem planned, {String? path, bool withBody = false, Set<ItemId> reviewing = const {}}) {
     final item = planned.item;
     final claim = planned.claim;
     return ItemDto(
@@ -76,6 +78,8 @@ abstract final class DtoMapper {
       checklist: Progress(planned.checklist.done, planned.checklist.total),
       claim: claim == null ? null : DtoMapper.claim(claim, expired: planned.isClaimExpired),
       needsHuman: planned.needsHuman,
+      review: (reviewing.contains(planned.id) ? ReviewState.running : planned.review).name,
+      reviewFindings: planned.reviewFindings,
       path: path,
       body: withBody ? item.body : null,
     );
@@ -88,6 +92,8 @@ abstract final class DtoMapper {
     onEnter: action.onEnter,
     agent: action.kind == ActionKind.prompt ? config.profileFor(action).name : null,
     fresh: action.fresh,
+    review: action.review,
+    autoFix: action.autoFix,
   );
 
   static AgentRunDto run(AgentRun run) => AgentRunDto(
@@ -102,11 +108,16 @@ abstract final class DtoMapper {
     kind: run.kind.id,
   );
 
-  static ItemDetailDto detail(PlannedItem planned, BacklogSnapshot snapshot, {String? path}) {
+  static ItemDetailDto detail(
+    PlannedItem planned,
+    BacklogSnapshot snapshot, {
+    String? path,
+    Set<ItemId> reviewing = const {},
+  }) {
     final item = planned.item;
     final dispatcher = snapshot.workflow.dispatcher;
     return ItemDetailDto(
-      item: DtoMapper.item(planned, path: path, withBody: true),
+      item: DtoMapper.item(planned, path: path, withBody: true, reviewing: reviewing),
       parent: item.parent == null ? null : _link(item.parent!, snapshot),
       children: [for (final child in snapshot.childrenOf(item.id)) _link(child.id, snapshot)],
       dependencies: [for (final id in item.dependsOn) _link(id, snapshot)],
@@ -122,6 +133,8 @@ abstract final class DtoMapper {
             text: comment.text,
             question: comment.question,
             note: comment.note,
+            review: comment.review?.name,
+            commit: comment.commit,
           ),
       ],
       actions: [
@@ -151,7 +164,7 @@ abstract final class DtoMapper {
     count: count,
   );
 
-  static ViewResultDto view(ViewResult result) {
+  static ViewResultDto view(ViewResult result, {Set<ItemId> reviewing = const {}}) {
     final definition = result.definition;
     return ViewResultDto(
       id: definition.id,
@@ -162,7 +175,8 @@ abstract final class DtoMapper {
       columns: definition.columns,
       hidden: result.hidden,
       groups: [
-        for (final group in result.groups) ViewGroupDto(group.key, [for (final planned in group.items) item(planned)]),
+        for (final group in result.groups)
+          ViewGroupDto(group.key, [for (final planned in group.items) item(planned, reviewing: reviewing)]),
       ],
     );
   }

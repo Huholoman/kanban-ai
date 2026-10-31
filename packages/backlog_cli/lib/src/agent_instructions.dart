@@ -55,6 +55,11 @@ changes what the item asks for, update the description or acceptance
 criteria above `## Discussion` and say so in a comment; never edit
 comments.
 
+Comments marked `· review ok` / `· review changes` are reviews of the
+work (`backlog review T-7f3a --changes "summary, then 1. … 2. …"`, by an AI
+review or a person). They wake no agent; when you are asked to fix them,
+fix the numbered findings of the latest one or say in a comment why not.
+
 ## Finishing
 
     backlog done T-7f3a                  # done, claim dropped, prints what got unblocked

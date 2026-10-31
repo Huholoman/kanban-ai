@@ -321,6 +321,8 @@ void main() {
         'text': 'CSV or JSON?',
         'question': true,
         'note': false,
+        'review': null,
+        'commit': null,
       },
       {
         'author': 'tobik',
@@ -328,6 +330,8 @@ void main() {
         'text': 'CSV.\nWith a header.',
         'question': false,
         'note': false,
+        'review': null,
+        'commit': null,
       },
     ]);
     expect(
@@ -388,6 +392,8 @@ void main() {
       'statuses': null,
       'agent': 'claude',
       'fresh': false,
+      'review': false,
+      'auto_fix': 0,
     });
 
     final requested = await backlog(['action', id, 'Tests'], env: {'USER': 'tobik'});
