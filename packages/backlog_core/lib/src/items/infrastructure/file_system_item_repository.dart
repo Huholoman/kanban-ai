@@ -3,11 +3,11 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../../infrastructure/backlog_layout.dart';
+import '../../shared/slug.dart';
 import '../domain/item.dart';
 import '../domain/item_id.dart';
 import '../domain/item_repository.dart';
 import 'markdown_item_codec.dart';
-import 'slug.dart';
 
 /// Items as `items/<id>-<slug>.md`, or `items/<id>-<slug>/index.md` when an
 /// item needs attachments next to it.
