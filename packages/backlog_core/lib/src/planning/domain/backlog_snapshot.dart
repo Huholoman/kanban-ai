@@ -120,7 +120,8 @@ final class BacklogSnapshot {
 
   PlannedItem? operator [](ItemId id) => _byId[id];
 
-  List<PlannedItem> get ready => items.where((i) => i.isReady).toList();
+  /// Ready items, most urgent first ([compareReady]).
+  List<PlannedItem> get ready => items.where((i) => i.isReady).toList()..sort((a, b) => compareReady(workflow, a, b));
 
   List<PlannedItem> get blocked => items.where((i) => i.isBlocked).toList();
 
@@ -172,6 +173,13 @@ final class BacklogSnapshot {
       if (state[id] == null) visit(id);
     }
     return found.values.toList();
+  }
+
+  /// The order of ready work: milestone first (as listed in the workflow;
+  /// none, `later` and unknown ones last), then [compareDefault].
+  static int compareReady(Workflow workflow, PlannedItem a, PlannedItem b) {
+    final byMilestone = workflow.milestoneRank(a.item.milestone).compareTo(workflow.milestoneRank(b.item.milestone));
+    return byMilestone != 0 ? byMilestone : compareDefault(workflow, a, b);
   }
 
   static int compareDefault(Workflow workflow, PlannedItem a, PlannedItem b) {

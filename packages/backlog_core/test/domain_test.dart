@@ -598,6 +598,27 @@ dispatcher:
       expect(snapshot.dependentsOf(ItemId('T-1')).map((i) => i.id.value), ['T-2']);
     });
 
+    test('ready work goes by milestone first, then priority, age and id', () {
+      final items = [
+        item('T-1', priority: 'p0'), // no milestone
+        item('T-2', priority: 'p0', milestone: 'later'),
+        item('T-3', priority: 'p0', milestone: 'v3'),
+        item('T-4', priority: 'p2', milestone: 'v2'),
+        item('T-5', priority: 'p1', milestone: 'v2'),
+        item('T-6', priority: 'p3', milestone: 'unknown'),
+        item('T-7', priority: 'p1', milestone: 'v2', created: '2026-01-01'),
+      ];
+      final snapshot = BacklogSnapshot.build(
+        items: items,
+        workflow: parseWorkflowYaml('milestones: [{id: v2}, {id: v3}, {id: later}]'),
+        claims: const [],
+        now: DateTime.utc(2026, 10, 29, 12),
+      );
+      expect(snapshot.ready.map((i) => i.id.value), ['T-7', 'T-5', 'T-4', 'T-3', 'T-1', 'T-2', 'T-6']);
+      // Without milestones in the workflow: priority, age, id as before.
+      expect(snapshotOf(items).ready.map((i) => i.id.value), ['T-1', 'T-2', 'T-3', 'T-7', 'T-5', 'T-4', 'T-6']);
+    });
+
     test('a missing dependency blocks too', () {
       final planned = snapshotOf([
         item('T-1', dependsOn: ['T-404']),

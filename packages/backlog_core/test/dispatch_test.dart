@@ -481,6 +481,45 @@ void main() {
       });
     });
 
+    test('manual mode: proposals reserve nothing, any ready item starts by hand while a slot is free', () {
+      Workflow onDemand(String mode) => parseWorkflowYaml('''
+dispatcher:
+  mode: $mode
+  repo: ../repo
+  max_worktrees: 2
+  max_agents: 2
+  command: agent {id}
+''');
+      final items = [item('T-1', priority: 'p0'), item('T-2', priority: 'p1'), item('T-3', priority: 'p2')];
+      final spare = DispatchConditions(
+        spare: [WorktreeDefinition('repo-1', '/work/repo-1'), WorktreeDefinition('repo-2', '/work/repo-2')],
+      );
+      final plan = _plan(items, workflow: onDemand('manual'), conditions: spare);
+      expect(plan.assignments.map((a) => a.key), ['T-1@repo-1', 'T-2@repo-2']);
+      expect(plan.waiting.map((i) => '${i.id}'), ['T-3']);
+      expect(plan.waitingReasons, isEmpty, reason: 'T-3 can start by hand');
+      expect(plan.assignmentFor('T-3').key, 'T-3@repo-1');
+
+      // Auto mode starts in order: T-3 really waits.
+      final auto = _plan(items, workflow: onDemand('auto'), conditions: spare);
+      expect(auto.assignments.map((a) => a.key), ['T-1@repo-1', 'T-2@repo-2']);
+      expect(auto.waitingReasons.map((id, reason) => MapEntry('$id', reason)), {'T-3': 'no free worktree'});
+
+      // All slots running: nothing can start, in manual mode either.
+      final full = _plan(
+        [...items, item('T-4', status: 'in-progress'), item('T-5', status: 'in-progress')],
+        workflow: _workflow(maxAgents: 2),
+        claims: [_claim('T-4', 'w1'), _claim('T-5', 'w2')],
+      );
+      expect(full.assignments, isEmpty);
+      expect(full.waitingReasons.map((id, reason) => MapEntry('$id', reason)), {
+        'T-1': 'max_agents (2) reached',
+        'T-2': 'max_agents (2) reached',
+        'T-3': 'max_agents (2) reached',
+      });
+      expect(() => full.assignmentFor('T-3'), throwsA(isA<UnavailableException>()));
+    });
+
     test('sameDecisionAs compares assignments, waiting items and busy worktrees', () {
       final a = _plan([item('T-1')]);
       expect(a.sameDecisionAs(_plan([item('T-1')])), isTrue);

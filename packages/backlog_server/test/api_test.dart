@@ -425,15 +425,16 @@ void main() {
       expect(plan.worktrees.map((w) => w.name), ['w1', 'w2']);
       expect(plan.assignments.single.item, a.item.id);
       expect(plan.waiting, [b.item.id]);
-      expect(plan.waitingReason(b.item.id), 'max_agents (1) reached');
+      expect(plan.waitingReason(b.item.id), isNull, reason: 'the proposal of A reserves nothing in manual mode');
 
-      final started = await api.startAgent(b.item.id);
+      final started = await api.startAgent(b.item.id); // not the proposed A
       expect(launcher.started, ['${b.item.id}@w1']);
       expect(started.running, 1);
       expect(started.canStart, isFalse);
       expect(started.runFor(b.item.id)!.worktree, 'w1');
       expect((await api.item(b.item.id)).item.claim!.agent, 'w1');
 
+      expect(started.waitingReason(a.item.id), 'max_agents (1) reached');
       await expectLater(api.startAgent(a.item.id), throwsA(apiError(409, 'unavailable')));
       final log = await api.agentLog(b.item.id);
       expect(log.lines, ['working on ${b.item.id}']);
