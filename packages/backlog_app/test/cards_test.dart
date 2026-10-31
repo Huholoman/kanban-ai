@@ -42,6 +42,7 @@ ItemDto base({
   ClaimDto? claim,
   String status = 'todo',
   List<String> labels = const [],
+  List<String> conflictsWith = const [],
 }) {
   final i = item('T-1', status: status, labels: labels);
   return ItemDto(
@@ -55,6 +56,8 @@ ItemDto base({
     ready: ready,
     blocked: blocked,
     blockedBy: blockedBy,
+    conflicting: conflictsWith.isNotEmpty,
+    conflictsWith: conflictsWith,
     claim: claim,
   );
 }
@@ -69,6 +72,12 @@ void main() {
   testWidgets('a blocked item names its blockers', (tester) async {
     await pumpCard(tester, base(blocked: true, blockedBy: ['T-9']));
     expect(find.text('Blocked by T-9'), findsOneWidget);
+  });
+
+  testWidgets('an item waiting for overlapping work names it', (tester) async {
+    await pumpCard(tester, base(conflictsWith: ['T-8'], labels: ['ui']));
+    expect(find.text('Waits for T-8'), findsOneWidget);
+    expect(find.text('ui'), findsNothing, reason: 'one meta line only');
   });
 
   testWidgets('a claim shows the agent and the time left', (tester) async {

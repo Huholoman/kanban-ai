@@ -17,6 +17,7 @@ final class PlannedItem {
     required this.claim,
     required this.isClaimExpired,
     required this.isReady,
+    this.conflictsWith = const [],
     this.ancestors = const [],
     this.epics = const [],
   });
@@ -38,8 +39,14 @@ final class PlannedItem {
   final Claim? claim;
   final bool isClaimExpired;
 
-  /// Pickable status, nothing blocking, no open children, not claimed.
+  /// Pickable status, nothing blocking, no conflict, no open children, not
+  /// claimed.
   final bool isReady;
+
+  /// Active items whose `touches` overlap this open item's: it waits for
+  /// them so that two agents do not change the same files. Empty for items
+  /// that are not open or have no `touches`.
+  final List<ItemId> conflictsWith;
 
   /// Parent, grandparent, … up to the root (cycles cut off).
   final List<ItemId> ancestors;
@@ -52,6 +59,9 @@ final class PlannedItem {
   bool get isDone => category == StatusCategory.done;
 
   bool get isBlocked => !isDone && (openDependencies.isNotEmpty || missingDependencies.isNotEmpty);
+
+  /// Waits until overlapping work in progress ([conflictsWith]) is done.
+  bool get isConflicting => conflictsWith.isNotEmpty;
 
   /// Held by an agent right now.
   bool get isClaimed => claim != null && !isClaimExpired;

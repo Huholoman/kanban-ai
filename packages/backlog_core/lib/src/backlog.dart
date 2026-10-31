@@ -75,6 +75,8 @@ final class Backlog {
         views: viewRepository,
         workflow: workflow,
         clock: clock,
+        root: layout.root,
+        directoryExists: (path) => Directory(path).exists(),
       ),
     );
   }
@@ -103,6 +105,18 @@ final class Backlog {
       await gitignore.writeAsString('# claim locks are machine-local\n.locks/\n*.tmp\n*.stale\n');
     }
     return layout;
+  }
+
+  /// Why the backlog at [root] cannot be opened (missing folder, no or a
+  /// broken `backlog.yaml`), or null when it opens.
+  static Future<String?> problem(String root) async {
+    if (!await Directory(root).exists()) return 'Folder ${BacklogLayout(root).root} does not exist.';
+    try {
+      await open(root);
+      return null;
+    } on BacklogException catch (error) {
+      return error.message;
+    }
   }
 
   /// See [BacklogLayout.locate].

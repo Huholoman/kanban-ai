@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../shared/tokens.dart';
 import '../../../../shared/ui/ui.dart';
+import '../../../projects/presentation/project_switcher.dart';
 import '../../application/board_controller.dart';
 import '../../application/board_filter.dart';
 import 'lint_dialog.dart';
@@ -17,7 +18,7 @@ IconData layoutIcon(ViewLayoutDto layout) => switch (layout) {
   ViewLayoutDto.list => Icons.list,
 };
 
-/// The navigation: app name, "New item", the saved views (those without a
+/// The navigation: the project (a switcher with several projects), "New item", the saved views (those without a
 /// section first, then foldable sections) and the lint summary at the bottom.
 /// Each view's menu moves it to a section or pins it to the bottom bar.
 /// Sized by its parent: a fixed side column or a drawer.
@@ -48,13 +49,7 @@ class ViewNavigation extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-            child: Text(
-              'kanban-ai',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: tokens.text),
-            ),
-          ),
+          const Padding(padding: EdgeInsets.fromLTRB(8, 10, 8, 6), child: ProjectSwitcher()),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
             child: PrimaryButton(

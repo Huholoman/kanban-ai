@@ -59,6 +59,16 @@ void main() {
     expect(ids(BoardFilter.none.toggleFlag(ItemFlag.claimed).toggleFlag(ItemFlag.blocked)), isEmpty);
   });
 
+  test('the waiting flag keeps items whose touches overlap work in progress', () {
+    final waiting = item('T-7', conflictsWith: ['T-4']);
+    final filter = BoardFilter.none.toggleFlag(ItemFlag.conflicting);
+    expect(filter.matches(waiting), isTrue);
+    expect(filter.matches(item('T-8')), isFalse);
+    expect(filter.toConditions(), [
+      {'conflicting': true},
+    ]);
+  });
+
   test('apply keeps every group, even emptied ones', () {
     final result = ViewResultDto(
       id: 'board',

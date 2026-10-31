@@ -23,7 +23,7 @@ cd "$play"
 bl() { "${cli[@]}" -C "$play/backlog" "$@"; }
 new() { bl --json new "$@" | jq -r .id; }
 
-"${cli[@]}" init backlog --prefix SP >/dev/null
+"${cli[@]}" init backlog --prefix SP --no-register >/dev/null
 sed -i 's/^milestones: \[\]/milestones:\n  - id: mvp\n    title: MVP for the first workshop\n    due: 2026-12-01\n  - id: launch\n    title: Public launch\n    due: 2027-02-15/' backlog/backlog.yaml
 cat >>backlog/backlog.yaml <<'EOF'
 

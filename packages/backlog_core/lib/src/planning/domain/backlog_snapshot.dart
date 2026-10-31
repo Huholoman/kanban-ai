@@ -1,6 +1,7 @@
 import '../../claims/domain/claim.dart';
 import '../../items/domain/item.dart';
 import '../../items/domain/item_id.dart';
+import '../../items/domain/path_glob.dart';
 import '../../workflow/domain/workflow.dart';
 import 'planned_item.dart';
 
@@ -43,6 +44,22 @@ final class BacklogSnapshot {
       return chain;
     }
 
+    // Work in progress and the files it touches; open items overlapping it wait.
+    final globs = {
+      for (final item in byId.values)
+        if (item.touches.isNotEmpty) item.id: [for (final pattern in item.touches) PathGlob(pattern)],
+    };
+    final active = [
+      for (final id in globs.keys)
+        if (workflow.categoryOf(byId[id]!.status) == StatusCategory.active) id,
+    ]..sort();
+    List<ItemId> conflictsOf(Item item) => workflow.categoryOf(item.status) != StatusCategory.open
+        ? const []
+        : [
+            for (final other in active)
+              if (PathGlob.anyOverlap(globs[item.id] ?? const [], globs[other]!)) other,
+          ];
+
     final planned = <ItemId, PlannedItem>{};
     for (final item in byId.values) {
       final category = workflow.categoryOf(item.status);
@@ -55,6 +72,7 @@ final class BacklogSnapshot {
       final blocked = category != StatusCategory.done && (open.isNotEmpty || missing.isNotEmpty);
       final pickable = workflow.status(item.status)?.pickable ?? false;
       final ancestors = ancestorsOf(item);
+      final conflicts = conflictsOf(item);
       planned[item.id] = PlannedItem(
         item: item,
         category: category,
@@ -64,7 +82,8 @@ final class BacklogSnapshot {
         openChildCount: openKids,
         claim: claim,
         isClaimExpired: expired,
-        isReady: pickable && !blocked && openKids == 0 && (claim == null || expired),
+        isReady: pickable && !blocked && conflicts.isEmpty && openKids == 0 && (claim == null || expired),
+        conflictsWith: conflicts,
         ancestors: ancestors,
         epics: [
           for (final id in [item.id, ...ancestors])
@@ -93,6 +112,13 @@ final class BacklogSnapshot {
   List<PlannedItem> get ready => items.where((i) => i.isReady).toList();
 
   List<PlannedItem> get blocked => items.where((i) => i.isBlocked).toList();
+
+  /// Open items waiting for overlapping work in progress.
+  List<PlannedItem> get conflicting => items.where((i) => i.isConflicting).toList();
+
+  /// Open items that wait for the active item [id] because their `touches`
+  /// overlap.
+  List<PlannedItem> waitingOn(ItemId id) => items.where((i) => i.conflictsWith.contains(id)).toList();
 
   List<PlannedItem> childrenOf(ItemId id) => _resolve(_children[id]);
 

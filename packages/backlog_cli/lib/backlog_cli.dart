@@ -8,6 +8,7 @@ import 'package:backlog_core/backlog_core.dart';
 
 import 'src/cli_context.dart';
 import 'src/commands/item_commands.dart';
+import 'src/commands/project_commands.dart';
 import 'src/commands/view_commands.dart';
 import 'src/commands/work_commands.dart';
 import 'src/render/json_output.dart';
@@ -50,6 +51,7 @@ Future<int> runBacklogCli(List<String> arguments, CliContext context) async {
     ViewCommand(context),
     LintCommand(context),
     InstructionsCommand(context),
+    ProjectsCommand(context),
   ]) {
     runner.addCommand(command);
   }

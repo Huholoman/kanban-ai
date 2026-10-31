@@ -8,7 +8,7 @@ import 'package:shelf_router/shelf_router.dart';
 import '../backlog_host.dart';
 import 'dto_mapper.dart';
 
-/// REST endpoints of [ApiPaths]. A driving adapter: it parses requests, calls
+/// REST endpoints of [ApiPaths] for one project. A driving adapter: it parses requests, calls
 /// the core services and maps the results to the API contract.
 final class ApiHandler {
   ApiHandler(this._host, {this.defaultAgent = 'web'});
@@ -18,23 +18,27 @@ final class ApiHandler {
   /// Who claims items when a request does not name an agent.
   final String defaultAgent;
 
+  /// Routes relative to the project's prefix (`/api` or `/api/p/<id>`): the
+  /// request's `url` is `items`, `views/board`, … (see `ProjectHub`).
   Handler get handler {
+    String local(String path) => path.substring('/api'.length);
+    final items = local(ApiPaths.items);
+    final views = local(ApiPaths.views);
     final router =
         Router(notFoundHandler: (request) => _error(BacklogApiException(404, 'not_found', 'No such endpoint.')))
-          ..get(ApiPaths.health, (Request request) => _json({'ok': true}))
-          ..get(ApiPaths.workflow, _workflow)
-          ..get(ApiPaths.items, _items)
-          ..post(ApiPaths.items, _create)
-          ..get('${ApiPaths.items}/<ref>', _detail)
-          ..patch('${ApiPaths.items}/<ref>', _update)
-          ..post('${ApiPaths.items}/<ref>/claim', _claim)
-          ..post('${ApiPaths.items}/<ref>/release', _release)
-          ..post('${ApiPaths.items}/<ref>/done', _complete)
-          ..get(ApiPaths.views, _views)
-          ..post(ApiPaths.views, _createView)
-          ..get('${ApiPaths.views}/<id>', _view)
-          ..patch('${ApiPaths.views}/<id>', _updateView)
-          ..get(ApiPaths.lint, _lint);
+          ..get(local(ApiPaths.workflow), _workflow)
+          ..get(items, _items)
+          ..post(items, _create)
+          ..get('$items/<ref>', _detail)
+          ..patch('$items/<ref>', _update)
+          ..post('$items/<ref>/claim', _claim)
+          ..post('$items/<ref>/release', _release)
+          ..post('$items/<ref>/done', _complete)
+          ..get(views, _views)
+          ..post(views, _createView)
+          ..get('$views/<id>', _view)
+          ..patch('$views/<id>', _updateView)
+          ..get(local(ApiPaths.lint), _lint);
     return _guard(router.call);
   }
 
@@ -62,6 +66,7 @@ final class ApiHandler {
         parent: payload.parent,
         dependsOn: payload.dependsOn,
         labels: payload.labels,
+        touches: payload.touches,
         body: payload.body,
       ),
     );

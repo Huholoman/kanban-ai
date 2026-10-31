@@ -113,6 +113,38 @@ void main() {
     expect(taskView.out, contains('## Plan'));
   });
 
+  test('touches: new, set, show and JSON', () async {
+    final id = await create('Payments', ['--touches', 'lib/payments/', '--touches', 'lib/*.{dart,yaml},docs/']);
+    final json = (await backlog(['--json', 'show', id])).json! as Map;
+    expect(json['touches'], ['lib/payments/', 'lib/*.{dart,yaml}', 'docs/']);
+    expect((await backlog(['set', id, 'touches-=docs/'])).exitCode, 0);
+    expect((await backlog(['show', id])).out, contains('touches: lib/payments/, lib/*.{dart,yaml}\n'));
+  });
+
+  test('an item overlapping work in progress waits: list, ready, show, JSON', () async {
+    final doing = await create('Payments', ['-s', 'in-progress', '--touches', 'lib/pay/']);
+    final waiting = await create('Stripe', ['-s', 'todo', '--touches', 'lib/pay/stripe.dart']);
+    final free = await create('Orders', ['-s', 'todo', '--touches', 'lib/orders/']);
+
+    expect((await backlog(['list'])).out, contains('waits for $doing (touches overlap)'));
+    final ready = ((await backlog(['--json', 'ready'])).json! as List).map((i) => (i as Map)['id']);
+    expect(ready, [free]);
+    final json = (await backlog(['--json', 'show', waiting])).json! as Map;
+    expect(json['conflicting'], isTrue);
+    expect(json['conflicts_with'], [doing]);
+    expect(json['ready'], isFalse);
+    expect(
+      (await backlog(['show', waiting])).out,
+      contains('waits for: $doing Payments (in-progress), touches overlap'),
+    );
+    expect((await backlog(['show', doing])).out, contains('holds up: $waiting Stripe (todo)'));
+    final listed = ((await backlog(['--json', 'list', '-w', 'conflicting=true'])).json! as List).map(
+      (i) => (i as Map)['id'],
+    );
+    expect(listed, [waiting]);
+    expect((await backlog(['claim', waiting, '--as', 'm2'])).exitCode, isNot(0));
+  });
+
   test('list filters: default hides done, --where, --all', () async {
     final a = await create('A', ['-s', 'todo', '-l', 'ui']);
     final b = await create('B', ['-s', 'done']);
@@ -194,5 +226,68 @@ void main() {
     final run = await backlog(['instructions']);
     expect(run.out, contains('backlog next'));
     expect(run.out, contains('BACKLOG_AGENT'));
+  });
+
+  test('projects: add the backlog found here or a given one, list, remove', () async {
+    final env = {'HOME': p.join(workspace.path, 'home'), 'XDG_CONFIG_HOME': p.join(workspace.path, 'config')};
+    final registry = p.join(workspace.path, 'config', 'kanban-ai', 'projects.yaml');
+    final worktree = await Directory(p.join(workspace.path, 'repo-2')).create();
+
+    final empty = await backlog(['projects'], env: env);
+    expect(empty.out, contains('No projects in $registry'));
+
+    final added = await backlog(['--json', 'projects', 'add'], cwd: worktree.path, env: env);
+    expect(added.exitCode, 0, reason: '$added');
+    final project = p.basename(workspace.path);
+    expect((added.json! as Map)['path'], backlogDir);
+    expect((added.json! as Map)['id'], ProjectRegistry.deriveId(backlogDir));
+
+    final other = p.join(workspace.path, 'other');
+    expect((await backlog(['init', other])).exitCode, 0);
+    final named = await backlog(['projects', 'add', 'other', '--id', 'tools', '--name', 'Tools'], env: env);
+    expect(named.out, contains('Added tools ($other)'));
+
+    final missing = await backlog(['projects', 'add', 'nowhere'], env: env);
+    expect(missing.exitCode, ExitCode.notFound);
+    final twice = await backlog(['projects', 'add', other], env: env);
+    expect(twice.exitCode, ExitCode.failure);
+    expect(twice.err, contains('already registered as "tools"'));
+
+    await Directory(other).rename('$other-moved');
+    final listed = await backlog(['--json', 'projects'], env: env);
+    expect(listed.json, [
+      {'id': ProjectRegistry.deriveId(backlogDir), 'name': project, 'path': backlogDir, 'default': true, 'error': null},
+      {'id': 'tools', 'name': 'Tools', 'path': other, 'default': false, 'error': 'Folder $other does not exist.'},
+    ]);
+    final text = await backlog(['projects'], env: env);
+    expect(text.out, contains('(default)'));
+    expect(text.out, contains('error: Folder $other does not exist.'));
+
+    expect((await backlog(['projects', 'remove', 'tools'], env: env)).out, contains('Removed tools'));
+    expect((await backlog(['projects', 'remove', 'tools'], env: env)).exitCode, ExitCode.notFound);
+    expect((await backlog(['projects', 'remove'], env: env)).exitCode, ExitCode.usage);
+    expect((await backlog(['projects', '--id', 'x'], env: env)).exitCode, ExitCode.usage);
+
+    final explicit = p.join(workspace.path, 'elsewhere.yaml');
+    expect((await backlog(['projects', 'add', '--projects', explicit], env: env)).exitCode, 0);
+    expect(File(explicit).readAsStringSync(), contains('path: $backlogDir'));
+    expect((await backlog(['projects'], env: {...env, 'BACKLOG_PROJECTS': explicit})).out, contains(backlogDir));
+  });
+
+  test('init registers the new backlog unless told not to', () async {
+    final env = {'XDG_CONFIG_HOME': p.join(workspace.path, 'config')};
+    final registry = p.join(workspace.path, 'config', 'kanban-ai', 'projects.yaml');
+    final created = await backlog(['init', 'shop/backlog'], env: env);
+    expect(created.out, contains('Registered as project shop in $registry'));
+    final json = await backlog(['--json', 'init', 'tools'], env: env);
+    expect((json.json! as Map)['project'], {'id': 'tools', 'name': 'tools'});
+    expect((await backlog(['init', 'quiet', '--no-register'], env: env)).out, isNot(contains('Registered')));
+    final listed = await backlog(['--json', 'projects'], env: env);
+    expect((listed.json! as List).map((project) => (project as Map)['id']), ['shop', 'tools']);
+
+    File(registry).writeAsStringSync('projects: {broken: true}');
+    final warned = await backlog(['init', 'more'], env: env);
+    expect(warned.exitCode, 0);
+    expect(warned.err, contains('warning: not registered'));
   });
 }

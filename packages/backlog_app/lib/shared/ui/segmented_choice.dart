@@ -19,6 +19,7 @@ class ChoiceSegment<T> {
 
 /// A bordered group of toggle segments; a pressed one has the accent-soft
 /// background and semibold accent text. Any number can be pressed at once.
+/// When the space is too narrow for all segments, the group scrolls sideways.
 class SegmentedChoice<T> extends StatelessWidget {
   const SegmentedChoice({super.key, required this.segments, required this.selected, required this.onToggle});
 
@@ -40,21 +41,25 @@ class SegmentedChoice<T> extends StatelessWidget {
         borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (position, segment) in segments.indexed) ...[
-            if (position > 0) VerticalDivider(width: 1, color: tokens.borderStrong),
-            _Segment(
-              label: segment.label,
-              tooltip: segment.tooltip,
-              itemKey: segment.key,
-              pressed: selected.contains(segment.value),
-              onTap: () => onToggle(segment.value),
-              tokens: tokens,
-            ),
+      // Scrolls sideways when narrower than its segments (phones).
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (position, segment) in segments.indexed) ...[
+              if (position > 0) VerticalDivider(width: 1, color: tokens.borderStrong),
+              _Segment(
+                label: segment.label,
+                tooltip: segment.tooltip,
+                itemKey: segment.key,
+                pressed: selected.contains(segment.value),
+                onTap: () => onToggle(segment.value),
+                tokens: tokens,
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

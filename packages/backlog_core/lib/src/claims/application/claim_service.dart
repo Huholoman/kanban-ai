@@ -44,8 +44,8 @@ final class ClaimService {
 
   /// Claims the item for [agent] and moves it to the active status.
   ///
-  /// Refuses blocked items, items with open children and finished items
-  /// unless [force] is set. Claiming an item the agent already holds just
+  /// Refuses blocked items, items waiting for overlapping work in progress,
+  /// items with open children and finished items unless [force] is set. Claiming an item the agent already holds just
   /// renews the claim.
   Future<ClaimOutcome> claim(String reference, String agent, {bool force = false}) async {
     agent = Claim.validateAgent(agent);
@@ -57,7 +57,9 @@ final class ClaimService {
 
   /// Claims the most urgent ready item that matches [where]; null when there
   /// is nothing to do. Safe to call from many agents at once: an item someone
-  /// else grabbed in the meantime is skipped.
+  /// else grabbed in the meantime is skipped. Overlapping `touches` are
+  /// judged on the snapshot, so two agents calling this at the same moment
+  /// may still take two overlapping open items.
   Future<ClaimOutcome?> claimNext(String agent, {bool Function(PlannedItem item)? where}) async {
     agent = Claim.validateAgent(agent);
     final snapshot = await _planning.snapshot();
@@ -168,6 +170,12 @@ final class ClaimService {
     if (planned.isBlocked) {
       throw InvalidInputException(
         '$id is blocked by ${[...planned.openDependencies, ...planned.missingDependencies].join(', ')}; use --force to claim anyway.',
+      );
+    }
+    if (planned.isConflicting) {
+      throw InvalidInputException(
+        '$id touches the same files as ${planned.conflictsWith.join(', ')}, which is in progress; '
+        'wait for it or use --force.',
       );
     }
     if (planned.openChildCount > 0) {

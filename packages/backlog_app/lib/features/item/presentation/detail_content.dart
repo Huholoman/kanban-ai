@@ -38,7 +38,39 @@ class DetailContent extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _TitleField(title: item.title, onSave: (title) => controller.set('title', title)),
-              if (item.blocked) ...[const SizedBox(height: 8), _BlockedBy(detail: detail, onOpen: onOpen)],
+              if (item.blocked)
+                ..._notice(
+                  _LinkNotice(
+                    prefix: 'Blocked by',
+                    ids: item.blockedBy,
+                    links: detail.dependencies,
+                    keyPrefix: 'blocker',
+                    onOpen: onOpen,
+                  ),
+                ),
+              if (item.conflicting)
+                ..._notice(
+                  _LinkNotice(
+                    prefix: 'Waits for',
+                    suffix: '(touches the same files)',
+                    ids: item.conflictsWith,
+                    links: detail.conflicts,
+                    keyPrefix: 'conflict',
+                    onOpen: onOpen,
+                  ),
+                ),
+              if (detail.waiting.isNotEmpty)
+                ..._notice(
+                  _LinkNotice(
+                    prefix: 'Holds up',
+                    suffix: '(they touch the same files)',
+                    ids: [for (final link in detail.waiting) link.id],
+                    links: detail.waiting,
+                    keyPrefix: 'waiting',
+                    onOpen: onOpen,
+                    warning: false,
+                  ),
+                ),
               const SizedBox(height: 12),
               _Status(item: item),
               if (workflow != null) ...[
@@ -103,6 +135,8 @@ class DetailContent extends StatelessWidget {
     );
   }
 }
+
+List<Widget> _notice(Widget notice) => [const SizedBox(height: 8), notice];
 
 /// The title as a borderless text field; saved on Enter and when it loses
 /// focus, an empty title goes back to the saved one.
@@ -183,34 +217,54 @@ class _TitleFieldState extends State<_TitleField> {
   }
 }
 
-/// "Blocked by X-7f3a Production DB backups"; the blockers open in the panel.
-class _BlockedBy extends StatelessWidget {
-  const _BlockedBy({required this.detail, required this.onOpen});
+/// "Blocked by X-7f3a Production DB backups", "Waits for …", "Holds up …";
+/// the linked items open in the panel.
+class _LinkNotice extends StatelessWidget {
+  const _LinkNotice({
+    required this.prefix,
+    required this.ids,
+    required this.links,
+    required this.keyPrefix,
+    required this.onOpen,
+    this.suffix,
+    this.warning = true,
+  });
 
-  final ItemDetailDto detail;
+  final String prefix;
+  final String? suffix;
+  final List<String> ids;
+
+  /// Titles of [ids], where known.
+  final List<ItemLinkDto> links;
+  final String keyPrefix;
   final ValueChanged<String> onOpen;
+
+  /// Warning colour; muted otherwise.
+  final bool warning;
 
   @override
   Widget build(BuildContext context) {
     final tokens = BoardTokens.of(context);
-    final style = Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.warning);
-    final titles = {for (final link in detail.dependencies) link.id: link.title};
+    final color = warning ? tokens.warning : tokens.muted;
+    final style = Theme.of(context).textTheme.bodySmall?.copyWith(color: color);
+    final titles = {for (final link in links) link.id: link.title};
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: tokens.warning.withValues(alpha: 0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
       ),
       child: Wrap(
         spacing: 8,
         children: [
-          Text('Blocked by', style: style),
-          for (final id in detail.item.blockedBy)
+          Text(prefix, style: style),
+          for (final id in ids)
             InkWell(
-              key: ValueKey('blocker-$id'),
+              key: ValueKey('$keyPrefix-$id'),
               onTap: () => onOpen(id),
               child: Text([id, ?titles[id]].join(' '), style: style?.copyWith(fontWeight: FontWeight.w600)),
             ),
+          if (suffix != null) Text(suffix!, style: style),
         ],
       ),
     );
@@ -236,7 +290,7 @@ class _Labelled extends StatelessWidget {
 }
 
 /// The other fields as a definition list: milestone, type, assignee, branch,
-/// pull request and labels, each edited in place.
+/// pull request, labels and touches, each edited in place.
 class _Fields extends StatelessWidget {
   const _Fields({required this.controller, required this.item, required this.workflow});
 
@@ -312,6 +366,10 @@ class _Fields extends StatelessWidget {
         _Row(
           label: 'Labels',
           child: _Labels(item: item, workflow: workflow, controller: controller),
+        ),
+        _Row(
+          label: 'Touches',
+          child: _Touches(item: item, controller: controller),
         ),
       ],
     );
@@ -496,6 +554,46 @@ class _Labels extends StatelessWidget {
           final label = await askText(context, 'Add labels (comma separated)');
           if (label != null && label.trim().isNotEmpty) {
             await controller.change([ItemUpdateRequest.add('labels', label)]);
+          }
+        },
+      ),
+    ],
+  );
+}
+
+/// Paths and globs the work changes, as removable monospace chips, and a
+/// chip that adds more.
+class _Touches extends StatelessWidget {
+  const _Touches({required this.item, required this.controller});
+
+  final ItemDto item;
+  final ItemController controller;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 6,
+    runSpacing: 6,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      for (final path in item.touches)
+        InputChip(
+          key: ValueKey('touches-$path'),
+          label: Text(path, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          onDeleted: () => controller.change([ItemUpdateRequest.remove('touches', path)]),
+        ),
+      ActionChip(
+        key: const ValueKey('add-touches'),
+        avatar: const Icon(Icons.add, size: 14),
+        label: const Text('path'),
+        tooltip: 'Paths or globs in the repository this work changes, e.g. lib/payments/ or lib/**/*.dart',
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        onPressed: () async {
+          final paths = await askText(context, 'Add paths or globs (comma separated)');
+          if (paths != null && paths.trim().isNotEmpty) {
+            await controller.change([ItemUpdateRequest.add('touches', paths.trim())]);
           }
         },
       ),

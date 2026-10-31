@@ -5,8 +5,8 @@ import 'package:yaml/yaml.dart';
 import 'package:yaml_edit/yaml_edit.dart';
 
 import '../../infrastructure/backlog_layout.dart';
-import '../../items/infrastructure/slug.dart';
 import '../../shared/errors.dart';
+import '../../shared/slug.dart';
 import '../domain/filter.dart';
 import '../domain/view.dart';
 import 'yaml_writer.dart';

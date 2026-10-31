@@ -31,6 +31,7 @@ abstract final class TextOutput {
       if (planned.isClaimed) '@${planned.claim!.agent}',
       if (planned.isClaimExpired) '@${planned.claim!.agent} (claim expired)',
       if (planned.isBlocked) 'blocked by ${[...planned.openDependencies, ...planned.missingDependencies].join(',')}',
+      if (planned.isConflicting) 'waits for ${planned.conflictsWith.join(',')} (touches overlap)',
       if (planned.childCount > 0) 'children ${planned.childCount - planned.openChildCount}/${planned.childCount}',
       if (!checklist.isEmpty) 'checklist $checklist',
     ];
@@ -55,7 +56,10 @@ abstract final class TextOutput {
       for (final other in dependents) 'blocks: ${describe(other.id)}',
       for (final child in children) 'child: ${describe(child.id)}',
       for (final id in item.related) 'related: ${describe(id)}',
+      for (final id in planned.conflictsWith) 'waits for: ${describe(id)}, touches overlap',
+      for (final other in snapshot.waitingOn(item.id)) 'holds up: ${describe(other.id)}, touches overlap',
       if (planned.isBlocked) 'BLOCKED',
+      if (planned.isConflicting) 'WAITING',
       if (planned.isReady) 'READY',
       if (planned.claim != null)
         'claim: ${planned.claim!.agent} '
@@ -65,6 +69,7 @@ abstract final class TextOutput {
       if (item.pr != null) 'pr: ${item.pr}',
       if (item.labels.isNotEmpty) 'labels: ${item.labels.join(', ')}',
       if (item.docs.isNotEmpty) 'docs: ${item.docs.join(', ')}',
+      if (item.touches.isNotEmpty) 'touches: ${item.touches.join(', ')}',
       for (final MapEntry(:key, :value) in item.extra.entries) '$key: $value',
       if (!planned.checklist.isEmpty) 'checklist: ${planned.checklist}',
       'created: ${item.created ?? '-'}   updated: ${item.updated ?? '-'}',

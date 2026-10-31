@@ -19,16 +19,28 @@ abstract class BacklogCommand extends Command<int> {
 
   ArgResults get args => argResults!;
 
-  Future<Backlog> openBacklog() async {
+  Future<Backlog> openBacklog() async => Backlog.open(backlogRoot, clock: context.clock);
+
+  /// The backlog folder: `--dir`, `\$BACKLOG_DIR` or found from the current folder.
+  String get backlogRoot {
     final explicit = globalResults!.option('dir') ?? context.environment['BACKLOG_DIR'];
-    final root = explicit != null
+    return explicit != null
         ? p.normalize(p.join(context.cwd, explicit))
         : Backlog.locate(context.cwd) ??
               (throw const NotFoundException(
                 'No backlog found here or in any parent folder (looked for backlog.yaml and backlog/backlog.yaml). '
                 'Use --dir, BACKLOG_DIR or `backlog init`.',
               ));
-    return Backlog.open(root, clock: context.clock);
+  }
+
+  /// The project registry in [file], else where the environment points
+  /// (see [projectRegistryFile]); null without any location.
+  ProjectService? projectService([String? file]) {
+    final location = file ?? projectRegistryFile(context.environment);
+    if (location == null) return null;
+    return ProjectService(
+      YamlProjectRegistryStore(p.normalize(p.join(context.cwd, location)), home: context.environment['HOME']),
+    );
   }
 
   void addAgentOption({bool mandatory = true}) => argParser.addOption(

@@ -186,6 +186,32 @@ void main() {
       expect((await backlog.claims.claim('0002', 'a', force: true)).item.status, 'in-progress');
     });
 
+    test('items waiting for overlapping work need --force; next skips them', () async {
+      final (backlog, _) = await tempBacklog();
+      await backlog.items.create(
+        const NewItem(title: 'Payments', status: 'todo', priority: 'p1', touches: ['lib/pay/']),
+      );
+      await backlog.items.create(
+        const NewItem(title: 'Stripe', status: 'todo', priority: 'p0', touches: ['lib/pay/stripe.dart']),
+      );
+      await backlog.items.create(
+        const NewItem(title: 'Orders', status: 'todo', priority: 'p2', touches: ['lib/orders/']),
+      );
+
+      await backlog.claims.claim('0001', 'a');
+      expect(
+        () => backlog.claims.claim('0002', 'b'),
+        throwsA(isA<InvalidInputException>().having((e) => e.message, 'message', contains('T-0001'))),
+      );
+      expect((await backlog.claims.claimNext('b'))!.item.id.value, 'T-0003');
+
+      await backlog.claims.complete('0001', agent: 'a');
+      expect((await backlog.planning.snapshot()).ready.map((i) => i.id.value), ['T-0002']);
+      await backlog.items.create(const NewItem(title: 'Order export', status: 'todo', touches: ['lib/orders/x.dart']));
+      expect(() => backlog.claims.claim('0004', 'c'), throwsA(isA<InvalidInputException>()));
+      expect((await backlog.claims.claim('0004', 'c', force: true)).item.status, 'in-progress');
+    });
+
     test('release returns the item; complete finishes it and unblocks dependents', () async {
       final (backlog, _) = await tempBacklog();
       final first = await backlog.items.create(const NewItem(title: 'First', status: 'todo'));
@@ -289,6 +315,24 @@ void main() {
       );
     });
 
+    test('warns about malformed or overly broad touches', () async {
+      final (backlog, _) = await tempBacklog();
+      await backlog.items.create(const NewItem(title: 'A', touches: ['lib/[ab', '**', 'lib/a/']));
+      final issues = (await backlog.linter.run()).where((i) => i.code == 'invalid-touches').toList();
+      expect(issues.map((i) => i.message), [contains('lib/[ab'), contains('whole repository')]);
+      expect(issues.every((i) => i.severity == Severity.warning), isTrue);
+    });
+
+    test('warns when two items in progress touch the same files', () async {
+      final (backlog, _) = await tempBacklog();
+      await backlog.items.create(const NewItem(title: 'A', status: 'in-progress', touches: ['lib/a/']));
+      await backlog.items.create(const NewItem(title: 'B', status: 'review', touches: ['lib/a/b.dart']));
+      await backlog.items.create(const NewItem(title: 'C', status: 'in-progress', touches: ['lib/c/']));
+      final issues = (await backlog.linter.run()).where((i) => i.code == 'touches-overlap').toList();
+      expect(issues, hasLength(1));
+      expect('${issues.single.item} ${issues.single.message}', allOf(contains('T-0001'), contains('T-0002')));
+    });
+
     test('reports leftover claims', () async {
       final (backlog, clock) = await tempBacklog();
       await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
@@ -299,6 +343,15 @@ void main() {
       clock.advance(const Duration(days: 1));
       final codes = (await backlog.linter.run()).map((i) => i.code);
       expect(codes, containsAll(['expired-claim', 'stale-claim']));
+    });
+
+    test('warns about dispatcher worktrees that are not folders', () async {
+      final (backlog, _) = await tempBacklog(
+        config: 'dispatcher: {command: agent, worktrees: [{name: here, path: .}, {name: gone, path: ../nowhere}]}\n',
+      );
+      final issues = await backlog.linter.run();
+      expect(issues.map((i) => (i.severity, i.code)), [(Severity.warning, 'dispatcher-worktree')]);
+      expect(issues.single.message, contains('"gone"'));
     });
   });
 
@@ -397,6 +450,17 @@ void main() {
       expect(() => backlog.views.setSection('../backlog', 'X'), throwsA(isA<NotFoundException>()));
       expect(() => backlog.views.setSection('nope', 'X'), throwsA(isA<NotFoundException>()));
     });
+  });
+
+  test('touches is a list field: created, added to, removed from', () async {
+    final (backlog, _) = await tempBacklog();
+    final created = await backlog.items.create(const NewItem(title: 'Payments', touches: ['lib/payments/']));
+    expect(created.touches, ['lib/payments/']);
+    await backlog.items.update('0001', [FieldChange.parse('touches+=lib/*.{dart,yaml},docs/')]);
+    expect((await backlog.items.get('0001')).touches, ['lib/payments/', 'lib/*.{dart,yaml}', 'docs/']);
+    final removed = await backlog.items.update('0001', [FieldChange.parse('touches-=lib/payments/')]);
+    expect(removed.touches, ['lib/*.{dart,yaml}', 'docs/']);
+    expect(removed.extra, isEmpty);
   });
 
   test('pr is a regular field: set, saved and cleared', () async {

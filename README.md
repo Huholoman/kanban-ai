@@ -118,7 +118,7 @@ dart compile exe packages/backlog_server/bin/backlog_server.dart -o ~/.local/bin
 
 ```bash
 cd ~/projects/myapp                    # next to the worktrees: myapp/{monorepo,monorepo-2,…}
-backlog init backlog --prefix MA       # creates myapp/backlog/
+backlog init backlog --prefix MA       # creates myapp/backlog/ and registers it for backlog-server
 cd backlog && git init && git add -A && git commit -m "backlog" && cd ..
 
 backlog new "Payments" -t epic -p p1
@@ -168,13 +168,19 @@ backlog lint                    # before ending the session
 
 **Claims:** `claim` and `next` atomically create `.locks/<id>.lock` (O_EXCL), so when several agents race for an item exactly one wins. This is verified by a test with 12 isolates and by hand with 10 parallel processes. Without a `heartbeat` the lock expires after its lease and another agent may take the item over. The item file mirrors `status: in-progress` and `assignee`, so humans see who works on what. Locks are machine-local state (gitignored) and work on a local disk, not on network file systems.
 
-**Ready** means the status is `pickable` (`todo` by default), all `depends_on` items are done, there are no open children and nobody holds a claim.
+**Ready** means the status is `pickable` (`todo` by default), all `depends_on` items are done, there are no open children, nobody holds a claim, and the item's `touches` do not overlap an item in progress.
+
+**Touches keep agents apart:** an open item whose `touches` overlap the `touches` of an item in an active status (in progress, review) *waits for* it — `backlog list` shows `waits for MA-7f3a (touches overlap)`, JSON has `conflicting` and `conflicts_with`. It is not ready, so `next` skips it and `claim` needs `--force`, until the other item is done or released. Items without `touches` never wait. Two items in progress that overlap are a lint warning.
 
 ## The web board
 
 ```bash
-backlog-server -C path/to/backlog --token secret
+backlog-server -C path/to/backlog --token secret   # one backlog
+cd ~/p/myapp && backlog projects add               # or register every backlog once…
+backlog-server --token secret                      # …and serve them all from one server
 ```
+
+**Several projects:** without `-C`, the server serves every backlog of the project registry (`~/.config/kanban-ai/projects.yaml`, see `backlog projects` below) when it exists, otherwise the backlog found from the current folder. The board switches between them; the API has them under `/api/p/<id>/…` (`/api/projects` lists them) and the plain `/api/…` paths mean the first, default project. The registry is watched, so `backlog projects add/remove` apply without a restart. A project with a missing folder or a broken `backlog.yaml` does not stop the server, it is listed with its error. `-C` (or `BACKLOG_DIR`) always means just that one backlog.
 
 To keep the board off the LAN without a firewall, bind only to localhost and the VPN interface, and/or allow only some clients:
 
@@ -185,7 +191,8 @@ backlog-server --allow 127.0.0.1,10.77.11.22,10.77.0.0/16  # answer only these c
 
 | Option | Default | |
 |---|---|---|
-| `-C`, `--dir` | found from the current folder, `BACKLOG_DIR` | backlog folder |
+| `-C`, `--dir` | `BACKLOG_DIR` | serve only this backlog folder |
+| `--projects` | `BACKLOG_PROJECTS`, else `~/.config/kanban-ai/projects.yaml` if it exists, else the backlog found from the current folder | project registry to serve |
 | `--host` | `0.0.0.0` | addresses to bind, repeatable or comma-separated; `127.0.0.1` = local only |
 | `--allow` | `BACKLOG_ALLOW` | only these client IPs or CIDR ranges get an answer, others 403 |
 | `-p`, `--port` | `8640` | |
@@ -196,15 +203,18 @@ backlog-server --allow 127.0.0.1,10.77.11.22,10.77.0.0/16  # answer only these c
 
 URL parameters of the app: `?token=…`, `&as=name` (who claims items from the UI) and `&server=http://…` (another API server, handy with `flutter run -d web-server`).
 
+The open project is in the URL after `#`: `http://host:8640/?token=…#/p/kanban-ai`. Such a link can be shared or reloaded; without one the app opens the project you used last in this browser, else the server's first project. The page title is the project's name. Switching projects starts the board afresh (no filters, open items or live updates carry over). With a server that does not know projects yet the app shows its one backlog as before.
+
 **Features:**
 - **Layout:** from 1200 px the views are in a left panel and the open item in a panel on the right; on tablets the views are tabs under the header and the item is a bottom sheet; on phones a bottom bar holds the pinned views. On very wide screens (from 2000 px, e.g. 27" 4K) text is 15 % larger.
+- **Projects:** the project's name tops the left panel (and the drawer on tablets and phones); with several projects on the server it is a menu for switching between them. A project the server cannot open is listed with the reason and cannot be chosen.
 - **Left panel:** saved views with their item counts and a button for new items. Views with a `section` are listed under foldable section headings. The ⋮ menu of a view moves it to an existing or new section, and the server writes `section:` into its YAML. Below 1200 px the views are tabs under the header (and in a drawer behind ☰); on phones a bottom bar shows the views pinned with the ⋮ menu ("Pin to bottom bar") plus *More*.
-- **Cards:** id and priority on top, the title, and one meta line that tells the state: *Ready*, *Blocked by …*, the claim holder with the time left, an expired claim (faint, dashed border) or else the labels; a thin bar shows progress of the checklist or children.
+- **Cards:** id and priority on top, the title, and one meta line that tells the state: *Ready*, *Blocked by …*, *Waits for …* (touches overlap work in progress), the claim holder with the time left, an expired claim (faint, dashed border) or else the labels; a thin bar shows progress of the checklist or children.
 - **Ids:** clicking an item id (on a card or in the detail) copies it to the clipboard.
 - **Pull requests:** an item's `pr` link shows as a "PR #42" tag that opens it in a new tab; it can be set in the detail or by an agent (`backlog set <id> pr=<url>`).
 - **Kanban:** the board scrolls as one page, columns grow with their cards and share the width. On a phone you see one column at a time and swipe (or tap the column switcher on top) to the others; a long press on a card moves it to another column. Dragging a card to another column sets the field the view is grouped by (status, priority, …). A parent with nested items in a column (an epic, a story) has a fold toggle that hides them and shows how many are hidden. Within a column, children are indented under their parent. When the parent (an epic, say) sits in another column, it appears as a muted "↑ Epic title" line above its children, so you can see which epic a story in progress belongs to.
-- **Filter bar:** search (id, title, branch) and a Filters popover (long sections show the six most used values, *Show all* and a search box) for labels, epic (everything under the chosen epic, at any depth), type, priority, milestone and people (assignee or claim holder), plus the segments *Ready* (pickable status, dependencies done, no open children, nobody holds it), *Blocked* (waits for an unfinished dependency) and *Claimed* (someone holds it, i.e. it is being worked on). Values within one section are alternatives; everything else must match. The filter works on any view and is kept when switching views; status is left out because views show it already. **Save as view** stores the current view plus the filter as a new view (name and optional section; the new file in `views/` keeps the layout, grouping, columns and sorting of the current view and ANDs its filter with yours).
-- **Detail:** opens in a right-hand panel on wide windows, in a bottom sheet over the board on medium ones and full-screen on narrow ones (Esc closes it). You can edit all fields, labels, relations (parent, dependencies, related), the Markdown description, and claim, release or finish the item: the title right where it is shown, status and priority from their dropdowns, the rest from the list of fields below them. Checklist items in the description are checkboxes: ticking one rewrites its `- [ ]` line in the file. The header shows the parent chain as a breadcrumb (*Launch hardening › X-2c91 Restore drill*) and the item's place among its siblings (*Story 2 of 5*, with ‹ › to step to the neighbours). Children are listed with their progress (*Tasks 1 of 3 done*); ▸ expands a child in place to the start of its description and its own children, *Open X →* shows it. Parent, depends on, blocks and related are folded rows with a count; empty kinds are left out and new links are added from the *Link:* row. Whatever you open from the detail — an ancestor, a sibling, a child, a linked item — replaces it in the same panel, and ← goes back the way you came. An epic's *Scope board* button narrows the board to everything under it. Esc closes the panel.
+- **Filter bar:** search (id, title, branch) and a Filters popover (long sections show the six most used values, *Show all* and a search box) for labels, epic (everything under the chosen epic, at any depth), type, priority, milestone and people (assignee or claim holder), plus the segments *Ready* (pickable status, dependencies done, no open children, nobody holds it), *Blocked* (waits for an unfinished dependency), *Waiting* (its touches overlap an item in progress) and *Claimed* (someone holds it, i.e. it is being worked on). Values within one section are alternatives; everything else must match. The filter works on any view and is kept when switching views; status is left out because views show it already. **Save as view** stores the current view plus the filter as a new view (name and optional section; the new file in `views/` keeps the layout, grouping, columns and sorting of the current view and ANDs its filter with yours).
+- **Detail:** opens in a right-hand panel on wide windows, in a bottom sheet over the board on medium ones and full-screen on narrow ones (Esc closes it). You can edit all fields, labels, touches (paths or globs, as chips), relations (parent, dependencies, related), the Markdown description, and claim, release or finish the item: the title right where it is shown, status and priority from their dropdowns, the rest from the list of fields below them. Checklist items in the description are checkboxes: ticking one rewrites its `- [ ]` line in the file. The header shows the parent chain as a breadcrumb (*Launch hardening › X-2c91 Restore drill*) and the item's place among its siblings (*Story 2 of 5*, with ‹ › to step to the neighbours). Children are listed with their progress (*Tasks 1 of 3 done*); ▸ expands a child in place to the start of its description and its own children, *Open X →* shows it. A line names what the item is blocked by or waits for (overlapping touches), or which open items wait for it. Parent, depends on, blocks and related are folded rows with a count; empty kinds are left out and new links are added from the *Link:* row. Whatever you open from the detail — an ancestor, a sibling, a child, a linked item — replaces it in the same panel, and ← goes back the way you came. An epic's *Scope board* button narrows the board to everything under it. Esc closes the panel.
 - **The `graph` layout** (default view "Dependencies") shows each item with an expandable tree of its dependencies, including their titles and statuses. Clicking a dependency opens its detail.
 - **People:** the left panel lists the agents that hold claims right now with their item counts; a click shows what that agent works on.
 - **Group by:** the header's *Group: …* menu regroups the current view for the session (status, priority, type, milestone, assignee, labels, epic or none) without changing its YAML; dragging a card then sets that field.
@@ -245,6 +255,7 @@ branch: feat/backups
 pr: https://github.com/org/repo/pull/42   # shown as a clickable "PR #42"
 labels: [infra, db]
 docs: [backups]
+touches: [deploy/backup/, "scripts/*.sh"]   # files in the code repository the work changes
 created: 2026-10-29
 updated: 2026-10-29
 estimate: 3d             # unknown keys are kept and can be filtered on
@@ -266,9 +277,11 @@ estimate: 3d             # unknown keys are kept and can be filtered on
 
 The hierarchy comes from `parent`. The type is just a label, so you can define your own.
 
+**Touches** are paths or globs in the code repository (relative to its root) that the work will change: `lib/payments/` (a folder and everything in it), `lib/**/*.dart`, `pubspec.yaml`, `{lib,test}/payments/`. Two items overlap when some file could match both; matching errs on the side of an overlap (a pattern also covers what is below it, as in `.gitignore`, unless its last part looks like a file name such as `*.dart`). `lint` warns about malformed patterns and ones that cover the whole repository.
+
 Files may be edited by hand. When the tool writes a file, it keeps comments, key order and unknown keys and changes only what changed, so git diffs stay small. Ids can be shortened: `7f3a` or `MA-7f` is enough when unambiguous.
 
-Derived properties are computed, never stored: `blocked`, `ready`, and the progress of the checklist and of the children.
+Derived properties are computed, never stored: `blocked`, `conflicting` (waits for overlapping work in progress), `ready`, and the progress of the checklist and of the children.
 
 ### Workflow (`backlog.yaml`)
 
@@ -276,6 +289,7 @@ Derived properties are computed, never stored: `blocked`, `ready`, and the progr
 - statuses `backlog`, `todo`, `in-progress`, `review`, `done` and `cancelled`
 - priorities `p0`–`p3`
 - types, milestones, defaults and the claim lease
+- commented examples of `appearance` and `dispatcher`
 
 Every status belongs to the category `open`, `active` or `done`. Items in the `done` category satisfy dependencies, and agents pick up work from statuses marked `pickable`. The statuses are the possible board columns; which of them a view shows, and in what order, is set by `columns:` in the view (or from the app, see below).
 
@@ -294,6 +308,21 @@ appearance:
 
 The board picks up changes to it live.
 
+**Dispatcher** (optional): which worktrees agents may run in, how many at once and how to start one. Without the section there is no dispatcher. A worktree is free when nobody holds a live claim under its name.
+
+```yaml
+dispatcher:
+  mode: manual          # manual: a person presses Start in the board | auto: starts by itself
+  max_agents: 2         # default: one per worktree
+  worktrees:            # path relative to the backlog folder; a bare name means ../<name>
+    - name: monorepo-2
+      path: ../monorepo-2
+    - monorepo-3
+  command: claude -p "Work on backlog item {id}, run backlog show {id} first"
+```
+
+The command is split into arguments like in a shell, but no shell runs it (use `[sh, -c, "…"]` if you need one). Placeholders: `{id}`, `{title}`, `{worktree}`, `{path}` (absolute path of the worktree), `{backlog}`. Mistakes in the section are configuration errors; `lint` warns about worktree paths that do not exist. A running `backlog-server` re-plans after every change and whenever a claim expires: ready items in the order of `backlog next` go to free worktrees, at most `max_agents` at once, and it logs the plan. In `auto` mode each new assignment goes to the agent launcher; for now that only logs the command it would run (claiming and starting the agent, and a Start button for `manual` mode, come next).
+
 ### View (`views/*.yaml`)
 
 ```yaml
@@ -311,24 +340,27 @@ columns: [todo, in-progress, review, done]
 sort: [priority, -updated]
 ```
 
-Views can filter and group by every item field, by custom keys and by the computed fields `ready`, `blocked`, `claimed`, `claimed_by`, `category`, `has_children`, `ancestors` (the parent chain) and `epic` (epics among the item and its ancestors, so `epic: X-m4an` is everything under that epic).
+Views can filter and group by every item field, by custom keys and by the computed fields `ready`, `blocked`, `conflicting`, `conflicts_with`, `claimed`, `claimed_by`, `category`, `has_children`, `ancestors` (the parent chain) and `epic` (epics among the item and its ancestors, so `epic: X-m4an` is everything under that epic).
 
 ## CLI reference
 
 | Command | What it does |
 |---|---|
-| `init [dir] --prefix MA` | create a backlog |
-| `new <title> -t -s -p -m --parent -d -l --body --body-file` | create an item |
+| `init [dir] --prefix MA [--no-register]` | create a backlog and add it to the project registry |
+| `new <title> -t -s -p -m --parent -d -l --touches --body --body-file` | create an item |
 | `list [-w field=a,b] [-s] [-m] [-l] [-t] [--all]` | list items (without finished ones) |
 | `show <id>`, `path <id>` | details, path of the file |
-| `set <id> status=review labels+=x depends_on-=MA-1 milestone=` | edit fields (`=` sets, `+=`/`-=` for lists, empty clears) |
+| `set <id> status=review labels+=x touches+=lib/a/ depends_on-=MA-1 milestone=` | edit fields (`=` sets, `+=`/`-=` for lists, empty clears) |
 | `ready`, `blocked` | what can be done / what is waiting |
 | `next [-w …] --as <agent>` | claim the most urgent ready item |
 | `claim / heartbeat / release / done <id> --as <agent>` | work with claims (`--force` overrides the checks) |
 | `claims` | who works on what |
 | `view [name]` | saved views |
-| `lint` | consistency: unknown values, broken references, cycles, locks (exit 1 on errors) |
+| `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches, dispatcher worktrees (exit 1 on errors) |
 | `instructions` | the guide for agents, in Markdown |
+| `projects`, `projects add [dir] [--id] [--name]`, `projects remove <id>` | the registry of backlogs on this machine (`~/.config/kanban-ai/projects.yaml`), see below |
+
+**Project registry:** `backlog init` registers the new backlog by itself (`--no-register` skips it); `backlog projects add` (in a project) registers an existing backlog in `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` (default `~/.config/kanban-ai/projects.yaml`; elsewhere with `BACKLOG_PROJECTS` or `--projects <file>`). The file is plain YAML you can also edit by hand — `projects:` is a list of `{id?, name?, path}`, paths absolute, `~/…` or relative to the file; the id defaults to the project folder's name (the parent of a folder called `backlog`), the first project is the default one, and `pinned: true` is kept for the board's upcoming pinned projects.
 
 Global options are `-C <dir>` and `--json`. The agent comes from `--as` or `BACKLOG_AGENT`. **Exit codes:** 0 ok, 1 error, 2 nothing to do, 3 claim conflict, 4 not found, 64 usage. JSON fields are only ever added, never renamed.
 
@@ -360,10 +392,12 @@ backlog_cli ──────────────────────�
 
 | Module | domain | application | infrastructure |
 |---|---|---|---|
-| `workflow` | `Workflow`, statuses and categories | – | `backlog.yaml` parser |
+| `workflow` | `Workflow`, statuses and categories, `DispatcherConfig` | – | `backlog.yaml` parser |
+| `projects` | `ProjectRegistry`, `ProjectEntry`, port `ProjectRegistryStore` | `ProjectService` | `projects.yaml` (`yaml_edit`, keeps comments) |
 | `items` | `Item`, `ItemId`, `Checklist`, ports `ItemRepository`, `IdGenerator` | `ItemService`, `FieldChange` | Markdown codec (`yaml_edit`, keeps formatting), file-system repository |
 | `claims` | `Claim` (lease), port `ClaimStore` | `ClaimService` (claim, next, heartbeat, release, done) | lock files |
-| `planning` | `BacklogSnapshot`, `PlannedItem`: blocked, ready, cycles, children | `PlanningService` | – |
+| `planning` | `BacklogSnapshot`, `PlannedItem`: blocked, conflicting, ready, cycles, children | `PlanningService` | – |
+| `dispatch` | `DispatchPlan` (ready items → free worktrees), port `AgentLauncher` | `Dispatcher` (debounce, wake-up on claim expiry, auto launch), `LoggingLauncher` | – |
 | `views` | `Filter`, `ViewDefinition`, `ViewEngine` | `ViewService` | YAML views |
 | `validation` | `LintIssue` | `Linter` | – |
 
@@ -374,17 +408,18 @@ backlog_cli ──────────────────────�
 
 There is no event bus or event sourcing: the state lives in files and git keeps the history.
 
-**The server** is a driving adapter. `ApiHandler` parses requests, calls the core services and maps the results through `DtoMapper` to the DTOs of `backlog_api`. `ChangeFeed` watches the folder, debounces bursts of changes and ignores `.git` and temporary files. `BacklogHost` reloads the workflow after `backlog.yaml` changes, and `BacklogServer` is the composition root.
+**The server** is a driving adapter. `ApiHandler` parses requests, calls the core services and maps the results through `DtoMapper` to the DTOs of `backlog_api`. `ChangeFeed` watches the folder, debounces bursts of changes and ignores `.git` and temporary files. `BacklogHost` reloads the workflow after `backlog.yaml` changes, the core's `Dispatcher` re-plans on the same change events. Each backlog is a `HostedProject` (host, feed, dispatcher, API); `ProjectHub` keeps them in registry order and routes `/api/p/<id>/…`, `RegistryWatcher` applies registry edits live, and `BacklogServer` is the composition root.
 
-**The app** is split by feature (`features/board`, `features/item`). Each feature has `application/` (`ChangeNotifier` controllers without widgets, and pure logic such as `ColumnArrangement`) and `presentation/`. It depends only on the `BacklogApi` interface, which `AppScope` provides.
+**The app** is split by feature (`features/board`, `features/item`, `features/projects`). Each feature has `application/` (`ChangeNotifier` controllers without widgets, and pure logic such as `ColumnArrangement`) and `presentation/`. It depends only on the `BacklogApi` interface, which `AppScope` provides. `ProjectsController` picks the open project from the `ProjectsApi`; each project gets its own session (its `BacklogApi` in `AppScope`, theme, board), thrown away as a whole when another project is opened.
 
-**The REST API** (`/api/…`):
+**The REST API** (`/api/…` for the default project, the same under `/api/p/<id>/…` for each project):
+- `projects` (global: `[{id, name, path, error}]`)
 - `workflow`, `items` (`?all=true`)
-- `items/<id>`: GET, and PATCH `{changes: ["status=done"], body}`
+- `items/<id>`: GET (with its relations and the items it waits for or holds up through `touches`), and PATCH `{changes: ["status=done"], body}`
 - `items/<id>/claim|release|done`: POST `{agent, status, force}`
 - `views`: GET, and POST `{name, section?, base?, conditions: [filter expressions]}` (save a filter as a view)
 - `views/<id>`: GET (`?group_by=field` regroups it for that request), and PATCH `{section?, columns?}` (only the given keys change; null removes them)
-- `lint`, `health`
+- `lint`, `health` (global)
 - the WebSocket `events`
 
 Errors look like `{"error": {"type", "message"}}`, the same as `backlog --json`.

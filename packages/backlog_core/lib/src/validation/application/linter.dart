@@ -4,7 +4,9 @@ import '../../claims/domain/claim.dart';
 import '../../items/domain/item.dart';
 import '../../items/domain/item_id.dart';
 import '../../items/domain/item_repository.dart';
+import '../../items/domain/path_glob.dart';
 import '../../planning/domain/backlog_snapshot.dart';
+import '../../planning/domain/planned_item.dart';
 import '../../shared/clock.dart';
 import '../../views/domain/view.dart';
 import '../../workflow/domain/workflow.dart';
@@ -23,17 +25,26 @@ final class Linter {
     required ViewRepository views,
     required Workflow workflow,
     required Clock clock,
+    String? root,
+    Future<bool> Function(String path)? directoryExists,
   }) : _items = items,
        _claims = claims,
        _views = views,
        _workflow = workflow,
-       _clock = clock;
+       _clock = clock,
+       _root = root,
+       _directoryExists = directoryExists;
 
   final ItemRepository _items;
   final ClaimStore _claims;
   final ViewRepository _views;
   final Workflow _workflow;
   final Clock _clock;
+
+  /// The backlog folder and a way to look at the disk; without them the
+  /// dispatcher's worktree folders are not checked.
+  final String? _root;
+  final Future<bool> Function(String path)? _directoryExists;
 
   Future<List<LintIssue>> run() async {
     final issues = <LintIssue>[];
@@ -79,6 +90,25 @@ final class Linter {
       );
     }
 
+    final active = snapshot.items.where((p) => p.category == StatusCategory.active && p.item.touches.isNotEmpty);
+    final seenActive = <PlannedItem>[];
+    for (final planned in active) {
+      final globs = [for (final pattern in planned.item.touches) PathGlob(pattern)];
+      for (final other in seenActive) {
+        if (PathGlob.anyOverlap(globs, [for (final pattern in other.item.touches) PathGlob(pattern)])) {
+          issues.add(
+            LintIssue(
+              Severity.warning,
+              'touches-overlap',
+              'In progress together with ${other.id}, and their touches overlap.',
+              item: '${planned.id}',
+            ),
+          );
+        }
+      }
+      seenActive.add(planned);
+    }
+
     for (final claim in claims) {
       final planned = snapshot[claim.itemId];
       if (planned == null) {
@@ -111,6 +141,24 @@ final class Linter {
       issues.add(LintIssue(Severity.error, 'invalid-view', message, location: location));
     }
 
+    final dispatcher = _workflow.dispatcher;
+    final root = _root, exists = _directoryExists;
+    if (dispatcher != null && root != null && exists != null) {
+      for (final worktree in dispatcher.worktrees) {
+        final path = worktree.resolvePath(root);
+        if (!await exists(path)) {
+          issues.add(
+            LintIssue(
+              Severity.warning,
+              'dispatcher-worktree',
+              'Dispatcher worktree "${worktree.name}" points to $path, which is not a folder.',
+              location: 'backlog.yaml',
+            ),
+          );
+        }
+      }
+    }
+
     return issues..sort((a, b) => a.severity.index.compareTo(b.severity.index));
   }
 
@@ -129,6 +177,12 @@ final class Linter {
     }
     if (item.milestone != null && !_workflow.acceptsMilestone(item.milestone!)) {
       report(Severity.warning, 'unknown-milestone', 'Milestone "${item.milestone}" is not listed in backlog.yaml.');
+    }
+
+    for (final pattern in item.touches) {
+      if (PathGlob.problem(pattern) case final problem?) {
+        report(Severity.warning, 'invalid-touches', '"touches" entry "$pattern" $problem.');
+      }
     }
 
     final references = {

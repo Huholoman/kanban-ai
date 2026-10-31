@@ -81,13 +81,80 @@ appearance:
       expect(() => parseWorkflowYaml('appearance: {mode: dim}'), throwsA(isA<ConfigurationException>()));
     });
 
-    test('the init template parses, including its commented appearance', () {
+    test('the init template parses, including its commented appearance and dispatcher', () {
       final template = workflowTemplate(idPrefix: 'X');
       expect(parseWorkflowYaml(template).appearance.mode, 'system');
       final start = template.indexOf('# appearance:');
       final uncommented =
-          template.substring(0, start) + template.substring(start).replaceAll(RegExp(r'^# ', multiLine: true), '');
+          template.substring(0, start) +
+          template.substring(start).replaceAll(RegExp(r'^# (?=\s*(- |[a-z_-]+:))', multiLine: true), '');
       expect(parseWorkflowYaml(uncommented).appearance.priorities['p0'], '#e53935');
+      expect(parseWorkflowYaml(uncommented).dispatcher!.worktrees.map((w) => w.name), ['monorepo-2', 'monorepo-3']);
+    });
+
+    test('the dispatcher is off without its section', () {
+      expect(Workflow.standard().dispatcher, isNull);
+      expect(parseWorkflowYaml('claims: {lease_minutes: 30}').dispatcher, isNull);
+    });
+
+    test('parses the dispatcher section', () {
+      final dispatcher = parseWorkflowYaml('''
+dispatcher:
+  mode: auto
+  max_agents: 1
+  worktrees:
+    - name: repo-2
+      path: /work/repo-2
+    - repo-3
+  command: claude -p "Work on {id} ({title})" --cwd {path}
+''').dispatcher!;
+      expect(dispatcher.mode, DispatchMode.auto);
+      expect(dispatcher.maxAgents, 1);
+      expect(dispatcher.worktrees.map((w) => w.name), ['repo-2', 'repo-3']);
+      expect(dispatcher.worktree('repo-2')!.resolvePath('/work/backlog'), '/work/repo-2');
+      expect(dispatcher.worktree('repo-3')!.resolvePath('/work/backlog'), '/work/repo-3');
+      expect(dispatcher.command.arguments, ['claude', '-p', 'Work on {id} ({title})', '--cwd', '{path}']);
+      expect(dispatcher.command.render({'id': 'X-1', 'title': "It's \$HOME", 'path': '/w'}), [
+        'claude',
+        '-p',
+        "Work on X-1 (It's \$HOME)",
+        '--cwd',
+        '/w',
+      ]);
+    });
+
+    test('dispatcher defaults: manual, one agent per worktree, command as a list', () {
+      final dispatcher = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a, b]
+  command: [sh, -c, "echo {{literal}} {id}"]
+''').dispatcher!;
+      expect(dispatcher.mode, DispatchMode.manual);
+      expect(dispatcher.maxAgents, 2);
+      expect(dispatcher.command.render({'id': 'X-1'}), ['sh', '-c', 'echo {literal} X-1']);
+    });
+
+    test('splits a command string like a shell, without running one', () {
+      expect(CommandTemplate.splitWords(r"""a  'b c' "d \"e\" \$f" g\ h ''"""), ['a', 'b c', r'd "e" $f', 'g h', '']);
+      expect(() => CommandTemplate.splitWords('a "b'), throwsA(isA<ConfigurationException>()));
+    });
+
+    test('rejects a broken dispatcher section', () {
+      void rejects(String yaml, String message) => expect(
+        () => parseWorkflowYaml(yaml),
+        throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
+      );
+      rejects('dispatcher: {worktrees: [a]}', 'dispatcher.command is required');
+      rejects('dispatcher: {command: x}', 'dispatcher.worktrees is required');
+      rejects('dispatcher: {command: x, worktrees: []}', 'at least one worktree');
+      rejects('dispatcher: {command: x, worktrees: [a, a]}', 'Duplicate dispatcher worktree "a"');
+      rejects('dispatcher: {command: x, worktrees: ["a b"]}', 'Worktree name "a b"');
+      rejects('dispatcher: {command: x, worktrees: [a], mode: sometimes}', 'auto or manual');
+      rejects('dispatcher: {command: x, worktrees: [a], max_agents: 0}', 'at least 1');
+      rejects('dispatcher: {command: x, worktrees: [a], max_agents: two}', 'must be an integer');
+      rejects('dispatcher: {command: "run {item}", worktrees: [a]}', 'unknown placeholder "{item}"');
+      rejects('dispatcher: {command: x, worktrees: [a], max_agent: 1}', 'unknown key "dispatcher.max_agent"');
+      rejects('dispatcher: {command: "", worktrees: [a]}', 'must not be empty');
     });
 
     test('free-form milestones when none are listed', () {
@@ -145,6 +212,7 @@ appearance:
     expect(FieldChange.parse('milestone=').clears, isTrue);
     expect(FieldChange.parse('title=Fix: a = b').value, 'Fix: a = b');
     expect(() => FieldChange.parse('nonsense'), throwsA(isA<InvalidInputException>()));
+    expect(FieldChange.parse('touches+=lib/*.{dart,yaml}, docs/').values, ['lib/*.{dart,yaml}', 'docs/']);
   });
 
   group('BacklogSnapshot', () {
@@ -194,6 +262,35 @@ appearance:
       expect(snapshot[ItemId('T-1')]!.isClaimed, isTrue);
       expect(snapshot[ItemId('T-2')]!.isClaimExpired, isTrue);
       expect(snapshot.ready.map((i) => i.id.value), ['T-2']);
+    });
+
+    test('an open item whose touches overlap active work waits for it', () {
+      final snapshot = snapshotOf([
+        item('T-1', status: 'in-progress', touches: ['lib/payments/']),
+        item('T-2', status: 'review', touches: ['docs/*.md']),
+        item('T-3', touches: ['lib/payments/stripe.dart']),
+        item('T-4', touches: ['lib/orders/', 'docs/payments.md']),
+        item('T-5', touches: ['lib/orders/']),
+        item('T-6'), // no touches: never conflicts
+        item('T-7', status: 'backlog', touches: ['lib/**']),
+        item('T-8', status: 'done', touches: ['lib/payments/']),
+        item('T-9', status: 'in-progress', touches: ['lib/payments/']), // active ones do not wait
+      ]);
+      List<String> conflicts(String id) => [for (final c in snapshot[ItemId(id)]!.conflictsWith) c.value];
+      expect(conflicts('T-3'), ['T-1', 'T-9']);
+      expect(conflicts('T-4'), ['T-2']);
+      expect(conflicts('T-5'), isEmpty);
+      expect(conflicts('T-6'), isEmpty);
+      expect(conflicts('T-7'), ['T-1', 'T-9']); // open but not pickable: waits, still not ready
+      expect(conflicts('T-8'), isEmpty);
+      expect(conflicts('T-9'), isEmpty);
+      expect(snapshot[ItemId('T-3')]!.isConflicting, isTrue);
+      expect(snapshot[ItemId('T-3')]!.isBlocked, isFalse);
+      expect(snapshot.ready.map((i) => i.id.value), unorderedEquals(['T-5', 'T-6']));
+      expect(snapshot.conflicting.map((i) => i.id.value), unorderedEquals(['T-3', 'T-4', 'T-7']));
+      expect(snapshot.waitingOn(ItemId('T-1')).map((i) => i.id.value), unorderedEquals(['T-3', 'T-7']));
+      final view = parseFilter({'conflicting': true, 'conflicts_with': 'T-2'});
+      expect(snapshot.items.where(view.matches).map((i) => i.id.value), ['T-4']);
     });
 
     test('orders by priority, then creation date', () {

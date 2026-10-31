@@ -57,6 +57,7 @@ abstract final class DtoMapper {
       pr: item.pr,
       labels: item.labels,
       docs: item.docs,
+      touches: item.touches,
       created: item.created,
       updated: item.updated,
       extra: item.extra,
@@ -65,6 +66,8 @@ abstract final class DtoMapper {
       blockedBy: [
         for (final id in [...planned.openDependencies, ...planned.missingDependencies]) id.value,
       ],
+      conflicting: planned.isConflicting,
+      conflictsWith: [for (final id in planned.conflictsWith) id.value],
       children: Progress(planned.childCount - planned.openChildCount, planned.childCount),
       checklist: Progress(planned.checklist.done, planned.checklist.total),
       claim: claim == null ? null : DtoMapper.claim(claim, expired: planned.isClaimExpired),
@@ -82,6 +85,8 @@ abstract final class DtoMapper {
       dependencies: [for (final id in item.dependsOn) _link(id, snapshot)],
       dependents: [for (final other in snapshot.dependentsOf(item.id)) _link(other.id, snapshot)],
       related: [for (final id in item.related) _link(id, snapshot)],
+      conflicts: [for (final id in planned.conflictsWith) _link(id, snapshot)],
+      waiting: [for (final other in snapshot.waitingOn(item.id)) _link(other.id, snapshot)],
     );
   }
 

@@ -7,6 +7,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../model/item_dto.dart';
 import '../model/json.dart';
 import '../model/misc_dto.dart';
+import '../model/project_dto.dart';
 import '../model/requests.dart';
 import '../model/view_dto.dart';
 import '../model/workflow_dto.dart';
@@ -19,6 +20,7 @@ final class HttpBacklogApi implements BacklogApi {
   HttpBacklogApi(
     this.baseUri, {
     this.token,
+    this.project,
     http.Client? client,
     SocketConnector? connectSocket,
     this.reconnectDelay = const Duration(seconds: 2),
@@ -28,6 +30,10 @@ final class HttpBacklogApi implements BacklogApi {
   /// Server address, e.g. `http://192.168.1.10:8640`.
   final Uri baseUri;
   final String? token;
+
+  /// Project whose paths (`/api/p/<id>/…`) are used; null for the server's
+  /// default project.
+  final String? project;
   final Duration reconnectDelay;
   final http.Client _client;
   final SocketConnector _connectSocket;
@@ -125,7 +131,7 @@ final class HttpBacklogApi implements BacklogApi {
     userInfo: baseUri.userInfo,
     host: baseUri.host,
     port: baseUri.port,
-    path: path,
+    path: project == null ? path : ApiPaths.inProject(project!, path),
     queryParameters: query.isEmpty ? null : query,
   );
 
@@ -172,6 +178,31 @@ final class HttpBacklogApi implements BacklogApi {
 
   static List<Json> _list(Object? json) =>
       json is List<Object?> ? json.map(asJson).toList() : throw MalformedPayloadException('Expected a list.');
+
+  void close() => _client.close();
+}
+
+/// [ProjectsApi] over HTTP; the per-project APIs share its HTTP client.
+final class HttpProjectsApi implements ProjectsApi {
+  HttpProjectsApi(this.baseUri, {this.token, http.Client? client, SocketConnector? connectSocket})
+    : _client = client ?? http.Client(),
+      _connectSocket = connectSocket ?? WebSocketChannel.connect;
+
+  final Uri baseUri;
+  final String? token;
+  final http.Client _client;
+  final SocketConnector _connectSocket;
+  late final _default = HttpBacklogApi(baseUri, token: token, client: _client, connectSocket: _connectSocket);
+
+  @override
+  Future<List<ProjectDto>> projects() async {
+    final json = await _default._get(ApiPaths.projects);
+    return HttpBacklogApi._list(json).map(ProjectDto.fromJson).toList();
+  }
+
+  @override
+  BacklogApi project(String id) =>
+      HttpBacklogApi(baseUri, token: token, project: id, client: _client, connectSocket: _connectSocket);
 
   void close() => _client.close();
 }

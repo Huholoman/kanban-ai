@@ -1,5 +1,6 @@
 import '../../shared/errors.dart';
 import 'appearance.dart';
+import 'dispatcher_config.dart';
 
 /// What a status means for planning, independently of its name.
 enum StatusCategory {
@@ -51,6 +52,7 @@ final class Workflow {
     String? defaultType,
     Duration claimLease = const Duration(hours: 4),
     Appearance appearance = Appearance.none,
+    DispatcherConfig? dispatcher,
   }) {
     _require(statuses.isNotEmpty, 'At least one status is required.');
     _requireUnique(statuses.map((s) => s.id), 'status');
@@ -94,6 +96,7 @@ final class Workflow {
       defaultType: type,
       claimLease: claimLease,
       appearance: appearance,
+      dispatcher: dispatcher,
     );
   }
 
@@ -109,6 +112,7 @@ final class Workflow {
     required this.defaultType,
     required this.claimLease,
     required this.appearance,
+    required this.dispatcher,
   });
 
   /// The workflow `backlog init` writes out.
@@ -146,6 +150,10 @@ final class Workflow {
 
   /// Colours and default mode of the web board.
   final Appearance appearance;
+
+  /// Who starts agents on ready work; null when `backlog.yaml` has no
+  /// `dispatcher` section (the dispatcher is off).
+  final DispatcherConfig? dispatcher;
 
   StatusDefinition? status(String id) {
     for (final status in statuses) {

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:backlog_api/backlog_api.dart';
@@ -34,8 +33,7 @@ void main() {
     token: token,
     client: inMemory(
       BacklogServer.buildHandler(
-        host: BacklogHost(dir.path, clock: clock),
-        events: const Stream.empty(),
+        projects: ProjectHub.single(BacklogHost(dir.path, clock: clock)),
         token: serverToken,
       ),
     ),
@@ -83,6 +81,32 @@ void main() {
     final detail = await api.item(first.item.id.substring(2));
     expect(detail.dependents.single.id, second.item.id);
     expect(detail.item.body, '');
+  });
+
+  test('touches: created, edited, and an overlapping open item waits', () async {
+    final doing = await api.createItem(const NewItemRequest(title: 'Payments', touches: ['lib/pay/']));
+    await api.claim(doing.item.id, const ClaimRequest(agent: 'm2'));
+    final waiting = await api.createItem(
+      const NewItemRequest(title: 'Stripe', status: 'todo', touches: ['lib/pay/stripe.dart']),
+    );
+    expect(waiting.item.touches, ['lib/pay/stripe.dart']);
+    expect(waiting.item.conflicting, isTrue);
+    expect(waiting.item.conflictsWith, [doing.item.id]);
+    expect(waiting.item.ready, isFalse);
+    expect(waiting.conflicts.single.title, 'Payments');
+    expect((await api.item(doing.item.id)).waiting.single.id, waiting.item.id);
+
+    final moved = await api.updateItem(
+      waiting.item.id,
+      ItemUpdateRequest(
+        changes: [
+          ItemUpdateRequest.set('touches', ['lib/stripe/', 'docs/*.{md,txt}']),
+        ],
+      ),
+    );
+    expect(moved.item.touches, ['lib/stripe/', 'docs/*.{md,txt}']);
+    expect(moved.item.conflicting, isFalse);
+    expect(moved.item.ready, isTrue);
   });
 
   test('update edits fields and body and keeps the file tidy', () async {
@@ -243,7 +267,7 @@ void main() {
     expect(() => client(serverToken: 'secret').items(), throwsA(apiError(401, 'unauthorized')));
     expect(await client(token: 'secret', serverToken: 'secret').items(), isEmpty);
     final health = await inMemory(
-      BacklogServer.buildHandler(host: BacklogHost(dir.path), events: const Stream.empty(), token: 'secret'),
+      BacklogServer.buildHandler(projects: ProjectHub.single(BacklogHost(dir.path)), token: 'secret'),
     ).get(Uri.parse('http://backlog.test/api/health'));
     expect(health.statusCode, 200);
   });

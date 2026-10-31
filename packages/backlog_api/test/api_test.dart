@@ -27,6 +27,9 @@ void main() {
       extra: const {'estimate': '3d'},
       blocked: true,
       blockedBy: const ['T-2'],
+      touches: const ['lib/*.{dart,yaml}'],
+      conflicting: true,
+      conflictsWith: const ['T-3'],
       children: const Progress(1, 3),
       checklist: const Progress(2, 5),
       claim: claim,
@@ -48,6 +51,8 @@ void main() {
         item: item,
         parent: const ItemLinkDto(id: 'T-0', title: 'Epic', status: 'todo', category: StatusCategoryDto.open),
         dependencies: const [ItemLinkDto(id: 'T-9')],
+        conflicts: const [ItemLinkDto(id: 'T-3', title: 'Other', status: 'review')],
+        waiting: const [ItemLinkDto(id: 'T-4', title: 'Later', status: 'todo')],
       );
       final detailCopy = roundTrip(detail.toJson(), ItemDetailDto.fromJson);
       expect(detailCopy.toJson(), detail.toJson());
@@ -167,6 +172,43 @@ void main() {
       expect(requested.map((uri) => uri.toString()), [
         'http://server:8640/api/views',
         'ws://server:8640/api/events?token=t0k',
+      ]);
+    });
+
+    test('projects: list from /api/projects, per-project paths under /api/p/<id>', () async {
+      final requested = <Uri>[];
+      final projects = HttpProjectsApi(
+        Uri.parse('http://server:8640/'),
+        token: 't0k',
+        client: MockClient((request) async {
+          requested.add(request.url);
+          final body = request.url.path == ApiPaths.projects
+              ? jsonEncode([
+                  const ProjectDto(id: 'kanban-ai', name: 'kanban-ai', path: '/p/kanban-ai/backlog').toJson(),
+                  const ProjectDto(id: 'hobbyo', name: 'Hobbyo', path: '/p/hobbyo/backlog', error: 'missing').toJson(),
+                ])
+              : '[]';
+          return http.Response(body, 200, headers: {'content-type': 'application/json'});
+        }),
+        connectSocket: (uri) {
+          requested.add(uri);
+          throw StateError('no socket in tests');
+        },
+      );
+      final list = await projects.projects();
+      expect(list.map((p) => p.id), ['kanban-ai', 'hobbyo']);
+      expect(list.map((p) => p.isAvailable), [true, false]);
+      final api = projects.project('hobbyo') as HttpBacklogApi;
+      await api.views();
+      await api.lint();
+      final subscription = api.changes().listen(null);
+      await pumpEventQueue();
+      await subscription.cancel();
+      expect(requested.map((uri) => uri.toString()), [
+        'http://server:8640/api/projects',
+        'http://server:8640/api/p/hobbyo/views',
+        'http://server:8640/api/p/hobbyo/lint',
+        'ws://server:8640/api/p/hobbyo/events?token=t0k',
       ]);
     });
   });

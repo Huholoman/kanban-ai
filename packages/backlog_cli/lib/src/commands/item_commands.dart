@@ -9,7 +9,13 @@ import 'backlog_command.dart';
 
 final class InitCommand extends BacklogCommand {
   InitCommand(super.context) {
-    argParser.addOption('prefix', defaultsTo: 'T', help: 'Prefix of item ids.');
+    argParser
+      ..addOption('prefix', defaultsTo: 'T', help: 'Prefix of item ids.')
+      ..addFlag(
+        'register',
+        defaultsTo: true,
+        help: 'Add the new backlog to the project registry (see `backlog projects`).',
+      );
   }
 
   @override
@@ -25,7 +31,24 @@ final class InitCommand extends BacklogCommand {
   Future<int> run() async {
     final folder = args.rest.isEmpty ? '.' : args.rest.single;
     final layout = await Backlog.init(p.join(context.cwd, folder), idPrefix: args.option('prefix')!);
-    json ? emitJson({'root': layout.root}) : line('Created backlog in ${layout.root}');
+    ProjectEntry? project;
+    String? registered;
+    final registry = args.flag('register') ? projectService() : null;
+    if (registry != null) {
+      try {
+        final (entry, added) = await registry.ensure(layout.root);
+        project = entry;
+        if (added) registered = 'Registered as project ${entry.id} in ${registry.location}';
+      } on BacklogException catch (error) {
+        context.err.writeln('warning: not registered in ${registry.location}: ${error.message}');
+      }
+    }
+    json
+        ? emitJson({
+            'root': layout.root,
+            if (project != null) 'project': {'id': project.id, 'name': project.displayName},
+          })
+        : lines(['Created backlog in ${layout.root}', ?registered]);
     return 0;
   }
 }
@@ -42,6 +65,11 @@ final class NewCommand extends BacklogCommand {
       ..addMultiOption('related')
       ..addMultiOption('label', abbr: 'l')
       ..addMultiOption('doc')
+      ..addMultiOption(
+        'touches',
+        help: 'Paths or globs in the code repository the work will change (repeat or separate by commas).',
+        splitCommas: false,
+      )
       ..addOption('assignee')
       ..addOption('branch')
       ..addOption('pr', help: 'Link to the pull request.')
@@ -80,6 +108,7 @@ final class NewCommand extends BacklogCommand {
         related: args.multiOption('related'),
         labels: args.multiOption('label'),
         docs: args.multiOption('doc'),
+        touches: args.multiOption('touches').expand(FieldChange.splitList).toList(),
         assignee: args.option('assignee'),
         branch: args.option('branch'),
         pr: args.option('pr'),
@@ -181,7 +210,7 @@ final class SetCommand extends BacklogCommand {
 
   @override
   String get description =>
-      'Change fields: status=review  labels+=infra  depends_on-=T-7f3a  milestone=  (empty clears).';
+      'Change fields: status=review  labels+=infra  depends_on-=T-7f3a  touches+=lib/a/  milestone=  (empty clears).';
 
   @override
   String get invocation => 'backlog set <id> <field=value>...';
