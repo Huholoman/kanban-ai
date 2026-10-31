@@ -184,6 +184,24 @@ class _Comment extends StatelessWidget {
                 style: small?.copyWith(color: tokens.muted),
               ),
               if (comment.note) Tag('note', icon: Icons.sticky_note_2_outlined, color: tokens.muted),
+              if (comment.review case final review?)
+                Tag(
+                  review == 'ok'
+                      ? 'review ✓'
+                      : comment.findings == 0
+                      ? 'review: changes'
+                      : 'review: ${comment.findings} finding${comment.findings == 1 ? '' : 's'}',
+                  icon: Icons.rate_review_outlined,
+                  color: review == 'ok' ? tokens.success : tokens.warning,
+                ),
+              if (comment.commit case final commit?)
+                Tooltip(
+                  message: 'The reviewed commit',
+                  child: Text(
+                    commit.length > 7 ? commit.substring(0, 7) : commit,
+                    style: small?.copyWith(color: tokens.muted),
+                  ),
+                ),
               if (comment.question)
                 Tag(
                   open ? 'question · waits for you' : 'question',

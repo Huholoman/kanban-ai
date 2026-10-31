@@ -33,7 +33,7 @@ abstract final class TextOutput {
       if (planned.isBlocked) 'blocked by ${[...planned.openDependencies, ...planned.missingDependencies].join(',')}',
       if (planned.isConflicting) 'waits for ${planned.conflictsWith.join(',')} (touches overlap)',
       if (planned.needsHuman) 'needs a person (question by ${planned.item.discussion.openQuestion!.author})',
-      if (_review(planned) case final review?) review,
+      ?_review(planned),
       if (planned.childCount > 0) 'children ${planned.childCount - planned.openChildCount}/${planned.childCount}',
       if (!checklist.isEmpty) 'checklist $checklist',
     ];

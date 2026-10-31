@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import '../../../shared/copyable_id.dart';
 import '../../../shared/item_style.dart';
 import '../../../shared/pr_link.dart';
+import '../../../shared/review_badge.dart';
 import '../../../shared/tokens.dart';
 
 /// Compact summary of an item for boards and lists: id and priority, the
 /// title and one meta line that tells the state (waits for you, ready,
 /// blocked, waiting for overlapping work, claimed, claim expired, or just
-/// labels); a card that waits for a person has a warning border.
+/// labels), the AI review and the pull request; a card that waits for a
+/// person has a warning border.
 class ItemCard extends StatelessWidget {
   const ItemCard({
     super.key,
@@ -188,6 +190,7 @@ class ItemCard extends StatelessWidget {
       if (item.milestone != null) parts.add(Text(item.milestone!, style: base));
       if (item.assignee != null && !item.isDone) parts.add(Text('@${item.assignee}', style: base));
     }
+    if (!item.isDone && ReviewBadge.label(item) != null) parts.add(ReviewBadge(item));
     if (item.pr case final pr?) {
       parts.add(PrLink(pr));
       if (item.branch != null) parts.add(Text(item.branch!, style: base));

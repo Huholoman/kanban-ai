@@ -6,6 +6,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../../../shared/item_style.dart';
 import '../../../shared/pr_link.dart';
+import '../../../shared/review_badge.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
 import '../application/item_body.dart';
@@ -538,6 +539,7 @@ class _Status extends StatelessWidget {
     final tags = [
       if (item.needsHuman) Tag('waits for you', icon: Icons.help_outline, color: tokens.warning),
       if (item.ready) Tag('ready to pick', icon: Icons.play_arrow, color: tokens.success),
+      if (ReviewBadge.label(item) != null) ReviewBadge(item),
       if (claim != null)
         Tag(
           '${claim.expired ? 'expired claim' : 'claimed'} by ${claim.agent} until ${_time(claim.expiresAt)}',
