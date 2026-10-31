@@ -55,7 +55,12 @@ class ItemController extends ChangeNotifier {
   ItemDetailDto? preview(String id) => _previews[id];
 
   Future<void> start() async {
-    _changes ??= DebouncedChanges(_api, () => unawaited(load(quiet: true)), delay: _refreshDelay);
+    _changes ??= DebouncedChanges(
+      _api,
+      (_) => unawaited(load(quiet: true)),
+      delay: _refreshDelay,
+      watched: const {BacklogPart.workflow, BacklogPart.items},
+    );
     await load();
   }
 

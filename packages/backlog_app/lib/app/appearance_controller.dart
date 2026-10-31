@@ -31,7 +31,12 @@ class AppearanceController extends ChangeNotifier {
       };
 
   Future<void> start() async {
-    _changes ??= DebouncedChanges(_api, () => unawaited(load()), delay: _refreshDelay);
+    _changes ??= DebouncedChanges(
+      _api,
+      (_) => unawaited(load()),
+      delay: _refreshDelay,
+      watched: const {BacklogPart.workflow},
+    );
     await load();
   }
 
