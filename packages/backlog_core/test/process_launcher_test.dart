@@ -254,6 +254,13 @@ dispatcher:
     await backlog.items.comment('T-0001', author: 'tobik', text: 'CSV.');
     next = await plan();
     expect(next.assignments.single.key, 'T-0001@wt-1+resume');
+    await launcher.launch(next.assignments.single);
+    await waitForLog('T-0001', 'agent wt-1');
+    final log = await logOf('T-0001');
+    expect(log, contains('args T-0001 --resume sess-T-0001'));
+    expect(log, contains('### tobik · 2026-10-31 12:05:00 UTC\n\nCSV.'));
+    expect(log, isNot(contains('CSV or JSON?')), reason: 'its own question is not news');
+    await finish('T-0001', 0);
   });
 
   test('worktrees with uncommitted changes or without git are not free', () async {

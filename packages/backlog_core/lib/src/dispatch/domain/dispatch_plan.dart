@@ -152,7 +152,7 @@ final class DispatchAssignment {
     final session = resume != null && resume.resumableBy(profile, worktree.name) ? resume : null;
     final prompt = session == null
         ? config.prompt.render(values)
-        : config.resumePrompt.render({...values, 'news': session.news()});
+        : config.resumePrompt.render({...values, 'news': session.news(session.repliesIn(item.item))});
     final full = {...values, 'prompt': prompt, 'session': ?session?.id};
     return DispatchAssignment(
       item: item,
@@ -237,6 +237,18 @@ final class DispatchPlan {
     this.sessions = const {},
   });
 
+  /// Whether a person (anyone but the agent) commented on unfinished,
+  /// unclaimed [planned] since its last agent [session] started, and
+  /// [config]'s agent can continue that session: the dispatcher then
+  /// resumes it with the comments, whatever the item's status and hold.
+  static bool hasReplies(PlannedItem planned, AgentSession? session, DispatcherConfig config) =>
+      session != null &&
+      !planned.isDone &&
+      !planned.isClaimed &&
+      !planned.needsHuman &&
+      session.resumableBy(config.agent, session.worktree) &&
+      session.repliesIn(planned.item).isNotEmpty;
+
   /// The free worktree in [free] where [config]'s agent can continue [session].
   static WorktreeState? _resumableIn(AgentSession? session, DispatcherConfig config, List<WorktreeState> free) =>
       session == null ? null : free.firstWhereOrNull((w) => session.resumableBy(config.agent, w.name));
@@ -271,17 +283,27 @@ final class DispatchPlan {
     final running = worktrees.where((w) => w.isBusy).length;
     final free = worktrees.where((w) => w.isFree).toList();
     final slots = (config.maxAgents - running).clamp(0, free.length);
-    final ready = snapshot.ready.where((item) => !conditions.held.containsKey(item.id)).toList();
+    final runningItems = {for (final run in conditions.runs) run.item};
+    // A person wrote to an agent whose session can go on: first, even when held.
+    final replied = [
+      for (final planned in snapshot.items)
+        if (!runningItems.contains(planned.id) && hasReplies(planned, conditions.sessions[planned.id], config)) planned,
+    ];
+    final ready = [
+      ...replied,
+      for (final item in snapshot.ready)
+        if (!conditions.held.containsKey(item.id) && !replied.contains(item)) item,
+    ];
 
     final assignments = <DispatchAssignment>[];
     final left = <PlannedItem>[];
     for (final (index, candidate) in ready.indexed) {
-      if (assignments.length >= slots || free.isEmpty) {
-        left.add(candidate);
-        continue;
-      }
       final session = conditions.sessions[candidate.id];
       final own = _resumableIn(session, config, free);
+      if (assignments.length >= slots || free.isEmpty || (own == null && !candidate.isReady)) {
+        left.add(candidate); // a reply waits for the worktree of its session
+        continue;
+      }
       // Leave the worktrees that later items could continue their sessions in to them.
       final reserved = {
         for (final later in ready.skip(index + 1))
@@ -316,7 +338,7 @@ final class DispatchPlan {
       sessions: conditions.sessions,
       held: List.unmodifiable([
         for (final item in snapshot.ready)
-          if (conditions.held[item.id] case final reason?) (item: item, reason: reason),
+          if (conditions.held[item.id] case final reason? when !replied.contains(item)) (item: item, reason: reason),
       ]),
       recheckAt: recheckAt,
     );
@@ -327,10 +349,13 @@ final class DispatchPlan {
   final String backlogRoot;
   final List<WorktreeState> worktrees;
 
-  /// What should start now, most urgent first.
+  /// What should start now: items with replies for their agent first
+  /// ([hasReplies]), then ready ones, most urgent first.
   final List<DispatchAssignment> assignments;
 
-  /// Ready items left over for lack of free worktrees or of the limit.
+  /// Ready items left over for lack of free worktrees or of the limit, and
+  /// items with replies for their agent ([hasReplies]) whose session's
+  /// worktree is not free.
   final List<PlannedItem> waiting;
 
   /// Ready items the dispatcher does not start by itself, with the reason.
@@ -364,13 +389,15 @@ final class DispatchPlan {
   bool get hasUnavailable => worktrees.any((w) => w.unavailable != null);
 
   /// The assignment for starting [reference] by hand, now: the item must be
-  /// ready (held items are fine) and a worktree free within `max_agents`.
-  /// The agent continues the item's last session when it can (in the
-  /// worktree of that session, if free), unless [fresh]; otherwise the first
-  /// free worktree is used even when the plan gives it to a more urgent item.
+  /// ready (held items are fine) or have replies for its agent
+  /// ([hasReplies]), and a worktree free within `max_agents`. The agent
+  /// continues the item's last session when it can (in the worktree of that
+  /// session, if free), unless [fresh]; otherwise the first free worktree is
+  /// used even when the plan gives it to a more urgent item.
   DispatchAssignment assignmentFor(String reference, {bool fresh = false}) {
     final planned = snapshot[ItemReference.resolve(reference, snapshot.ids)]!;
-    if (!planned.isReady) throw _notReady(planned);
+    final replied = !fresh && hasReplies(planned, sessions[planned.id], config);
+    if (!planned.isReady && !replied) throw _notReady(planned);
     final free = worktrees.where((w) => w.isFree).toList();
     if (free.isEmpty || capacity == 0) {
       final reasons = [
@@ -383,6 +410,12 @@ final class DispatchPlan {
     }
     final session = fresh ? null : sessions[planned.id];
     final own = _resumableIn(session, config, free);
+    if (own == null && !planned.isReady) {
+      throw UnavailableException(
+        'The worktree ${session!.worktree} of the session of ${planned.id} is not free; '
+        'its agent continues there once it is.',
+      );
+    }
     final target = own ?? free.first;
     return DispatchAssignment.render(
       config,

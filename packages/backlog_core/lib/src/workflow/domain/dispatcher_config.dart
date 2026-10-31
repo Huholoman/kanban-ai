@@ -350,7 +350,8 @@ final class DispatcherConfig {
   static const promptPlaceholders = ['id', 'title', 'worktree', 'path', 'backlog', 'branch'];
 
   /// What the prompt of a resumed session may refer to: [promptPlaceholders]
-  /// and `{news}`, what happened since the agent's last run.
+  /// and `{news}`, what happened since the agent's last run (how it ended,
+  /// new comments of others in the discussion).
   static const resumePromptPlaceholders = [...promptPlaceholders, 'news'];
 
   /// The prompt every agent gets unless `dispatcher.prompt` replaces it.
@@ -374,9 +375,16 @@ final class DispatcherConfig {
       'You are the coding agent {worktree} again, continuing your earlier session on backlog item {id} ("{title}"). '
       'The item is claimed for you again and the worktree is on branch {branch}.\n'
       'Since your last run: {news}\n'
-      'Run `backlog show {id}` to see the item as it is now, then continue the work under the same rules as before: '
-      'small commits containing {id} on {branch}, `backlog set {id} status=review` when finished, never push. '
-      'If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"` and stop.';
+      'Run `backlog show {id}` to see the item as it is now. Then:\n'
+      '- If the new comments only ask you something (e.g. why you did something), answer with '
+      '`backlog comment {id} "…"` and stop: change no code and leave the status as it is.\n'
+      '- If they answer your question or ask for changes, reply briefly with `backlog comment {id} "…"` and '
+      'continue the work under the same rules as before: small commits containing {id} on {branch}, '
+      '`backlog set {id} status=review` when finished, never push.\n'
+      '- Without new comments, continue the work under the same rules.\n'
+      '- If the discussion changed what the item asks for, update its description or acceptance criteria in the body '
+      'above `## Discussion` (never edit the comments) and say so in your comment.\n'
+      '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.';
 
   /// In order of preference: free work goes to the first free worktree.
   final List<WorktreeDefinition> worktrees;

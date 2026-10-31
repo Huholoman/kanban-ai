@@ -147,7 +147,8 @@ void main() {
       expect(resumed.command, [
         'bot',
         '-p',
-        'Again T-2 in w1: your last run exited with code 1; it left in-progress, released and held.',
+        'Again T-2 in w1: your last run exited with code 1; it left in-progress, released and held. '
+            'No new comments in the discussion.',
         '--resume',
         'sess-T-2',
       ]);
@@ -185,6 +186,56 @@ void main() {
       );
       expect(plan.assignmentFor('T-1').key, 'T-1@w2+resume');
       expect(plan.assignmentFor('T-1', fresh: true).key, 'T-1@w1');
+    });
+
+    test('a reply of a person resumes the session first, whatever the status or hold', () {
+      const reply =
+          '## Discussion\n\n### w1 · 2026-10-29 10:30:00 UTC\n\nDone.\n\n'
+          '### tobik · 2026-10-29 11:30:00 UTC\n\nWhy CSV?\n';
+      final plan = _plan(
+        [item('T-1', priority: 'p0'), item('T-2', status: 'review', body: reply)],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        conditions: DispatchConditions(
+          sessions: {ItemId('T-2'): _session('T-2', 'w1')},
+          held: {ItemId('T-2'): 'stopped'},
+        ),
+      );
+      expect(plan.assignments.map((a) => a.key), ['T-2@w1+resume', 'T-1@w2']);
+      expect(plan.held, isEmpty);
+      final prompt = plan.assignments.first.prompt;
+      expect(
+        prompt,
+        contains('New comments in the item\'s discussion since then:\n\n### tobik · 2026-10-29 11:30:00 UTC'),
+      );
+      expect(prompt, contains('Why CSV?'));
+      expect(prompt, isNot(contains('Done.')), reason: 'the agent\'s own comments are not news');
+      expect(plan.assignmentFor('T-2').key, 'T-2@w1+resume');
+      expect(() => plan.assignmentFor('T-2', fresh: true), throwsA(isA<InvalidInputException>()));
+    });
+
+    test('replies wait for the session worktree; own comments and old comments are no replies', () {
+      const reply = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nWhy?\n';
+      final busy = _plan(
+        [item('T-1', status: 'in-progress'), item('T-2', status: 'review', body: reply)],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        claims: [_claim('T-1', 'w1')],
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+      );
+      expect(busy.assignments, isEmpty);
+      expect(busy.waiting.map((i) => '${i.id}'), ['T-2']);
+      expect(() => busy.assignmentFor('T-2'), throwsA(isA<UnavailableException>()));
+
+      for (final body in [
+        '## Discussion\n\n### w1 · 2026-10-29 11:30:00 UTC\n\nNote to self.\n',
+        '## Discussion\n\n### tobik · 2026-10-29 09:30:00 UTC\n\nBefore the run.\n',
+      ]) {
+        final quiet = _plan(
+          [item('T-2', status: 'review', body: body)],
+          workflow: _resumingWorkflow(),
+          conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+        );
+        expect(quiet.assignments, isEmpty, reason: body);
+      }
     });
 
     test('sameDecisionAs compares assignments, waiting items and busy worktrees', () {

@@ -1,3 +1,5 @@
+import '../../items/domain/discussion.dart';
+import '../../items/domain/item.dart';
 import '../../items/domain/item_id.dart';
 import '../../workflow/domain/dispatcher_config.dart';
 
@@ -39,9 +41,17 @@ final class AgentSession {
   bool resumableBy(AgentProfile profile, String worktreeName) =>
       profile.canResume && profile.name == agent && worktree == worktreeName;
 
-  /// What happened since this run, for the `{news}` of the resume prompt.
-  String news() {
+  /// Comments in [item]'s discussion written since this run started by
+  /// someone other than the agent: what a person said to it meanwhile.
+  List<Comment> repliesIn(Item item) => item.discussion.after(startedAt, except: worktree);
+
+  /// What happened since this run, for the `{news}` of the resume prompt:
+  /// how it ended and the [replies] (see [repliesIn]).
+  String news([List<Comment> replies = const []]) {
     final ended = [?reason, ?outcome].join('; ');
-    return ended.isEmpty ? 'your last run ended.' : 'your last run $ended.';
+    final run = ended.isEmpty ? 'your last run ended.' : 'your last run $ended.';
+    if (replies.isEmpty) return '$run No new comments in the discussion.';
+    final comments = [for (final comment in replies) '${comment.heading}\n\n${comment.text}'].join('\n\n');
+    return '$run New comments in the item\'s discussion since then:\n\n$comments\n';
   }
 }
