@@ -21,14 +21,20 @@ final class FileSystemItemRepository implements ItemRepository {
   final MarkdownItemCodec _codec;
   final Map<ItemId, String> _paths = {};
 
+  /// Reads every item file.
+  ///
+  /// Listing and reading are synchronous on purpose: for thousands of small
+  /// files the asynchronous calls cost several times more than the reading
+  /// itself (5 000 items: ~0.9 s file by file, ~0.45 s all at once, ~0.1 s
+  /// synchronously), and the decoding that follows blocks the isolate anyway.
   @override
   Future<ItemCatalog> load() async {
     final items = <Item>[];
     final problems = <LoadProblem>[];
     _paths.clear();
-    for (final file in await _itemFiles()) {
+    for (final file in _itemFiles()) {
       try {
-        final item = _codec.decode(await file.readAsString());
+        final item = _codec.decode(file.readAsStringSync());
         items.add(item);
         _paths.putIfAbsent(item.id, () => file.path);
       } on FormatException catch (e) {
@@ -59,18 +65,18 @@ final class FileSystemItemRepository implements ItemRepository {
     return _paths[id];
   }
 
-  Future<List<File>> _itemFiles() async {
+  List<File> _itemFiles() {
     final dir = Directory(_layout.itemsDir);
-    if (!await dir.exists()) return const [];
+    if (!dir.existsSync()) return const [];
     final files = <File>[];
-    await for (final entity in dir.list(followLinks: false)) {
+    for (final entity in dir.listSync(followLinks: false)) {
       final name = p.basename(entity.path);
       if (name.startsWith('.')) continue;
       if (entity is File && name.endsWith('.md')) {
         files.add(entity);
       } else if (entity is Directory) {
         final index = File(p.join(entity.path, 'index.md'));
-        if (await index.exists()) files.add(index);
+        if (index.existsSync()) files.add(index);
       }
     }
     return files..sort((a, b) => a.path.compareTo(b.path));
