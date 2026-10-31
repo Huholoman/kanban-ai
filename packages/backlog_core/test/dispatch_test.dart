@@ -393,14 +393,19 @@ void main() {
     late _RecordingLauncher launcher;
     late List<Object> errors;
 
-    Future<Dispatcher> start(String mode, {int? maxAgents, List<String> worktrees = const ['w1', 'w2']}) async {
+    Future<Dispatcher> start(
+      String mode, {
+      int? maxAgents,
+      List<String> worktrees = const ['w1', 'w2'],
+      bool resuming = false,
+    }) async {
       final config =
           '''
 dispatcher:
   mode: $mode
   ${maxAgents == null ? '' : 'max_agents: $maxAgents'}
   worktrees: [${worktrees.join(', ')}]
-  command: agent {id}
+  ${resuming ? 'agent: bot\n  agents:\n    bot:\n      command: bot -p {prompt}\n      output: claude-stream-json\n      resume: --resume {session}' : 'command: agent {id}'}
 ''';
       (backlog, clock) = await tempBacklog(config: config);
       timers = _FakeTimers();
@@ -463,6 +468,28 @@ dispatcher:
       expect(launcher.launched, isEmpty);
       expect(plans, hasLength(1), reason: 'only changes are published');
       expect(dispatcher.current!.assignments.map((a) => a.key), ['T-0001@w1']);
+    });
+
+    test('manual mode wakes an agent a person replied to, and only that', () async {
+      final dispatcher = await start('manual', resuming: true);
+      launcher.claims = false;
+      await todo('A');
+      await backlog.items.create(NewItem(title: 'B', status: 'review'));
+      launcher.given = DispatchConditions(sessions: {ItemId('T-0002'): _session('T-0002', 'w2')});
+      await dispatcher.evaluate();
+      expect(launcher.launched, isEmpty, reason: 'no reply yet; new work is only proposed');
+
+      await backlog.items.comment('T-0002', author: 'tobik', text: 'Just context.', note: true);
+      await backlog.items.comment('T-0002', author: 'w3', text: 'Review.', review: ReviewVerdict.changes);
+      await dispatcher.evaluate();
+      expect(launcher.launched, isEmpty, reason: 'notes and reviews wake nobody');
+
+      await backlog.items.comment('T-0002', author: 'kanban-ai', text: 'The merge failed: rebase on main.');
+      final plan = await dispatcher.evaluate();
+      expect(plan!.assignments.map((a) => a.key), ['T-0002@w2+resume', 'T-0001@w1']);
+      expect(launcher.launched, ['T-0002@w2+resume'], reason: 'T-0001 stays a proposal');
+      await dispatcher.evaluate();
+      expect(launcher.launched, hasLength(1), reason: 'launched once');
     });
 
     test('changes are debounced into one evaluation', () async {

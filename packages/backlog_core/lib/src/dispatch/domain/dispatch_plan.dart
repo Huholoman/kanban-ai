@@ -461,6 +461,17 @@ final class DispatchPlan {
       session.resumableBy(config.agent, session.worktree) &&
       session.repliesIn(planned.item).isNotEmpty;
 
+  /// Whether [assignment] continues a session because a person replied to
+  /// its agent ([hasReplies]): such starts run in manual mode too.
+  bool isReply(DispatchAssignment assignment) {
+    final planned = snapshot[assignment.id];
+    return assignment.resume != null &&
+        assignment.action == null &&
+        assignment.fix == null &&
+        planned != null &&
+        hasReplies(planned, sessions[assignment.id], config);
+  }
+
   /// The free, existing worktree in [free] where [config]'s agent can
   /// continue [session]; a new worktree never holds a session.
   static WorktreeState? _resumableIn(AgentSession? session, AgentProfile profile, List<WorktreeState> free) =>

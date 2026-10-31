@@ -473,7 +473,7 @@ void main() {
       expect(launcher.started.last, '${a.item.id}@w2+resume');
     });
 
-    test('a reply on an item in review is proposed and starts its session again', () async {
+    test('a reply on an item in review starts its session again, in manual mode too', () async {
       final config = File(p.join(dir.path, 'backlog.yaml'));
       config.writeAsStringSync(
         config.readAsStringSync().replaceFirst(
@@ -497,11 +497,7 @@ void main() {
       expect((await api.dispatch()).assignments, isEmpty);
       await api.comment(a.item.id, const CommentRequest('Why this way?', author: 'tobik'));
       await dispatcher.evaluate(); // the change feed would trigger it
-      final plan = await api.dispatch();
-      expect(plan.assignments.single.item, a.item.id);
-      expect(plan.assignments.single.resume, 'sess-a');
-      await api.startAgent(a.item.id);
-      expect(launcher.started, ['${a.item.id}@w2+resume']);
+      expect(launcher.started, ['${a.item.id}@w2+resume'], reason: 'a reply is an explicit instruction');
       expect((await api.item(a.item.id)).item.status, 'review', reason: 'claiming keeps an active status');
     });
 

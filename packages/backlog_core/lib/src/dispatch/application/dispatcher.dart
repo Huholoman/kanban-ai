@@ -17,7 +17,8 @@ import '../domain/dispatch_plan.dart';
 typedef TimerFactory = Timer Function(Duration delay, void Function() callback);
 
 /// Keeps a [DispatchPlan] up to date and, in [DispatchMode.auto], hands its
-/// assignments to an [AgentLauncher].
+/// assignments to an [AgentLauncher]; in [DispatchMode.manual] only those
+/// that wake an agent a person replied to ([DispatchPlan.isReply]).
 ///
 /// Whoever watches the backlog calls [notifyChanged]; bursts of changes are
 /// collected for [debounce] and evaluated once. Evaluations never overlap,
@@ -194,8 +195,12 @@ final class Dispatcher {
     final keys = {...?plan?.assignments.map((a) => a.key)};
     _launched.retainAll(keys);
     var launched = false;
-    if (launchAuto && plan != null && plan.mode == DispatchMode.auto) {
+    if (launchAuto && plan != null) {
+      // Manual mode takes no new work by itself, but replies to an agent
+      // (a person's comment, a failed merge) wake it like in auto mode.
+      final auto = plan.mode == DispatchMode.auto;
       for (final assignment in plan.assignments) {
+        if (!auto && !plan.isReply(assignment)) continue;
         if (!_launched.add(assignment.key)) continue;
         try {
           await _launcher.launch(assignment);

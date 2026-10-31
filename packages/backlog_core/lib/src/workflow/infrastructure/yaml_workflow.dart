@@ -520,7 +520,7 @@ claims:
 # {worktree}, {path} (absolute path of the worktree), {backlog} (absolute path
 # of this folder), {branch}; commands and env also {prompt}.
 # dispatcher:
-#   mode: manual          # manual: propose, a person starts | auto: start by itself
+#   mode: manual          # manual: propose, a person starts (replies still wake agents) | auto: start by itself
 #   max_agents: 2         # at most this many at once (default: one per worktree)
 #   worktrees:            # path relative to this folder; a bare name means ../<name>
 #     - name: monorepo-2
