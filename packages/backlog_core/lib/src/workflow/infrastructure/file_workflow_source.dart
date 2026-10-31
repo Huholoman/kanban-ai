@@ -67,7 +67,8 @@ final class FileWorkflowSource implements WorkflowSource {
   }
 }
 
-/// [source] (a `backlog.yaml`) with [edit] applied, keeping everything else.
+/// [source] (a `backlog.yaml`) with [edit] applied, keeping everything else
+/// (except comments inside a list entry that gets a new key).
 /// Throws [InvalidInputException] when the path does not fit the document
 /// (an empty path, a list position out of range, a scalar in the way).
 String applyWorkflowEdit(String source, WorkflowEdit edit, {String origin = 'backlog.yaml'}) {
@@ -109,7 +110,14 @@ String applyWorkflowEdit(String source, WorkflowEdit edit, {String origin = 'bac
     switch (node) {
       case final YamlMap map when key is String:
         if (!map.containsKey(key)) {
-          if (value != null) editor.update(path.sublist(0, i + 1), nested(rest));
+          if (value == null) return source;
+          if (i > 0 && path[i - 1] is int) {
+            // yaml_edit cannot add a key to a mapping in a block list; the
+            // whole entry is written again instead.
+            editor.update(path.sublist(0, i), {..._plain(map) as Map<String, Object?>, key: nested(rest)});
+          } else {
+            editor.update(path.sublist(0, i + 1), nested(rest));
+          }
           return editor.toString();
         }
         node = map[key];
@@ -139,3 +147,9 @@ String applyWorkflowEdit(String source, WorkflowEdit edit, {String origin = 'bac
   }
   return editor.toString();
 }
+
+Object? _plain(Object? node) => switch (node) {
+  final YamlMap map => {for (final MapEntry(:key, :value) in map.entries) '$key': _plain(value)},
+  final YamlList list => [for (final value in list) _plain(value)],
+  _ => node,
+};
