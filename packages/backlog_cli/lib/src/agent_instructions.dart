@@ -20,7 +20,9 @@ Identify yourself once per session, e.g. by the worktree name:
     backlog ready                # just look, claim nothing
     backlog claim T-7f3a         # take a specific item
 
-`next` exits with code 2 when nothing is ready. Never work on an item you
+`next` exits with code 2 when nothing is ready. Items whose `touches`
+overlap an item in progress are not ready ("waits for T-xxxx"); they become
+ready when that item is done or released. Never work on an item you
 have not claimed; if `claim` reports a conflict, someone else has it.
 
 ## While working
@@ -44,6 +46,10 @@ Edit the body of your item file directly (context, plan, checklist with
 
     backlog new "Short imperative title" -t task -p p1 -m launch \
         --parent T-epic --depends-on T-7f3a -l infra --body "## Context ..."
+
+Add `--touches lib/reports/,docs/reports.md` (paths or globs in the code
+repository the work will change) when you know them, so that parallel agents
+do not pick overlapping work; `backlog set T-7f3a touches+=lib/x/` later.
 
 Split work you discover into new items rather than growing the current one.
 Use `depends_on` only for hard prerequisites; use `related` for context.

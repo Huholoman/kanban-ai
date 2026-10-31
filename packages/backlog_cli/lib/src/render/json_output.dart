@@ -31,6 +31,8 @@ abstract final class JsonOutput {
       'blocked_by': [
         for (final id in [...planned.openDependencies, ...planned.missingDependencies]) id.value,
       ],
+      'conflicting': planned.isConflicting,
+      'conflicts_with': [for (final id in planned.conflictsWith) id.value],
       'children': {'total': planned.childCount, 'open': planned.openChildCount},
       'progress': {'done': checklist.done, 'total': checklist.total},
       'claim': planned.claim == null ? null : claim(planned.claim!, expired: planned.isClaimExpired),

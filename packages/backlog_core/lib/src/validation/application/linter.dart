@@ -6,6 +6,7 @@ import '../../items/domain/item_id.dart';
 import '../../items/domain/item_repository.dart';
 import '../../items/domain/path_glob.dart';
 import '../../planning/domain/backlog_snapshot.dart';
+import '../../planning/domain/planned_item.dart';
 import '../../shared/clock.dart';
 import '../../views/domain/view.dart';
 import '../../workflow/domain/workflow.dart';
@@ -78,6 +79,25 @@ final class Linter {
           item: '${cycle.first}',
         ),
       );
+    }
+
+    final active = snapshot.items.where((p) => p.category == StatusCategory.active && p.item.touches.isNotEmpty);
+    final seenActive = <PlannedItem>[];
+    for (final planned in active) {
+      final globs = [for (final pattern in planned.item.touches) PathGlob(pattern)];
+      for (final other in seenActive) {
+        if (PathGlob.anyOverlap(globs, [for (final pattern in other.item.touches) PathGlob(pattern)])) {
+          issues.add(
+            LintIssue(
+              Severity.warning,
+              'touches-overlap',
+              'In progress together with ${other.id}, and their touches overlap.',
+              item: '${planned.id}',
+            ),
+          );
+        }
+      }
+      seenActive.add(planned);
     }
 
     for (final claim in claims) {

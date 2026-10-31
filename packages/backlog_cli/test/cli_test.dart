@@ -121,6 +121,30 @@ void main() {
     expect((await backlog(['show', id])).out, contains('touches: lib/payments/, lib/*.{dart,yaml}\n'));
   });
 
+  test('an item overlapping work in progress waits: list, ready, show, JSON', () async {
+    final doing = await create('Payments', ['-s', 'in-progress', '--touches', 'lib/pay/']);
+    final waiting = await create('Stripe', ['-s', 'todo', '--touches', 'lib/pay/stripe.dart']);
+    final free = await create('Orders', ['-s', 'todo', '--touches', 'lib/orders/']);
+
+    expect((await backlog(['list'])).out, contains('waits for $doing (touches overlap)'));
+    final ready = ((await backlog(['--json', 'ready'])).json! as List).map((i) => (i as Map)['id']);
+    expect(ready, [free]);
+    final json = (await backlog(['--json', 'show', waiting])).json! as Map;
+    expect(json['conflicting'], isTrue);
+    expect(json['conflicts_with'], [doing]);
+    expect(json['ready'], isFalse);
+    expect(
+      (await backlog(['show', waiting])).out,
+      contains('waits for: $doing Payments (in-progress), touches overlap'),
+    );
+    expect((await backlog(['show', doing])).out, contains('holds up: $waiting Stripe (todo)'));
+    final listed = ((await backlog(['--json', 'list', '-w', 'conflicting=true'])).json! as List).map(
+      (i) => (i as Map)['id'],
+    );
+    expect(listed, [waiting]);
+    expect((await backlog(['claim', waiting, '--as', 'm2'])).exitCode, isNot(0));
+  });
+
   test('list filters: default hides done, --where, --all', () async {
     final a = await create('A', ['-s', 'todo', '-l', 'ui']);
     final b = await create('B', ['-s', 'done']);

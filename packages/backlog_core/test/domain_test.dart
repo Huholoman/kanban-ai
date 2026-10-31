@@ -197,6 +197,35 @@ appearance:
       expect(snapshot.ready.map((i) => i.id.value), ['T-2']);
     });
 
+    test('an open item whose touches overlap active work waits for it', () {
+      final snapshot = snapshotOf([
+        item('T-1', status: 'in-progress', touches: ['lib/payments/']),
+        item('T-2', status: 'review', touches: ['docs/*.md']),
+        item('T-3', touches: ['lib/payments/stripe.dart']),
+        item('T-4', touches: ['lib/orders/', 'docs/payments.md']),
+        item('T-5', touches: ['lib/orders/']),
+        item('T-6'), // no touches: never conflicts
+        item('T-7', status: 'backlog', touches: ['lib/**']),
+        item('T-8', status: 'done', touches: ['lib/payments/']),
+        item('T-9', status: 'in-progress', touches: ['lib/payments/']), // active ones do not wait
+      ]);
+      List<String> conflicts(String id) => [for (final c in snapshot[ItemId(id)]!.conflictsWith) c.value];
+      expect(conflicts('T-3'), ['T-1', 'T-9']);
+      expect(conflicts('T-4'), ['T-2']);
+      expect(conflicts('T-5'), isEmpty);
+      expect(conflicts('T-6'), isEmpty);
+      expect(conflicts('T-7'), ['T-1', 'T-9']); // open but not pickable: waits, still not ready
+      expect(conflicts('T-8'), isEmpty);
+      expect(conflicts('T-9'), isEmpty);
+      expect(snapshot[ItemId('T-3')]!.isConflicting, isTrue);
+      expect(snapshot[ItemId('T-3')]!.isBlocked, isFalse);
+      expect(snapshot.ready.map((i) => i.id.value), unorderedEquals(['T-5', 'T-6']));
+      expect(snapshot.conflicting.map((i) => i.id.value), unorderedEquals(['T-3', 'T-4', 'T-7']));
+      expect(snapshot.waitingOn(ItemId('T-1')).map((i) => i.id.value), unorderedEquals(['T-3', 'T-7']));
+      final view = parseFilter({'conflicting': true, 'conflicts_with': 'T-2'});
+      expect(snapshot.items.where(view.matches).map((i) => i.id.value), ['T-4']);
+    });
+
     test('orders by priority, then creation date', () {
       final snapshot = snapshotOf([
         item('T-1', priority: 'p2', created: '2026-01-01'),

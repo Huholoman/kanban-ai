@@ -1,7 +1,8 @@
 import '../../planning/domain/planned_item.dart';
 
 /// Fields a view can filter, sort and group by. Besides the front-matter keys
-/// there are computed ones: `ready`, `blocked`, `claimed`, `claimed_by`,
+/// there are computed ones: `ready`, `blocked`, `conflicting`, `conflicts_with`,
+/// `claimed`, `claimed_by`,
 /// `category`, `has_children`, `ancestors` (parent chain) and `epic` (the
 /// epics among the item and its ancestors). Any other name reads an unknown front-matter
 /// key, so custom fields work without code changes.
@@ -9,6 +10,8 @@ abstract final class ItemFields {
   static const computed = [
     'ready',
     'blocked',
+    'conflicting',
+    'conflicts_with',
     'claimed',
     'claimed_by',
     'category',
@@ -40,6 +43,8 @@ abstract final class ItemFields {
       'updated' => [?item.updated],
       'ready' => ['${planned.isReady}'],
       'blocked' => ['${planned.isBlocked}'],
+      'conflicting' => ['${planned.isConflicting}'],
+      'conflicts_with' => [for (final id in planned.conflictsWith) id.value],
       'claimed' => ['${planned.isClaimed}'],
       'claimed_by' => [if (planned.isClaimed) planned.claim!.agent],
       'category' => [?planned.category?.name],

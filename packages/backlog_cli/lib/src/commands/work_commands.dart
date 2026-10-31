@@ -12,7 +12,8 @@ final class ReadyCommand extends BacklogCommand {
   String get name => 'ready';
 
   @override
-  String get description => 'Items an agent can start now: pickable, unblocked, unclaimed, no open children.';
+  String get description =>
+      'Items an agent can start now: pickable, unblocked, no overlapping work in progress, unclaimed, no open children.';
 
   @override
   Future<int> run() async {
@@ -68,7 +69,11 @@ final class NextCommand extends BacklogCommand {
 final class ClaimCommand extends BacklogCommand {
   ClaimCommand(super.context) {
     addAgentOption();
-    argParser.addFlag('force', negatable: false, help: 'Claim even when blocked or with open children.');
+    argParser.addFlag(
+      'force',
+      negatable: false,
+      help: 'Claim even when blocked, waiting for overlapping work or with open children.',
+    );
   }
 
   @override

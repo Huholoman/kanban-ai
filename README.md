@@ -168,7 +168,9 @@ backlog lint                    # before ending the session
 
 **Claims:** `claim` and `next` atomically create `.locks/<id>.lock` (O_EXCL), so when several agents race for an item exactly one wins. This is verified by a test with 12 isolates and by hand with 10 parallel processes. Without a `heartbeat` the lock expires after its lease and another agent may take the item over. The item file mirrors `status: in-progress` and `assignee`, so humans see who works on what. Locks are machine-local state (gitignored) and work on a local disk, not on network file systems.
 
-**Ready** means the status is `pickable` (`todo` by default), all `depends_on` items are done, there are no open children and nobody holds a claim.
+**Ready** means the status is `pickable` (`todo` by default), all `depends_on` items are done, there are no open children, nobody holds a claim, and the item's `touches` do not overlap an item in progress.
+
+**Touches keep agents apart:** an open item whose `touches` overlap the `touches` of an item in an active status (in progress, review) *waits for* it — `backlog list` shows `waits for MA-7f3a (touches overlap)`, JSON has `conflicting` and `conflicts_with`. It is not ready, so `next` skips it and `claim` needs `--force`, until the other item is done or released. Items without `touches` never wait. Two items in progress that overlap are a lint warning.
 
 ## The web board
 
@@ -271,7 +273,7 @@ The hierarchy comes from `parent`. The type is just a label, so you can define y
 
 Files may be edited by hand. When the tool writes a file, it keeps comments, key order and unknown keys and changes only what changed, so git diffs stay small. Ids can be shortened: `7f3a` or `MA-7f` is enough when unambiguous.
 
-Derived properties are computed, never stored: `blocked`, `ready`, and the progress of the checklist and of the children.
+Derived properties are computed, never stored: `blocked`, `conflicting` (waits for overlapping work in progress), `ready`, and the progress of the checklist and of the children.
 
 ### Workflow (`backlog.yaml`)
 
@@ -314,7 +316,7 @@ columns: [todo, in-progress, review, done]
 sort: [priority, -updated]
 ```
 
-Views can filter and group by every item field, by custom keys and by the computed fields `ready`, `blocked`, `claimed`, `claimed_by`, `category`, `has_children`, `ancestors` (the parent chain) and `epic` (epics among the item and its ancestors, so `epic: X-m4an` is everything under that epic).
+Views can filter and group by every item field, by custom keys and by the computed fields `ready`, `blocked`, `conflicting`, `conflicts_with`, `claimed`, `claimed_by`, `category`, `has_children`, `ancestors` (the parent chain) and `epic` (epics among the item and its ancestors, so `epic: X-m4an` is everything under that epic).
 
 ## CLI reference
 
@@ -330,7 +332,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `claim / heartbeat / release / done <id> --as <agent>` | work with claims (`--force` overrides the checks) |
 | `claims` | who works on what |
 | `view [name]` | saved views |
-| `lint` | consistency: unknown values, broken references, cycles, locks (exit 1 on errors) |
+| `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches (exit 1 on errors) |
 | `instructions` | the guide for agents, in Markdown |
 
 Global options are `-C <dir>` and `--json`. The agent comes from `--as` or `BACKLOG_AGENT`. **Exit codes:** 0 ok, 1 error, 2 nothing to do, 3 claim conflict, 4 not found, 64 usage. JSON fields are only ever added, never renamed.
@@ -366,7 +368,7 @@ backlog_cli ──────────────────────�
 | `workflow` | `Workflow`, statuses and categories | – | `backlog.yaml` parser |
 | `items` | `Item`, `ItemId`, `Checklist`, ports `ItemRepository`, `IdGenerator` | `ItemService`, `FieldChange` | Markdown codec (`yaml_edit`, keeps formatting), file-system repository |
 | `claims` | `Claim` (lease), port `ClaimStore` | `ClaimService` (claim, next, heartbeat, release, done) | lock files |
-| `planning` | `BacklogSnapshot`, `PlannedItem`: blocked, ready, cycles, children | `PlanningService` | – |
+| `planning` | `BacklogSnapshot`, `PlannedItem`: blocked, conflicting, ready, cycles, children | `PlanningService` | – |
 | `views` | `Filter`, `ViewDefinition`, `ViewEngine` | `ViewService` | YAML views |
 | `validation` | `LintIssue` | `Linter` | – |
 

@@ -130,7 +130,9 @@ Rules:
 | `category` | category of the status (`open`/`active`/`done`), null for an unknown status |
 | `blocked` | not done, and some `depends_on` item is not done or does not exist |
 | `blocked_by` | those unfinished/missing dependencies |
-| `ready` | in the pickable status, not blocked, no open children, and no live claim (expired claims do not count) |
+| `conflicting` | open (not started), has `touches`, and they overlap the `touches` of an item in an `active` status (§3.2) |
+| `conflicts_with` | those active items — the item waits for them ("waits for X") |
+| `ready` | in the pickable status, not blocked, not conflicting, no open children, and no live claim (expired claims do not count) |
 | `children` | `{total, open}` — items whose `parent` is this one |
 | `progress` | checklist `{done, total}` from the body |
 | `claim` | current claim with `expired` flag |
@@ -147,13 +149,15 @@ Default order ("most urgent first"): priority, then `created`, then id.
 - A leading `/` or `./`, empty and `.` segments are ignored; matching is case-sensitive.
 - Two items overlap when some path is covered by a pattern of each. An item without `touches` overlaps nothing.
 
+**Waiting for overlapping work.** An item in an `open` status whose `touches` overlap those of an item in an `active` status (in progress, review, … — the status counts, not the claim) is `conflicting` and waits for it, like a blocked item waits for its dependencies: it is not `ready`, so `next` (and a dispatcher built on `ready`) does not start it, and `claim` refuses it without `--force`. It becomes ready by itself when the active item is done, cancelled or released back to an open status. Active items never wait; two active items that overlap are a `touches-overlap` lint warning. Unlike `blocked`, this is not stored in a relation and does not need a cycle check: it only goes from open to active items.
+
 `lint` warns (`invalid-touches`) about an unclosed `[` or `{`, a stray `}`, a trailing `\`, `..` segments and patterns covering the whole repository (`**`, `*`, `.`).
 
 ## 4. Claims — parallel work without collisions
 
 A claim is an agent's exclusive, time-limited lock on an item, stored as `.locks/<id>.lock` (JSON: item, agent, claimed_at, heartbeat_at, expires_at).
 
-- **claim** — atomic create of the lock file; of two agents racing for one item exactly one wins, the other gets a conflict (exit 3). Claiming also sets `assignee` and moves an open item to the active status. Blocked items and items with open children need `--force`.
+- **claim** — atomic create of the lock file; of two agents racing for one item exactly one wins, the other gets a conflict (exit 3). Claiming also sets `assignee` and moves an open item to the active status. Blocked items, items waiting for overlapping work (§3.2) and items with open children need `--force`.
 - **heartbeat** — extends the lease (`lease_minutes`). Without heartbeats the claim **expires**; an expired claim can be taken over by another agent (atomic move-aside, again exactly one winner).
 - **release** — drops the claim, returns an active item to the pickable status (or `--status`).
 - **done** — sets a done-category status (default the first one, or `--status cancelled`), drops the claim, prints what got unblocked.
@@ -172,10 +176,10 @@ Global options: `-C/--dir <folder>`, `--json` (machine-readable output; JSON fie
 | `init [folder] [--prefix X]` | create `backlog.yaml`, `items/`, `views/` (default views), `docs/`, `.gitignore` |
 | `new <title> [-t type] [-s status] [-p priority] [-m milestone] [--parent id] [-d id,…] [--related id,…] [-l label,…] [--doc name] [--touches glob,…] [--assignee a] [--branch b] [--pr url] [--body md \| --body-file f]` | create an item, prints it |
 | `list [-a] [-s status] [-m milestone] [-l label] [-t type] [-w cond]…` | open items (all with `-a`), most urgent first |
-| `show <id>` | item with relations (parent, children, dependencies, dependents, related), claim and body |
+| `show <id>` | item with relations (parent, children, dependencies, dependents, related, the active items it waits for and the open items it holds up through `touches`), claim and body |
 | `path <id>` | file path of the item |
 | `set <id> <change>…` | change fields: `status=review`, `labels+=infra`, `depends_on-=X-7f3a`, `touches+=lib/a/`, `milestone=` (empty clears); unknown keys become custom fields |
-| `ready [-w cond]` | items that can be started now |
+| `ready [-w cond]` | items that can be started now (`list -w conflicting=true` shows the ones waiting for overlapping work) |
 | `blocked` | unfinished items waiting for others |
 | `next [--as a] [-w cond]` | claim the most urgent ready item; exit 2 when there is none |
 | `claim <id> [--as a] [--force]` | take an item |
@@ -215,7 +219,7 @@ A mapping is an AND of its entries; `and: [...]`, `or: [...]`, `not: <expr>` com
 
 ### 6.2 Fields
 
-All front-matter keys (`id`, `title`, `type`, `status`, `priority`, `milestone`, `parent`, `depends_on`, `related`, `assignee`, `branch`, `pr`, `labels`, `docs`, `touches`, `created`, `updated`), the computed `ready`, `blocked`, `claimed`, `claimed_by`, `category`, `has_children`, `ancestors` (parent chain, cycle-safe), `epic` (epics among the item and its ancestors — `epic: X` selects everything under epic X), and any custom key.
+All front-matter keys (`id`, `title`, `type`, `status`, `priority`, `milestone`, `parent`, `depends_on`, `related`, `assignee`, `branch`, `pr`, `labels`, `docs`, `touches`, `created`, `updated`), the computed `ready`, `blocked`, `conflicting`, `conflicts_with`, `claimed`, `claimed_by`, `category`, `has_children`, `ancestors` (parent chain, cycle-safe), `epic` (epics among the item and its ancestors — `epic: X` selects everything under epic X), and any custom key.
 
 ### 6.3 Grouping
 
@@ -227,7 +231,7 @@ Default views from `init`: **Board** (kanban by status, epics hidden), **Ready t
 
 Errors and warnings with a code, item and location:
 
-`unreadable` (broken file / front matter), `duplicate-id`, `file-name`, `unknown-status`, `unknown-priority`, `unknown-type`, `unknown-milestone`, `dangling-reference` (parent/depends_on/related to a missing item), `self-reference`, `dependency-cycle`, `parent-cycle`, `invalid-touches` (warning, §3.2), `invalid-view`, `expired-claim`, `stale-claim`, `orphan-claim`.
+`unreadable` (broken file / front matter), `duplicate-id`, `file-name`, `unknown-status`, `unknown-priority`, `unknown-type`, `unknown-milestone`, `dangling-reference` (parent/depends_on/related to a missing item), `self-reference`, `dependency-cycle`, `parent-cycle`, `invalid-touches` (warning, §3.2), `touches-overlap` (warning: two active items with overlapping `touches`), `invalid-view`, `expired-claim`, `stale-claim`, `orphan-claim`.
 
 ## 8. Server — `backlog-server`
 
@@ -319,7 +323,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - **NixOS module** `services.kanban-ai`: `enable`, `package`, `backlog`, `user`, `host` (string or list, default `127.0.0.1`), `port` (8640), `allow` (list), `tokenFile` (`BACKLOG_TOKEN=…`), `openFirewall`; runs a systemd service.
 - **Without Nix**: Dart ≥ 3.8 and Flutter ≥ 3.32; `dart compile exe` the two entry points, `flutter build web` the app.
 
-Agents get the workflow from `backlog instructions` (paste into CLAUDE.md / AGENTS.md): identify with `BACKLOG_AGENT`, `backlog next` or `claim`, `heartbeat` during long work, set `branch`/`pr`, `done` or `release`, split discovered work into new items, `lint` before stopping.
+Agents get the workflow from `backlog instructions` (paste into CLAUDE.md / AGENTS.md): identify with `BACKLOG_AGENT`, `backlog next` or `claim`, `heartbeat` during long work, set `branch`/`pr`, give new items `touches`, `done` or `release`, split discovered work into new items, `lint` before stopping.
 
 ## 11. Architecture (for contributors)
 
@@ -336,6 +340,7 @@ Development: `mise run check` (format check, analysis, all tests), `mise run pla
 ## 12. Known limits
 
 - Prototype; formats may still change.
+- Overlapping `touches` are judged on one snapshot: two agents running `next` at the same moment can still take two overlapping open items (the lock is per item). `lint` then reports `touches-overlap`.
 - Claims coordinate agents sharing one filesystem; agents on different machines need a shared backlog folder (or the server).
 - The web app has no user accounts; protection is the token plus `--host`/`--allow`.
 - Filter state, folded columns and the detail's navigation history are not kept across page reloads.
