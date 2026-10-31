@@ -352,6 +352,11 @@ final class DispatchPlan {
         if (!conditions.held.containsKey(item.id) && !replied.contains(item)) item,
     ];
 
+    final waitingForAnswer = [
+      for (final planned in snapshot.items)
+        if (planned.needsHuman && !planned.isDone && sessions.containsKey(planned.id)) planned,
+    ];
+
     final assignments = <DispatchAssignment>[];
     final left = <PlannedItem>[];
     for (final (index, candidate) in ready.indexed) {
@@ -361,9 +366,10 @@ final class DispatchPlan {
         left.add(candidate); // a reply waits for the worktree of its session
         continue;
       }
-      // Leave the worktrees that later items could continue their sessions in to them.
+      // Leave the worktrees that later items could continue their sessions in
+      // to them, and those of agents waiting for an answer to their question.
       final reserved = {
-        for (final later in ready.skip(index + 1))
+        for (final later in [...ready.skip(index + 1), ...waitingForAnswer])
           if (_resumableIn(sessions[later.id], config, free) case final w?) w.name,
       };
       final target = own ?? free.firstWhere((w) => !reserved.contains(w.name), orElse: () => free.first);

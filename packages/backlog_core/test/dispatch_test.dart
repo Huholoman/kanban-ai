@@ -334,6 +334,23 @@ void main() {
       expect((start.key, start.resume, start.createFrom), ('T-2@repo-3', null, '/work/repo'));
     });
 
+    test('the worktree of an agent waiting for an answer is left to it; new work gets a new worktree', () {
+      const asked = '## Discussion\n\n### repo-2 · 2026-10-29 10:30:00 UTC · question\n\nCSV or JSON?\n';
+      final plan = _plan(
+        [item('T-1', body: asked), item('T-3')],
+        workflow: _provisioningWorkflow(),
+        conditions: _provisioned(sessions: {ItemId('T-1'): _session('T-1', 'repo-2')}),
+      );
+      expect(plan.assignments.map((a) => '${a.key}:${a.createFrom != null}'), ['T-3@repo-3:true']);
+
+      final listed = _plan(
+        [item('T-1', body: asked.replaceAll('repo-2', 'w1')), item('T-3')],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        conditions: DispatchConditions(sessions: {ItemId('T-1'): _session('T-1', 'w1')}),
+      );
+      expect(listed.assignments.map((a) => a.key), ['T-3@w2']);
+    });
+
     test('a session whose worktree is gone is forgotten: a new session, replies no longer resume', () {
       const reply = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nWhy?\n';
       final sessions = {ItemId('T-1'): _session('T-1', 'repo-5'), ItemId('T-2'): _session('T-2', 'repo-5')};
