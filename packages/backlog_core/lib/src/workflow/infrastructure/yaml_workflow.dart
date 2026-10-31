@@ -79,7 +79,20 @@ Workflow parseWorkflowYaml(String source, {String origin = 'backlog.yaml'}) {
 DispatcherConfig? _dispatcher(Object? node, String origin) {
   if (node == null) return null;
   final yaml = _map(node, 'dispatcher', origin);
-  const known = {'mode', 'max_agents', 'worktrees', 'base', 'agent', 'agents', 'prompt', 'command'};
+  const known = {
+    'mode',
+    'max_agents',
+    'worktrees',
+    'repo',
+    'worktree_name',
+    'max_worktrees',
+    'cleanup_after_days',
+    'base',
+    'agent',
+    'agents',
+    'prompt',
+    'command',
+  };
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
       throw ConfigurationException('$origin: unknown key "dispatcher.$key" (expected ${known.join(', ')}).');
@@ -91,11 +104,15 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
       throw const ConfigurationException('dispatcher.max_agents must be an integer.');
     }
     final worktrees = yaml['worktrees'];
-    if (worktrees == null) throw const ConfigurationException('dispatcher.worktrees is required.');
+    final newWorktrees = _newWorktrees(yaml, origin);
+    if (worktrees == null && newWorktrees == null) {
+      throw const ConfigurationException('dispatcher.worktrees (or dispatcher.repo) is required.');
+    }
     final prompt = yaml['prompt'];
     return DispatcherConfig(
       mode: DispatchMode.parse('${yaml['mode'] ?? 'manual'}'.trim()),
       maxAgents: maxAgents as int?,
+      newWorktrees: newWorktrees,
       base: yaml['base'] == null ? 'main' : _base(_string(yaml['base'], 'dispatcher.base', origin)),
       agent: _agent(yaml, origin),
       prompt: prompt == null
@@ -106,23 +123,52 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
               label: 'dispatcher.prompt',
             ),
       worktrees: [
-        for (final entry in _list(worktrees, 'dispatcher.worktrees', origin))
-          if (entry is Map)
-            WorktreeDefinition(
-              _string(entry['name'], 'dispatcher.worktrees[].name', origin),
-              _string(entry['path'] ?? '../${entry['name']}', 'dispatcher.worktrees[].path', origin),
-            )
-          else
-            WorktreeDefinition(
-              _string(entry, 'dispatcher.worktrees[]', origin),
-              '../${_string(entry, 'dispatcher.worktrees[]', origin)}',
-            ),
+        if (worktrees != null)
+          for (final entry in _list(worktrees, 'dispatcher.worktrees', origin))
+            if (entry is Map)
+              WorktreeDefinition(
+                _string(entry['name'], 'dispatcher.worktrees[].name', origin),
+                _string(entry['path'] ?? '../${entry['name']}', 'dispatcher.worktrees[].path', origin),
+              )
+            else
+              WorktreeDefinition(
+                _string(entry, 'dispatcher.worktrees[]', origin),
+                '../${_string(entry, 'dispatcher.worktrees[]', origin)}',
+              ),
       ],
     );
   } on ConfigurationException catch (e) {
     if (e.message.startsWith(origin)) rethrow;
     throw ConfigurationException('$origin: ${e.message}');
   }
+}
+
+/// `dispatcher.repo` with `worktree_name`, `max_worktrees` (default
+/// `max_agents`) and `cleanup_after_days`; null without `repo`.
+NewWorktrees? _newWorktrees(YamlMap yaml, String origin) {
+  final repo = yaml['repo'];
+  if (repo == null) {
+    for (final key in ['worktree_name', 'max_worktrees', 'cleanup_after_days']) {
+      if (yaml[key] != null) throw ConfigurationException('dispatcher.$key needs dispatcher.repo.');
+    }
+    return null;
+  }
+  int? integer(String key) => switch (yaml[key]) {
+    null => null,
+    final int value => value,
+    _ => throw ConfigurationException('dispatcher.$key must be an integer.'),
+  };
+  final max = integer('max_worktrees') ?? integer('max_agents');
+  if (max == null) {
+    throw const ConfigurationException('dispatcher.repo needs dispatcher.max_worktrees (or max_agents) as a limit.');
+  }
+  final days = integer('cleanup_after_days');
+  return NewWorktrees(
+    repo: _string(repo, 'dispatcher.repo', origin),
+    name: yaml['worktree_name'] == null ? null : _string(yaml['worktree_name'], 'dispatcher.worktree_name', origin),
+    maxWorktrees: max,
+    cleanupAfter: days == null ? null : Duration(days: days),
+  );
 }
 
 String _base(String base) => base.startsWith('-') || base.contains(RegExp(r'\s'))
@@ -325,6 +371,11 @@ claims:
 #     - name: monorepo-2
 #       path: ../monorepo-2
 #     - monorepo-3
+#   # Or (also on top of the list): add worktrees when none is free.
+#   repo: ../monorepo     # primary clone; new worktrees go next to it
+#   worktree_name: "{repo}-{n}"   # default; the first unused n from 2 on
+#   max_worktrees: 4      # listed + created (default: max_agents)
+#   cleanup_after_days: 14   # remove created ones idle this long that lose nothing (default: keep)
 #   base: main            # new branches agent/<id> start here (an item's own branch field wins)
 #   agent: claude         # built-in: claude; unverified presets: codex, gemini, aider
 #   # Own profiles (or replacing a built-in one), chosen with agent: <name>:

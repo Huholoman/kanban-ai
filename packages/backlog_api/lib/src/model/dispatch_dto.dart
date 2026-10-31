@@ -54,6 +54,8 @@ final class DispatchWorktreeDto {
     this.claims = const [],
     this.unavailable,
     this.run,
+    this.created = false,
+    this.isNew = false,
   });
 
   factory DispatchWorktreeDto.fromJson(Json json) => DispatchWorktreeDto(
@@ -66,6 +68,8 @@ final class DispatchWorktreeDto {
       final run? => AgentRunDto.fromJson(run),
       null => null,
     },
+    created: json.boolean('created'),
+    isNew: json.boolean('new'),
   );
 
   final String name;
@@ -84,6 +88,12 @@ final class DispatchWorktreeDto {
   /// The agent running here.
   final AgentRunDto? run;
 
+  /// The dispatcher created it (`dispatcher.repo`).
+  final bool created;
+
+  /// It does not exist yet; it is created when its proposed agent starts.
+  final bool isNew;
+
   bool get isFree => !busy && unavailable == null;
 
   Json toJson() => {
@@ -94,6 +104,8 @@ final class DispatchWorktreeDto {
     'claims': claims,
     'unavailable': unavailable,
     'run': run?.toJson(),
+    'created': created,
+    'new': isNew,
   };
 }
 
@@ -113,16 +125,28 @@ final class HeldItemDto {
 
 /// A ready item proposed for (or, in auto mode, about to start in) a worktree.
 final class DispatchAssignmentDto {
-  const DispatchAssignmentDto({required this.item, required this.title, required this.worktree});
+  const DispatchAssignmentDto({
+    required this.item,
+    required this.title,
+    required this.worktree,
+    this.newWorktree = false,
+  });
 
-  factory DispatchAssignmentDto.fromJson(Json json) =>
-      DispatchAssignmentDto(item: json.string('item'), title: json.string('title'), worktree: json.string('worktree'));
+  factory DispatchAssignmentDto.fromJson(Json json) => DispatchAssignmentDto(
+    item: json.string('item'),
+    title: json.string('title'),
+    worktree: json.string('worktree'),
+    newWorktree: json.boolean('new_worktree'),
+  );
 
   final String item;
   final String title;
   final String worktree;
 
-  Json toJson() => {'item': item, 'title': title, 'worktree': worktree};
+  /// [worktree] is created for it first.
+  final bool newWorktree;
+
+  Json toJson() => {'item': item, 'title': title, 'worktree': worktree, 'new_worktree': newWorktree};
 }
 
 /// The dispatcher's current plan (`GET /api/dispatch`).
@@ -138,6 +162,8 @@ final class DispatchDto {
     this.assignments = const [],
     this.waiting = const [],
     this.held = const [],
+    this.maxWorktrees,
+    this.spareWorktrees = 0,
   });
 
   /// No `dispatcher` section in `backlog.yaml`.
@@ -154,6 +180,8 @@ final class DispatchDto {
     assignments: json.objects('assignments').map(DispatchAssignmentDto.fromJson).toList(),
     waiting: json.strings('waiting'),
     held: json.objects('held').map(HeldItemDto.fromJson).toList(),
+    maxWorktrees: json['max_worktrees'] is int ? json['max_worktrees']! as int : null,
+    spareWorktrees: json.integer('spare_worktrees'),
   );
 
   final bool configured;
@@ -175,10 +203,18 @@ final class DispatchDto {
   final List<String> waiting;
   final List<HeldItemDto> held;
 
+  /// `dispatcher.max_worktrees` when the dispatcher adds worktrees itself
+  /// (`dispatcher.repo`), else null.
+  final int? maxWorktrees;
+
+  /// How many more worktrees it may create.
+  final int spareWorktrees;
+
   bool get isManual => mode == 'manual';
 
-  /// An agent can start now (a worktree is free within `max_agents`).
-  bool get canStart => configured && capacity > 0 && worktrees.any((w) => w.isFree);
+  /// An agent can start now (a worktree is free or can be created, within
+  /// `max_agents`).
+  bool get canStart => configured && capacity > 0 && (worktrees.any((w) => w.isFree && !w.isNew) || spareWorktrees > 0);
 
   /// The agent running for [item], if any.
   AgentRunDto? runFor(String item) {
@@ -207,6 +243,8 @@ final class DispatchDto {
     'assignments': [for (final assignment in assignments) assignment.toJson()],
     'waiting': waiting,
     'held': [for (final item in held) item.toJson()],
+    'max_worktrees': maxWorktrees,
+    'spare_worktrees': spareWorktrees,
   };
 }
 

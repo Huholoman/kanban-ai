@@ -8,6 +8,7 @@ export 'src/claims/domain/claim.dart';
 export 'src/dispatch/application/dispatcher.dart';
 export 'src/dispatch/domain/dispatch_plan.dart';
 export 'src/dispatch/infrastructure/process_agent_launcher.dart';
+export 'src/dispatch/infrastructure/worktree_provisioner.dart';
 export 'src/infrastructure/backlog_layout.dart' show BacklogLayout;
 export 'src/items/application/field_change.dart';
 export 'src/items/application/item_service.dart';

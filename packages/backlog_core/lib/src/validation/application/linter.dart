@@ -163,6 +163,19 @@ final class Linter {
           );
         }
       }
+      if (dispatcher.newWorktrees case final added?) {
+        final repo = added.resolveRepo(root);
+        if (!await exists(repo)) {
+          issues.add(
+            LintIssue(
+              Severity.warning,
+              'dispatcher-repo',
+              'dispatcher.repo points to $repo, which is not a folder; no worktrees can be added.',
+              location: 'backlog.yaml',
+            ),
+          );
+        }
+      }
     }
     final programExists = _programExists;
     if (dispatcher != null && programExists != null) {

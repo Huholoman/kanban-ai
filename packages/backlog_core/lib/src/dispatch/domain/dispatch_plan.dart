@@ -55,7 +55,13 @@ final class AgentLog {
 /// [AgentLauncher]: worktrees that cannot take work now, items it should
 /// not start by itself, and the agents that are running.
 final class DispatchConditions {
-  const DispatchConditions({this.unavailable = const {}, this.held = const {}, this.runs = const []});
+  const DispatchConditions({
+    this.unavailable = const {},
+    this.held = const {},
+    this.runs = const [],
+    this.created = const [],
+    this.spare = const [],
+  });
 
   static const none = DispatchConditions();
 
@@ -70,11 +76,27 @@ final class DispatchConditions {
 
   /// Agents running now.
   final List<AgentRun> runs;
+
+  /// Worktrees the dispatcher created earlier (`dispatcher.repo`) that still
+  /// exist; they join the listed ones.
+  final List<WorktreeDefinition> created;
+
+  /// Worktrees the dispatcher may create when none is free, in the order it
+  /// would create them (within `max_worktrees`).
+  final List<WorktreeDefinition> spare;
 }
 
 /// A configured worktree at the moment of planning.
 final class WorktreeState {
-  const WorktreeState(this.worktree, this.path, this.claims, {this.unavailable, this.run});
+  const WorktreeState(
+    this.worktree,
+    this.path,
+    this.claims, {
+    this.unavailable,
+    this.run,
+    this.created = false,
+    this.isNew = false,
+  });
 
   final WorktreeDefinition worktree;
 
@@ -89,6 +111,14 @@ final class WorktreeState {
 
   /// The agent process running here, if any.
   final AgentRun? run;
+
+  /// The dispatcher created it (`dispatcher.repo`) rather than finding it
+  /// in `dispatcher.worktrees`.
+  final bool created;
+
+  /// It does not exist yet: the dispatcher creates it when its assignment
+  /// starts.
+  final bool isNew;
 
   String get name => worktree.name;
 
@@ -114,6 +144,7 @@ final class DispatchAssignment {
     this.environment = const {},
     this.branch,
     this.base,
+    this.createFrom,
   });
 
   /// Fills the [config]'s prompt, command and environment for [item] in
@@ -124,6 +155,7 @@ final class DispatchAssignment {
     required WorktreeDefinition worktree,
     required String path,
     required String backlogRoot,
+    bool create = false,
   }) {
     final branch = branchFor(item);
     final values = {
@@ -151,6 +183,7 @@ final class DispatchAssignment {
       },
       branch: branch,
       base: config.base,
+      createFrom: create ? config.newWorktrees?.resolveRepo(backlogRoot) : null,
     );
   }
 
@@ -188,6 +221,10 @@ final class DispatchAssignment {
   /// Where [branch] starts when it does not exist yet (`dispatcher.base`).
   final String? base;
 
+  /// The primary clone to add the worktree from (`git worktree add`) before
+  /// the agent starts; null when the worktree exists.
+  final String? createFrom;
+
   ItemId get id => item.id;
 
   /// The name the claim is taken under.
@@ -211,6 +248,7 @@ final class DispatchPlan {
     required this.assignments,
     required this.waiting,
     this.held = const [],
+    this.spare = const [],
     this.recheckAt,
   });
 
@@ -228,8 +266,13 @@ final class DispatchPlan {
       for (final planned in snapshot.items)
         if (planned.isClaimed) planned.claim!,
     ];
+    final listed = {for (final worktree in config.worktrees) worktree.name};
     final worktrees = [
-      for (final worktree in config.worktrees)
+      for (final (worktree, created) in [
+        for (final worktree in config.worktrees) (worktree, false),
+        for (final worktree in conditions.created)
+          if (!listed.contains(worktree.name)) (worktree, true),
+      ])
         WorktreeState(
           worktree,
           worktree.resolvePath(backlogRoot),
@@ -239,10 +282,17 @@ final class DispatchPlan {
           ],
           unavailable: conditions.unavailable[worktree.name],
           run: conditions.runs.firstWhereOrNull((run) => run.worktree == worktree.name),
+          created: created,
         ),
     ];
+    final spare = config.newWorktrees == null
+        ? const <WorktreeState>[]
+        : [
+            for (final worktree in conditions.spare)
+              WorktreeState(worktree, worktree.resolvePath(backlogRoot), const [], created: true, isNew: true),
+          ];
     final running = worktrees.where((w) => w.isBusy).length;
-    final free = worktrees.where((w) => w.isFree).toList();
+    final free = [...worktrees.where((w) => w.isFree), ...spare];
     final slots = (config.maxAgents - running).clamp(0, free.length);
     final ready = snapshot.ready.where((item) => !conditions.held.containsKey(item.id)).toList();
 
@@ -254,8 +304,11 @@ final class DispatchPlan {
           worktree: free[i].worktree,
           path: free[i].path,
           backlogRoot: backlogRoot,
+          create: free[i].isNew,
         ),
     ];
+    // New worktrees show up in the plan once something would start there.
+    worktrees.addAll(spare.where((w) => assignments.any((a) => a.worktree.name == w.name)));
 
     DateTime? recheckAt;
     for (final claim in liveClaims) {
@@ -273,6 +326,7 @@ final class DispatchPlan {
         for (final item in snapshot.ready)
           if (conditions.held[item.id] case final reason?) (item: item, reason: reason),
       ]),
+      spare: List.unmodifiable(spare),
       recheckAt: recheckAt,
     );
   }
@@ -291,6 +345,10 @@ final class DispatchPlan {
   /// Ready items the dispatcher does not start by itself, with the reason.
   final List<({PlannedItem item, String reason})> held;
 
+  /// Worktrees the dispatcher may still create (`dispatcher.repo`), in the
+  /// order it would; [WorktreeState.isNew].
+  final List<WorktreeState> spare;
+
   /// The earliest expiry of a live claim: the plan may change then without
   /// any file changing (a worktree frees up, an item becomes ready).
   final DateTime? recheckAt;
@@ -299,8 +357,11 @@ final class DispatchPlan {
 
   DispatchMode get mode => config.mode;
 
-  /// Busy configured worktrees.
+  /// Busy worktrees.
   int get running => worktrees.where((w) => w.isBusy).length;
+
+  /// Worktrees an agent could start in now: free ones, then new ones.
+  List<WorktreeState> get available => [...worktrees.where((w) => w.isFree && !w.isNew), ...spare];
 
   /// How many more agents may start (limit minus running, at least zero).
   int get capacity => (config.maxAgents - running).clamp(0, config.maxAgents);
@@ -315,11 +376,13 @@ final class DispatchPlan {
   DispatchAssignment assignmentFor(String reference) {
     final planned = snapshot[ItemReference.resolve(reference, snapshot.ids)]!;
     if (!planned.isReady) throw _notReady(planned);
-    final free = worktrees.where((w) => w.isFree).toList();
+    final free = available;
     if (free.isEmpty || capacity == 0) {
       final reasons = [
         for (final worktree in worktrees)
           '${worktree.name}: ${worktree.isBusy ? 'busy' : worktree.unavailable ?? 'free'}',
+        if (config.newWorktrees case final added? when spare.isEmpty)
+          'no new worktree (max_worktrees ${added.maxWorktrees})',
       ];
       throw UnavailableException(
         'No free worktree for ${planned.id} ($running/${config.maxAgents} running; ${reasons.join('; ')}).',
@@ -331,6 +394,7 @@ final class DispatchPlan {
       worktree: free.first.worktree,
       path: free.first.path,
       backlogRoot: backlogRoot,
+      create: free.first.isNew,
     );
   }
 
@@ -365,7 +429,8 @@ final class DispatchPlan {
       _sameList(other.held.map((h) => '${h.item.id}:${h.reason}'), held.map((h) => '${h.item.id}:${h.reason}')) &&
       _sameList(other.worktrees.map(_worktreeKey), worktrees.map(_worktreeKey));
 
-  static String _worktreeKey(WorktreeState w) => '${w.name}:${w.isBusy}:${w.unavailable}:${w.run?.item}:${w.run?.pid}';
+  static String _worktreeKey(WorktreeState w) =>
+      '${w.name}:${w.isBusy}:${w.unavailable}:${w.run?.item}:${w.run?.pid}:${w.isNew}';
 
   static bool _sameList(Iterable<Object> a, Iterable<Object> b) =>
       const ListEquality<Object>().equals(a.toList(), b.toList());

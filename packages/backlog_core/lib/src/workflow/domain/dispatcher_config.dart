@@ -292,8 +292,13 @@ final class DispatcherConfig {
     DispatchMode mode = DispatchMode.manual,
     int? maxAgents,
     String base = 'main',
+    NewWorktrees? newWorktrees,
   }) {
-    if (worktrees.isEmpty) throw const ConfigurationException('dispatcher.worktrees must list at least one worktree.');
+    if (worktrees.isEmpty && newWorktrees == null) {
+      throw const ConfigurationException(
+        'dispatcher.worktrees must list at least one worktree (or set dispatcher.repo).',
+      );
+    }
     final names = <String>{}, paths = <String>{};
     for (final worktree in worktrees) {
       if (!names.add(worktree.name)) throw ConfigurationException('Duplicate dispatcher worktree "${worktree.name}".');
@@ -301,7 +306,12 @@ final class DispatcherConfig {
         throw ConfigurationException('Dispatcher worktrees share the path "${worktree.path}".');
       }
     }
-    final limit = maxAgents ?? worktrees.length;
+    if (newWorktrees != null && newWorktrees.maxWorktrees < worktrees.length) {
+      throw ConfigurationException(
+        'dispatcher.max_worktrees (${newWorktrees.maxWorktrees}) is less than the ${worktrees.length} listed worktrees.',
+      );
+    }
+    final limit = maxAgents ?? newWorktrees?.maxWorktrees ?? worktrees.length;
     if (limit < 1) throw const ConfigurationException('dispatcher.max_agents must be at least 1.');
     return DispatcherConfig._(
       List.unmodifiable(worktrees),
@@ -310,10 +320,11 @@ final class DispatcherConfig {
       mode,
       limit,
       base,
+      newWorktrees,
     );
   }
 
-  DispatcherConfig._(this.worktrees, this.agent, this.prompt, this.mode, this.maxAgents, this.base);
+  DispatcherConfig._(this.worktrees, this.agent, this.prompt, this.mode, this.maxAgents, this.base, this.newWorktrees);
 
   /// What the prompt may refer to: the item id and title, the worktree name,
   /// its absolute path, the absolute path of the backlog folder and the
@@ -350,8 +361,17 @@ final class DispatcherConfig {
   /// `main`).
   final String base;
 
+  /// How the dispatcher adds worktrees of its own when none of [worktrees]
+  /// is free (`dispatcher.repo`); null when it only uses [worktrees].
+  final NewWorktrees? newWorktrees;
+
   /// The command of [agent].
   CommandTemplate get command => agent.command;
+
+  /// The same configuration with [worktrees] in place of the listed ones
+  /// (e.g. the listed ones plus those the dispatcher created).
+  DispatcherConfig withWorktrees(List<WorktreeDefinition> worktrees) =>
+      DispatcherConfig._(List.unmodifiable(worktrees), agent, prompt, mode, maxAgents, base, newWorktrees);
 
   WorktreeDefinition? worktree(String name) {
     for (final worktree in worktrees) {
@@ -359,4 +379,57 @@ final class DispatcherConfig {
     }
     return null;
   }
+}
+
+/// Worktrees the dispatcher adds by itself (`dispatcher.repo`,
+/// `worktree_name`, `max_worktrees`, `cleanup_after_days`): when no worktree
+/// is free, it runs `git worktree add` in the primary clone [repo] for the
+/// next name of [name] (`{repo}-{n}` by default: the first number from 2 on
+/// whose name and folder are unused), next to the clone.
+final class NewWorktrees {
+  NewWorktrees({required this.repo, String? name, required this.maxWorktrees, this.cleanupAfter})
+    : name = TextTemplate(name ?? defaultName, known: const ['repo', 'n'], label: 'dispatcher.worktree_name') {
+    if (repo.trim().isEmpty) throw const ConfigurationException('dispatcher.repo must not be empty.');
+    if (!this.name.text.contains('{n}')) {
+      throw const ConfigurationException('dispatcher.worktree_name must contain {n}.');
+    }
+    if (maxWorktrees < 1) throw const ConfigurationException('dispatcher.max_worktrees must be at least 1.');
+    if (cleanupAfter case final after? when after <= Duration.zero) {
+      throw const ConfigurationException('dispatcher.cleanup_after_days must be at least 1.');
+    }
+    final example = nameFor(2);
+    if (!WorktreeDefinition._namePattern.hasMatch(example) || example.contains('/')) {
+      throw ConfigurationException(
+        'dispatcher.worktree_name gives "$example", which is not a worktree name '
+        '(letters, digits, ".", "_" and "-").',
+      );
+    }
+  }
+
+  static const defaultName = '{repo}-{n}';
+
+  /// The primary clone as written: absolute, or relative to the backlog folder.
+  final String repo;
+
+  /// Name of the n-th worktree; `{repo}` is the folder name of [repo].
+  final TextTemplate name;
+
+  /// At most this many worktrees in all: the listed ones plus those the
+  /// dispatcher created.
+  final int maxWorktrees;
+
+  /// Remove a worktree the dispatcher created after it was idle this long,
+  /// when that loses nothing (clean, nothing that is not in the base
+  /// branch); null keeps them.
+  final Duration? cleanupAfter;
+
+  /// [repo] made absolute against the backlog folder [backlogRoot].
+  String resolveRepo(String backlogRoot) => p.normalize(p.isAbsolute(repo) ? repo : p.join(backlogRoot, repo));
+
+  /// The name of the [n]-th worktree.
+  String nameFor(int n) => name.render({'repo': p.basename(p.normalize(repo)), 'n': '$n'});
+
+  /// The worktree called [worktreeName]: a folder next to the primary clone.
+  WorktreeDefinition worktree(String worktreeName, String backlogRoot) =>
+      WorktreeDefinition(worktreeName, p.join(p.dirname(resolveRepo(backlogRoot)), worktreeName));
 }
