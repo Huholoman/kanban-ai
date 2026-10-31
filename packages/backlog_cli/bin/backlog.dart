@@ -12,6 +12,7 @@ Future<void> main(List<String> arguments) async {
       cwd: Directory.current.path,
       environment: Platform.environment,
       readInput: () => stdin.transform(utf8.decoder).join(),
+      terminal: IoTerminal.available ? IoTerminal.new : null,
     ),
   );
 }

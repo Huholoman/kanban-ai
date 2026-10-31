@@ -9,6 +9,7 @@ import 'package:backlog_core/backlog_core.dart';
 import 'src/cli_context.dart';
 import 'src/commands/action_commands.dart';
 import 'src/commands/checklist_commands.dart';
+import 'src/commands/config_command.dart';
 import 'src/commands/discussion_commands.dart';
 import 'src/commands/item_commands.dart';
 import 'src/commands/project_commands.dart';
@@ -17,6 +18,8 @@ import 'src/commands/work_commands.dart';
 import 'src/render/json_output.dart';
 
 export 'src/cli_context.dart';
+export 'src/tui/keys.dart';
+export 'src/tui/terminal.dart';
 
 /// Exit codes, so that scripts and agents can react without parsing text.
 abstract final class ExitCode {
@@ -63,6 +66,7 @@ Future<int> runBacklogCli(List<String> arguments, CliContext context) async {
     PrCommand(context),
     InstructionsCommand(context),
     ProjectsCommand(context),
+    ConfigCommand(context),
   ]) {
     runner.addCommand(command);
   }

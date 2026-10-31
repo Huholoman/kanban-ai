@@ -524,8 +524,11 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches, dispatcher worktrees, agent, actions and pull request commands (exit 1 on errors) |
 | `instructions` | the guide for agents, in Markdown |
 | `projects`, `projects add [dir] [--id] [--name]`, `projects remove <id>`, `projects pin\|unpin <id>` | the registry of backlogs on this machine (`~/.config/kanban-ai/projects.yaml`), see below |
+| `config [--projects f]` | configuration in a terminal UI, see below |
 
 **Project registry:** `backlog init` registers the new backlog by itself (`--no-register` skips it); `backlog projects add` (in a project) registers an existing backlog in `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` (default `~/.config/kanban-ai/projects.yaml`; elsewhere with `BACKLOG_PROJECTS` or `--projects <file>`). The file is plain YAML you can also edit by hand — `projects:` is a list of `{id?, name?, path}`, paths absolute, `~/…` or relative to the file; the id defaults to the project folder's name (the parent of a folder called `backlog`), the first project is the default one, and `pinned: true` puts a project into the board switcher's short list (`backlog projects pin|unpin <id>`, or the pin in the switcher's *All projects…*).
+
+**Configuration TUI:** `backlog config` opens a terminal UI with two separate parts: **Global** (this machine — for now the project registry) and **Project** (the `backlog.yaml` of the backlog here or of a registered project). Pages for the individual sections are on the way; until then *Edit a value…* changes any key (`claims.lease_minutes`, `statuses[1].pickable`, a YAML value; empty removes it). Nothing is written until *Review and save*, which shows the diff, checks that the file is still valid and saves after `y`, keeping comments and unknown keys; a file edited meanwhile by someone else is not overwritten. ↑↓ move, Enter choose, Esc back, `q` quit.
 
 Global options are `-C <dir>` and `--json`. The agent comes from `--as` or `BACKLOG_AGENT`. **Exit codes:** 0 ok, 1 error, 2 nothing to do, 3 claim conflict, 4 not found, 64 usage. JSON fields are only ever added, never renamed.
 
@@ -536,7 +539,7 @@ A Dart pub workspace, plus the Flutter app:
 ```
 packages/
   backlog_core/    domain, use cases, file-system adapters
-  backlog_cli/     CLI adapter (args), text/JSON output
+  backlog_cli/     CLI adapter (args), text/JSON output, the TUI of `backlog config` (own, over dart:io raw mode)
   backlog_api/     HTTP contract: DTOs, the BacklogApi interface, an HTTP client (pure Dart, runs on the web)
   backlog_server/  shelf: REST over the core, folder watcher + WebSocket, serves the web app
   backlog_app/     Flutter (web, linux): board, detail, editing; outside the workspace, own pubspec.lock
@@ -565,6 +568,7 @@ backlog_cli ──────────────────────�
 | `dispatch` | `DispatchPlan` (ready items → free worktrees; held items, unavailable worktrees, running agents; where an action runs), `ActionState` (status hooks), ports `AgentLauncher`, `ActionStateStore`, `ActionRequests` | `Dispatcher` (debounce, wake-up on claim expiry, auto launch, manual start/stop, actions and hooks), `LoggingLauncher` | `ProcessAgentLauncher` (detached processes, state files, heartbeat, end of run, action commands and built-ins), `WorktreeProvisioner` (worktrees on demand, cleanup), `BuiltInAction` registry, `FileActionStateStore`, `FileActionRequests` |
 | `views` | `Filter`, `ViewDefinition`, `ViewEngine` | `ViewService` | YAML views |
 | `validation` | `LintIssue` | `Linter` | – |
+| `settings` | `ConfigDraft` (edits via `yaml_edit`, key paths, typed values), line diff, port `ConfigFile` | `ConfigEditor` (open, validate, save unless changed meanwhile) | configuration files (`backlog.yaml`, `projects.yaml`) |
 
 `Backlog.open()` is the composition root that wires the ports to the file-system adapters. To support several users on a database, you would write other adapters (`ItemRepository`, `ClaimStore`, `WorkflowSource`) and leave the domain unchanged. The DDD is light:
 - value objects
