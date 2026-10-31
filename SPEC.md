@@ -72,6 +72,16 @@ appearance:                            # optional; colours "#rrggbb" (quoted!), 
   priorities: {p0: "#e53935"}
   types: {epic: "#6a1b9a"}
   labels: {infra: "#00897b"}
+
+dispatcher:                            # optional; without it there is no dispatcher
+  mode: manual                         # manual (propose, a person starts) | auto (start by itself)
+  max_agents: 2                        # at most this many at once; default one per worktree
+  worktrees:                           # in order of preference
+    - name: monorepo-2                 # also the agent name of its claims
+      path: ../monorepo-2              # absolute, or relative to the backlog folder
+    - monorepo-3                       # bare name = {name: monorepo-3, path: ../monorepo-3}
+  command: claude -p "Work on backlog item {id}, run backlog show {id} first"
+  # or as a list of arguments: [claude, -p, "Work on {id}"]
 ```
 
 Semantics:
@@ -83,6 +93,7 @@ Semantics:
 - **Types** are labels; the hierarchy comes from `parent`, not from the type. `epic` is special only in the UI (epic filter, the default Board view hides epics).
 - **Statuses are the board columns.** Add, rename or reorder them here; each view chooses which to show with `columns:` (§6), also editable from the app.
 - **Appearance** only affects the web board: the palette is generated from `seed` per brightness, `primary`/`secondary`/`background` override parts of it; status, priority, type and label colours replace the built-in ones (columns, card stripes, tags). Invalid colours or modes are configuration errors.
+- **Dispatcher** hands ready items to agents running in the listed worktrees. A worktree is *free* when no live claim is held under its name; at most `max_agents` of the listed worktrees are busy at once. `command` is split into arguments like a shell would (quotes, backslashes) but never run through one, so pipes or variables need an explicit `[sh, -c, "…"]`; in every argument `{id}`, `{title}`, `{worktree}`, `{path}` (absolute worktree path) and `{backlog}` (absolute backlog path) are replaced, `{{`/`}}` are literal braces. The agent runs inside the worktree folder. Unknown keys and placeholders, a missing `command` or `worktrees`, duplicate names or paths, names other than `[A-Za-z0-9._-]`, `max_agents` < 1 and a `mode` other than `auto`/`manual` are configuration errors; `lint` warns about worktree paths that are not folders. So far the section is only read and validated; nothing acts on it yet.
 - Changes to `backlog.yaml` are picked up by a running server (and the board's theme) without restart.
 
 ## 3. Items — `items/<id>-<slug>.md`
@@ -215,7 +226,9 @@ Default views from `init`: **Board** (kanban by status, epics hidden), **Ready t
 
 Errors and warnings with a code, item and location:
 
-`unreadable` (broken file / front matter), `duplicate-id`, `file-name`, `unknown-status`, `unknown-priority`, `unknown-type`, `unknown-milestone`, `dangling-reference` (parent/depends_on/related to a missing item), `self-reference`, `dependency-cycle`, `parent-cycle`, `invalid-view`, `expired-claim`, `stale-claim`, `orphan-claim`.
+`unreadable` (broken file / front matter), `duplicate-id`, `file-name`, `unknown-status`, `unknown-priority`, `unknown-type`, `unknown-milestone`, `dangling-reference` (parent/depends_on/related to a missing item), `self-reference`, `dependency-cycle`, `parent-cycle`, `invalid-view`, `expired-claim`, `stale-claim`, `orphan-claim`, `dispatcher-worktree` (a dispatcher worktree path is not a folder).
+
+A broken `backlog.yaml` (including the `dispatcher` section) is not a lint issue: every command, `lint` included, fails with the configuration error (exit 1).
 
 ## 8. Server — `backlog-server`
 

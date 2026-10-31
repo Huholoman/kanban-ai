@@ -26,5 +26,6 @@ export 'src/views/domain/item_fields.dart';
 export 'src/views/domain/view.dart';
 export 'src/views/infrastructure/yaml_views.dart' show parseFilter, parseViewYaml;
 export 'src/workflow/domain/appearance.dart';
+export 'src/workflow/domain/dispatcher_config.dart';
 export 'src/workflow/domain/workflow.dart';
 export 'src/workflow/infrastructure/yaml_workflow.dart' show parseWorkflowYaml;

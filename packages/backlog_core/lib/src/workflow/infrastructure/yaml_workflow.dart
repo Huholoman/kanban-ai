@@ -2,6 +2,7 @@ import 'package:yaml/yaml.dart';
 
 import '../../shared/errors.dart';
 import '../domain/appearance.dart';
+import '../domain/dispatcher_config.dart';
 import '../domain/workflow.dart';
 
 /// Parses the `backlog.yaml` format into a [Workflow].
@@ -71,7 +72,52 @@ Workflow parseWorkflowYaml(String source, {String origin = 'backlog.yaml'}) {
     defaultType: defaults['type']?.toString() ?? (document['types'] == null ? standard.defaultType : null),
     claimLease: leaseMinutes == null ? standard.claimLease : Duration(minutes: leaseMinutes as int),
     appearance: _appearance(document['appearance'], origin),
+    dispatcher: _dispatcher(document['dispatcher'], origin),
   );
+}
+
+DispatcherConfig? _dispatcher(Object? node, String origin) {
+  if (node == null) return null;
+  final yaml = _map(node, 'dispatcher', origin);
+  const known = {'mode', 'max_agents', 'worktrees', 'command'};
+  for (final key in yaml.keys) {
+    if (!known.contains('$key')) {
+      throw ConfigurationException('$origin: unknown key "dispatcher.$key" (expected ${known.join(', ')}).');
+    }
+  }
+  try {
+    final maxAgents = yaml['max_agents'];
+    if (maxAgents != null && maxAgents is! int) {
+      throw const ConfigurationException('dispatcher.max_agents must be an integer.');
+    }
+    final command = yaml['command'];
+    if (command == null) throw const ConfigurationException('dispatcher.command is required.');
+    final worktrees = yaml['worktrees'];
+    if (worktrees == null) throw const ConfigurationException('dispatcher.worktrees is required.');
+    return DispatcherConfig(
+      mode: DispatchMode.parse('${yaml['mode'] ?? 'manual'}'.trim()),
+      maxAgents: maxAgents as int?,
+      command: command is List
+          ? CommandTemplate(_strings(command, 'dispatcher.command', origin))
+          : CommandTemplate.parse(_string(command, 'dispatcher.command', origin)),
+      worktrees: [
+        for (final entry in _list(worktrees, 'dispatcher.worktrees', origin))
+          if (entry is Map)
+            WorktreeDefinition(
+              _string(entry['name'], 'dispatcher.worktrees[].name', origin),
+              _string(entry['path'] ?? '../${entry['name']}', 'dispatcher.worktrees[].path', origin),
+            )
+          else
+            WorktreeDefinition(
+              _string(entry, 'dispatcher.worktrees[]', origin),
+              '../${_string(entry, 'dispatcher.worktrees[]', origin)}',
+            ),
+      ],
+    );
+  } on ConfigurationException catch (e) {
+    if (e.message.startsWith(origin)) rethrow;
+    throw ConfigurationException('$origin: ${e.message}');
+  }
 }
 
 Appearance _appearance(Object? node, String origin) {
@@ -199,4 +245,17 @@ claims:
 #   priorities: {p0: "#e53935", p1: "#fb8c00", p2: "#1e88e5", p3: "#90a4ae"}
 #   types: {epic: "#6a1b9a", bug: "#c62828"}
 #   labels: {infra: "#00897b", ui: "#d81b60"}
+
+# Dispatcher: hands ready items to agents in free worktrees (optional; off
+# without this section). A worktree is free when no live claim is held under
+# its name. Placeholders in the command: {id}, {title}, {worktree}, {path}
+# (absolute path of the worktree), {backlog} (absolute path of this folder).
+# dispatcher:
+#   mode: manual          # manual: propose, a person starts | auto: start by itself
+#   max_agents: 2         # at most this many at once (default: one per worktree)
+#   worktrees:            # path relative to this folder; a bare name means ../<name>
+#     - name: monorepo-2
+#       path: ../monorepo-2
+#     - monorepo-3
+#   command: claude -p "Work on backlog item {id}, run backlog show {id} first and follow backlog instructions"
 ''';

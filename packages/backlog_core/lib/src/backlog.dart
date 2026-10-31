@@ -75,6 +75,8 @@ final class Backlog {
         views: viewRepository,
         workflow: workflow,
         clock: clock,
+        root: layout.root,
+        directoryExists: (path) => Directory(path).exists(),
       ),
     );
   }

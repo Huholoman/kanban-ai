@@ -276,6 +276,7 @@ Derived properties are computed, never stored: `blocked`, `ready`, and the progr
 - statuses `backlog`, `todo`, `in-progress`, `review`, `done` and `cancelled`
 - priorities `p0`–`p3`
 - types, milestones, defaults and the claim lease
+- commented examples of `appearance` and `dispatcher`
 
 Every status belongs to the category `open`, `active` or `done`. Items in the `done` category satisfy dependencies, and agents pick up work from statuses marked `pickable`. The statuses are the possible board columns; which of them a view shows, and in what order, is set by `columns:` in the view (or from the app, see below).
 
@@ -293,6 +294,21 @@ appearance:
 ```
 
 The board picks up changes to it live.
+
+**Dispatcher** (optional): which worktrees agents may run in, how many at once and how to start one. Without the section there is no dispatcher. A worktree is free when nobody holds a live claim under its name.
+
+```yaml
+dispatcher:
+  mode: manual          # manual: a person presses Start in the board | auto: starts by itself
+  max_agents: 2         # default: one per worktree
+  worktrees:            # path relative to the backlog folder; a bare name means ../<name>
+    - name: monorepo-2
+      path: ../monorepo-2
+    - monorepo-3
+  command: claude -p "Work on backlog item {id}, run backlog show {id} first"
+```
+
+The command is split into arguments like in a shell, but no shell runs it (use `[sh, -c, "…"]` if you need one). Placeholders: `{id}`, `{title}`, `{worktree}`, `{path}` (absolute path of the worktree), `{backlog}`. Mistakes in the section are configuration errors; `lint` warns about worktree paths that do not exist. For now the section is only read and validated; the dispatcher itself is being built.
 
 ### View (`views/*.yaml`)
 
@@ -327,7 +343,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `claim / heartbeat / release / done <id> --as <agent>` | work with claims (`--force` overrides the checks) |
 | `claims` | who works on what |
 | `view [name]` | saved views |
-| `lint` | consistency: unknown values, broken references, cycles, locks (exit 1 on errors) |
+| `lint` | consistency: unknown values, broken references, cycles, locks, dispatcher worktrees (exit 1 on errors) |
 | `instructions` | the guide for agents, in Markdown |
 
 Global options are `-C <dir>` and `--json`. The agent comes from `--as` or `BACKLOG_AGENT`. **Exit codes:** 0 ok, 1 error, 2 nothing to do, 3 claim conflict, 4 not found, 64 usage. JSON fields are only ever added, never renamed.
