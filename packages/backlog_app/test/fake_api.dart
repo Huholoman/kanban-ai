@@ -67,7 +67,10 @@ final class FakeBacklogApi implements BacklogApi {
   int viewLoads = 0;
 
   /// Someone listens to the live updates (the WebSocket would be open).
-  bool get listening => _changes.hasListener;
+  bool get listening => listeners > 0;
+
+  /// How many listen to the live updates now.
+  int listeners = 0;
   Object? failNextUpdate;
 
   /// Simulates an agent editing a file on disk.
@@ -296,11 +299,28 @@ final class FakeBacklogApi implements BacklogApi {
     );
   }
 
-  @override
-  Future<List<LintIssueDto>> lint() async => const [];
+  /// What lint reports.
+  List<LintIssueDto> lintIssues = const [];
 
   @override
-  Stream<BacklogChangeEvent> changes() => _changes.stream;
+  Future<List<LintIssueDto>> lint() async => lintIssues;
+
+  @override
+  Stream<BacklogChangeEvent> changes() {
+    late final StreamController<BacklogChangeEvent> controller;
+    StreamSubscription<BacklogChangeEvent>? subscription;
+    controller = StreamController<BacklogChangeEvent>(
+      onListen: () {
+        listeners++;
+        subscription = _changes.stream.listen(controller.add);
+      },
+      onCancel: () {
+        listeners--;
+        return subscription?.cancel();
+      },
+    );
+    return controller.stream;
+  }
 
   /// The dispatcher's plan; [startAgent] and [stopAgent] record their calls
   /// and answer with [afterStart] / [afterStop] (or fail with [failStart]).

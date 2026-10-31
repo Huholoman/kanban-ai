@@ -4,6 +4,7 @@ import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 
 import '../features/board/presentation/board_page.dart';
+import '../features/dashboard/application/dashboard_controller.dart';
 import '../features/projects/application/project_memory.dart';
 import '../features/projects/application/project_route.dart';
 import '../features/projects/application/projects_controller.dart';
@@ -53,18 +54,23 @@ class _BacklogAppState extends State<BacklogApp> with WidgetsBindingObserver {
     requested: ProjectRoute.parse(widget.initialRoute ?? WidgetsBinding.instance.platformDispatcher.defaultRouteName),
   );
 
+  /// Watches every project, whichever is open.
+  late final DashboardController _dashboard;
+
   @override
   void initState() {
     super.initState();
     // Registered before the MaterialApp, so a URL typed in the address bar
     // reaches this observer first.
     WidgetsBinding.instance.addObserver(this);
+    _dashboard = DashboardController(_projects, agent: widget.config.agent);
     unawaited(_projects.start());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _dashboard.dispose();
     _projects.dispose();
     super.dispose();
   }
@@ -80,7 +86,13 @@ class _BacklogAppState extends State<BacklogApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: _projects,
     builder: (context, _) => switch (_projects.api) {
-      final api? => _ProjectSession(key: ObjectKey(api), api: api, projects: _projects, config: widget.config),
+      final api? => _ProjectSession(
+        key: ObjectKey(api),
+        api: api,
+        projects: _projects,
+        dashboard: _dashboard,
+        config: widget.config,
+      ),
       null => _ProjectsStatus(controller: _projects),
     },
   );
@@ -88,10 +100,17 @@ class _BacklogAppState extends State<BacklogApp> with WidgetsBindingObserver {
 
 /// One open project: its API in [AppScope], its theme and the board.
 class _ProjectSession extends StatefulWidget {
-  const _ProjectSession({super.key, required this.api, required this.projects, required this.config});
+  const _ProjectSession({
+    super.key,
+    required this.api,
+    required this.projects,
+    required this.dashboard,
+    required this.config,
+  });
 
   final BacklogApi api;
   final ProjectsController projects;
+  final DashboardController dashboard;
   final AppConfig config;
 
   @override
@@ -130,10 +149,14 @@ class _ProjectSessionState extends State<_ProjectSession> {
     config: widget.config,
     appearance: _appearance,
     projects: widget.projects,
+    dashboard: widget.dashboard,
     child: ListenableBuilder(
-      listenable: _appearance,
+      listenable: Listenable.merge([_appearance, widget.dashboard]),
       builder: (context, _) => MaterialApp(
-        title: widget.projects.current?.name ?? 'Backlog',
+        title: switch ((widget.projects.current?.name ?? 'Backlog', widget.dashboard.needsMe)) {
+          (final name, 0) => name,
+          (final name, final count) => '($count) $name',
+        },
         debugShowCheckedModeBanner: false,
         theme: _appearance.theme(Brightness.light),
         darkTheme: _appearance.theme(Brightness.dark),

@@ -188,8 +188,8 @@ void main() {
       await pushRoute(tester, '/p/c');
       expect(find.text('Item C-1'), findsOneWidget);
       expect(find.text('Item A-1'), findsNothing);
-      expect(first.listening, isFalse, reason: 'board, theme and detail of project a are disposed');
-      expect(api.backlogs['c']!.listening, isTrue);
+      expect(first.listeners, 1, reason: 'board, theme and detail of project a are disposed; the dashboard watches it');
+      expect(api.backlogs['c']!.listeners, greaterThan(1));
       expect(announced.last, '/p/c');
       expect(title(tester), 'Project c');
 
@@ -296,7 +296,7 @@ void main() {
         expect(find.text('Item C-1'), findsOneWidget);
         expect(find.text('Item A-1'), findsNothing);
         expect(find.byKey(const ValueKey('detail-A-1')), findsNothing);
-        expect(api.backlogs['a']!.listening, isFalse);
+        expect(api.backlogs['a']!.listeners, 1, reason: 'only the dashboard watches it');
         expect(memory.read(), 'c');
         expect(announced.last, '/p/c');
         expect(find.text('Project c'), findsOneWidget);

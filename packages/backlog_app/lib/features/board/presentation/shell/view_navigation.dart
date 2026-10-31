@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../app/app_scope.dart';
 import '../../../../shared/tokens.dart';
 import '../../../../shared/ui/ui.dart';
+import '../../../dashboard/application/dashboard_controller.dart';
+import '../../../dashboard/presentation/dashboard_page.dart';
 import '../../../dispatch/presentation/dispatch_overview.dart';
 import '../../../projects/presentation/project_switcher.dart';
 import '../../application/board_controller.dart';
@@ -64,6 +67,8 @@ class ViewNavigation extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               children: [
+                if (AppScope.of(context).dashboard case final dashboard?)
+                  _DashboardRow(dashboard: dashboard, onNavigate: onNavigate),
                 for (final (name, members) in sections)
                   if (name == null) ...[
                     const SectionLabel('Views'),
@@ -142,6 +147,54 @@ class _ViewRow extends StatelessWidget {
                 ),
                 if (count != null) CountText(count),
                 _ViewMenu(controller: controller, view: view),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Opens the dashboard; its badge counts what waits for a person in every
+/// project.
+class _DashboardRow extends StatelessWidget {
+  const _DashboardRow({required this.dashboard, this.onNavigate});
+
+  final DashboardController dashboard;
+  final VoidCallback? onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    return ListenableBuilder(
+      listenable: dashboard,
+      builder: (context, _) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: InkWell(
+          key: const ValueKey('open-dashboard'),
+          borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
+          onTap: () {
+            final navigator = Navigator.of(context);
+            onNavigate?.call();
+            unawaited(navigator.push(MaterialPageRoute<void>(builder: (_) => DashboardPage(controller: dashboard))));
+          },
+          child: SizedBox(
+            height: 32,
+            child: Row(
+              children: [
+                const SizedBox(width: 10),
+                Icon(Icons.space_dashboard_outlined, size: 16, color: tokens.muted),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text('Dashboard', style: TextStyle(color: tokens.text)),
+                ),
+                if (dashboard.needsMe > 0)
+                  Tooltip(
+                    message: '${dashboard.needsMe} waiting for you: questions, approvals, stopped work',
+                    child: CountBadge(dashboard.needsMe, key: const ValueKey('dashboard-badge')),
+                  ),
+                const SizedBox(width: 12),
               ],
             ),
           ),

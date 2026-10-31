@@ -94,6 +94,9 @@ class ProjectsController extends ChangeNotifier {
     if (_selectable(id) case final project?) _open(project);
   }
 
+  /// The API of project [id], open or not (the dashboard watches them all).
+  BacklogApi apiOf(String id) => id == current?.id && api != null ? api! : _projectsApi!.project(id);
+
   /// The view last chosen in the open project (or the single backlog).
   String? get lastView => _memory.readView(current?.id);
 
