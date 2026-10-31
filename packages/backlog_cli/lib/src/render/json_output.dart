@@ -42,8 +42,15 @@ abstract final class JsonOutput {
       'path': ?path,
       if (withBody) 'body': item.body,
       if (withBody) 'discussion': [for (final c in item.discussion.comments) comment(c)],
+      if (withBody) 'checklist': [for (final entry in Checklist.entriesOf(item.body)) checklistEntry(entry)],
     };
   }
+
+  static Map<String, Object?> checklistEntry(ChecklistEntry entry) => {
+    'number': entry.number,
+    'text': entry.text,
+    'done': entry.done,
+  };
 
   static Map<String, Object?> comment(Comment comment) => {
     'author': comment.author,

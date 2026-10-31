@@ -10,7 +10,30 @@ import 'backlog_command.dart';
 final class InitCommand extends BacklogCommand {
   InitCommand(super.context) {
     argParser
-      ..addOption('prefix', defaultsTo: 'T', help: 'Prefix of item ids.')
+      ..addOption('prefix', help: 'Prefix of item ids (default: T, or what the preset or --from backlog says).')
+      ..addOption(
+        'preset',
+        help: 'Start from this preset: a name (see --list-presets) or a folder with backlog.yaml.',
+        valueHelp: 'name|folder',
+      )
+      ..addOption(
+        'from',
+        help: 'Copy the configuration and views (not the items) of this backlog.',
+        valueHelp: 'backlog',
+      )
+      ..addOption(
+        'repo',
+        help: 'The code repository, for the dispatcher of presets that name it (default: the parent folder).',
+        valueHelp: 'folder',
+      )
+      ..addOption(
+        'agents-file',
+        help:
+            'Append the preset\'s guide for agents to this file (e.g. CLAUDE.md or AGENTS.md of the repository) '
+            'instead of printing it.',
+        valueHelp: 'file',
+      )
+      ..addFlag('list-presets', negatable: false, help: 'List the presets and exit.')
       ..addFlag(
         'register',
         defaultsTo: true,
@@ -22,15 +45,38 @@ final class InitCommand extends BacklogCommand {
   String get name => 'init';
 
   @override
-  String get description => 'Create a backlog (backlog.yaml, items/, views/, docs/) in a folder.';
+  String get description =>
+      'Create a backlog (backlog.yaml, items/, views/, docs/) in a folder, optionally from a preset.';
 
   @override
-  String get invocation => 'backlog init [folder]';
+  String get invocation => 'backlog init [folder] [--preset name|folder | --from backlog] [--prefix X]';
+
+  PresetCatalog get _catalog => PresetCatalog(userDir: PresetCatalog.userDirFor(context.environment));
 
   @override
   Future<int> run() async {
+    if (args.flag('list-presets')) return _listPresets();
+    if (args.rest.length > 1) throw UsageException('Expected at most one folder.', usage);
+    if (args.option('preset') != null && args.option('from') != null) {
+      throw UsageException('Give either --preset or --from.', usage);
+    }
+    final InitPreset? preset;
+    if (args.option('from') case final from?) {
+      final source = p.normalize(p.join(context.cwd, from));
+      preset = await PresetCatalog.fromBacklog(Backlog.locate(source) ?? source);
+    } else if (args.option('preset') case final name?) {
+      preset = await _catalog.resolve(name, cwd: context.cwd, home: context.environment['HOME']);
+    } else {
+      preset = null;
+    }
     final folder = args.rest.isEmpty ? '.' : args.rest.single;
-    final layout = await Backlog.init(p.join(context.cwd, folder), idPrefix: args.option('prefix')!);
+    final root = p.normalize(p.join(context.cwd, folder));
+    final repo = args.option('repo') == null
+        ? '..'
+        : p.relative(p.normalize(p.join(context.cwd, args.option('repo')!)), from: root);
+    final created = await Backlog.create(root, idPrefix: args.option('prefix'), preset: preset, repo: repo);
+    final layout = created.layout;
+
     ProjectEntry? project;
     String? registered;
     final registry = args.flag('register') ? projectService() : null;
@@ -43,12 +89,76 @@ final class InitCommand extends BacklogCommand {
         context.err.writeln('warning: not registered in ${registry.location}: ${error.message}');
       }
     }
-    json
-        ? emitJson({
-            'root': layout.root,
-            if (project != null) 'project': {'id': project.id, 'name': project.displayName},
-          })
-        : lines(['Created backlog in ${layout.root}', ?registered]);
+
+    final guide = created.preset.agentsGuide;
+    String? guideFile;
+    var guideWritten = false;
+    if (guide != null && args.option('agents-file') != null) {
+      guideFile = p.normalize(p.join(context.cwd, args.option('agents-file')!));
+      guideWritten = await _appendGuide(guideFile, guide);
+    }
+    if (json) {
+      emitJson({
+        'root': layout.root,
+        if (project != null) 'project': {'id': project.id, 'name': project.displayName},
+        'preset': created.preset.name,
+        'prefix': created.idPrefix,
+        'agents_guide': guide,
+        'agents_file': guideFile,
+      });
+      return 0;
+    }
+    lines([
+      'Created backlog in ${layout.root}'
+          '${preset == null ? '' : ' from ${args.option('from') != null ? 'the backlog ${preset.source}' : 'preset ${preset.name}'}'}'
+          ' (ids ${created.idPrefix}-…)',
+      ?registered,
+    ]);
+    if (guide == null) return 0;
+    if (guideFile != null) {
+      line(guideWritten ? 'Added the guide for agents to $guideFile.' : '$guideFile has the guide for agents already.');
+    } else {
+      line('');
+      line('Add this guide for agents to CLAUDE.md / AGENTS.md of the repository (or use --agents-file):');
+      line('');
+      context.out.write(guide.endsWith('\n') ? guide : '$guide\n');
+    }
+    return 0;
+  }
+
+  /// Appends [guide] to [path] unless its first line is there already.
+  static Future<bool> _appendGuide(String path, String guide) async {
+    final file = File(path);
+    final existing = await file.exists() ? await file.readAsString() : '';
+    final heading = guide.trimLeft().split('\n').first.trim();
+    if (heading.isNotEmpty && existing.split('\n').any((line) => line.trim() == heading)) return false;
+    await file.parent.create(recursive: true);
+    final separator = existing.isEmpty
+        ? ''
+        : (existing.endsWith('\n\n') ? '' : (existing.endsWith('\n') ? '\n' : '\n\n'));
+    await file.writeAsString('$existing$separator${guide.trimLeft()}${guide.endsWith('\n') ? '' : '\n'}');
+    return true;
+  }
+
+  Future<int> _listPresets() async {
+    final presets = await _catalog.list();
+    if (json) {
+      emitJson([
+        for (final preset in presets)
+          {
+            'name': preset.name,
+            'description': preset.description,
+            'source': preset.source,
+            'agents_guide': preset.agentsGuide != null,
+          },
+      ]);
+      return 0;
+    }
+    final width = presets.map((preset) => preset.name.length).fold(0, (a, b) => a > b ? a : b);
+    for (final preset in presets) {
+      final origin = preset.source == InitPreset.builtIn ? '' : '  (${preset.source})';
+      line('${preset.name.padRight(width)}  ${preset.description}$origin');
+    }
     return 0;
   }
 }

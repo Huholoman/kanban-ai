@@ -149,7 +149,7 @@ void main() {
       ],
     );
 
-    expect(
+    await expectLater(
       () => api.followAgentLog('L-none').first.timeout(const Duration(milliseconds: 300)),
       throwsA(isA<TimeoutException>()),
       reason: 'an unknown item gets no messages (the upgrade is refused, the client retries)',

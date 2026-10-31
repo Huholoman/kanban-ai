@@ -40,8 +40,16 @@ pushes when the item has one already. Push only this way. After rebasing the
 branch (e.g. to resolve conflicts with the base), `backlog pr T-7f3a --force`
 replaces the remote branch (with a lease; never the base branch).
 
-Edit the body of your item file directly (context, plan, checklist with
-`- [ ]` / `- [x]`, notes). Do not edit `status`, `assignee` or `id` by hand.
+Tick off the checklist of your item (`- [ ]` lines in its body) with the
+CLI, not by editing the file (it may lie outside your worktree):
+
+    backlog check T-7f3a                 # the numbered checklist
+    backlog check T-7f3a 2               # tick item 2 (several numbers work)
+    backlog check T-7f3a "CSV export"    # or name it by its text
+    backlog uncheck T-7f3a 2
+
+Edit the rest of the body of your item file directly when you can (context,
+plan, notes). Do not edit `status`, `assignee` or `id` by hand.
 
 ## Questions and comments
 

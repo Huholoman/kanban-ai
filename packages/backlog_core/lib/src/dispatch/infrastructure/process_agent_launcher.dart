@@ -134,13 +134,15 @@ final class ProcessAgentLauncher extends AgentLauncher {
   String get agentsDir => p.join(stateDir, 'agents', project);
   String get logsDir => p.join(stateDir, 'logs', project);
 
-  /// Runs the command, appends its output to the log, then records the exit
-  /// code (atomically) and a closing line. Arguments: log, exit file, command.
+  /// Runs the command, appends its output to the log, then a closing line,
+  /// and only then records the exit code (atomically): once the exit file is
+  /// there the log is complete and the launcher's own lines come after it.
+  /// Arguments: log, exit file, command.
   static const _wrapper =
       r'log=$1; exit_file=$2; shift 2; '
       r'"$@" </dev/null >>"$log" 2>&1; code=$?; '
-      r'printf "%s\n" "$code" >"$exit_file.tmp" && mv "$exit_file.tmp" "$exit_file"; '
       r'printf "\n# kanban-ai: the agent exited with code %s at %s\n" "$code" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$log"; '
+      r'printf "%s\n" "$code" >"$exit_file.tmp" && mv "$exit_file.tmp" "$exit_file"; '
       r'exit "$code"';
 
   @override

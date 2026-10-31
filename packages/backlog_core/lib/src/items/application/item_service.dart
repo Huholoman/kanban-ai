@@ -1,6 +1,7 @@
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/workflow.dart';
+import '../domain/checklist.dart';
 import '../domain/discussion.dart';
 import '../domain/item.dart';
 import '../domain/item_id.dart';
@@ -151,6 +152,20 @@ final class ItemService {
     return update(item.id.value, const [], body: Discussion.append(item.body, comment));
   }
 
+  /// Checks ([done]) or unchecks the checklist items of the item that
+  /// [selectors] name (numbers or text, see [Checklist.select]), changing
+  /// nothing else in its file. The file is written only when a box changes.
+  Future<ChecklistUpdate> check(String reference, List<String> selectors, {bool done = true}) async {
+    final item = await get(reference);
+    final entries = Checklist.entriesOf(item.body);
+    if (entries.isEmpty) throw NotFoundException('${item.id} has no checklist (`- [ ]` lines in its body).');
+    final selected = <ChecklistEntry>{for (final selector in selectors) Checklist.select(entries, selector)};
+    final changed = selected.where((entry) => entry.done != done).toList()..sort((a, b) => a.number - b.number);
+    if (changed.isEmpty) return ChecklistUpdate(item, selected.toList(), changed: const []);
+    final updated = await update(item.id.value, const [], body: Checklist.mark(item.body, changed, done: done));
+    return ChecklistUpdate(updated, selected.toList(), changed: [for (final entry in changed) entry.number]);
+  }
+
   Item find(List<Item> items, String reference) {
     final id = ItemReference.resolve(reference, items.map((i) => i.id));
     return items.firstWhere((item) => item.id == id);
@@ -261,4 +276,16 @@ final class ItemService {
         );
 
   static List<T> _distinct<T>(Iterable<T> values) => values.toSet().toList();
+}
+
+/// What [ItemService.check] did: the item as saved, the entries named and
+/// the numbers of those whose box changed.
+final class ChecklistUpdate {
+  const ChecklistUpdate(this.item, this.selected, {required this.changed});
+
+  final Item item;
+  final List<ChecklistEntry> selected;
+  final List<int> changed;
+
+  List<ChecklistEntry> get entries => Checklist.entriesOf(item.body);
 }

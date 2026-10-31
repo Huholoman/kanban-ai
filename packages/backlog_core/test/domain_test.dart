@@ -557,6 +557,22 @@ dispatcher:
     expect(checklist.total, 4);
   });
 
+  test('Checklist entries are numbered, selected by number or text and marked in place', () {
+    const body = '## Plan\r\n  - [ ] Write the codec  \n* [X] Tests\n```\n- [ ] not a task\n```\n2) [ ] Docs: README\n';
+    final entries = Checklist.entriesOf(body);
+    expect(entries.map((e) => e.toString()), ['1. [ ] Write the codec', '2. [x] Tests', '3. [ ] Docs: README']);
+    expect(Checklist.select(entries, '3').text, 'Docs: README');
+    expect(Checklist.select(entries, 'tests').number, 2, reason: 'equal text, ignoring case');
+    expect(Checklist.select(entries, 'codec').number, 1, reason: 'the only one containing it');
+    expect(() => Checklist.select(entries, '4'), throwsA(isA<NotFoundException>()));
+    expect(() => Checklist.select(entries, 'nothing'), throwsA(isA<NotFoundException>()));
+    expect(() => Checklist.select(entries, 't'), throwsA(isA<InvalidInputException>()));
+
+    final marked = Checklist.mark(body, [entries[0], entries[2]], done: true);
+    expect(marked, body.replaceFirst('- [ ] Write', '- [x] Write').replaceFirst('2) [ ]', '2) [x]'));
+    expect(Checklist.mark(marked, [entries[1]], done: false), marked.replaceFirst('* [X]', '* [ ]'));
+  });
+
   test('FieldChange parses set, add, remove and clear', () {
     expect(FieldChange.parse('status=done').op, ChangeOp.set);
     expect(FieldChange.parse('labels+=a, b').values, ['a', 'b']);

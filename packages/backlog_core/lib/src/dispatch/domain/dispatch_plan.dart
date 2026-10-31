@@ -338,7 +338,7 @@ final class DispatchAssignment {
     'why in exactly one comment (`backlog comment {id} "…"`); what you fixed belongs in the commit messages, not '
     'in a comment. {publish} Then run `backlog set {id} status={status}` and stop. If something is unclear, ask '
     'with `backlog ask {id} "<your question>"` and stop.\n'
-    '${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}\n\n'
+    '${DispatcherConfig.checklistRules}\n${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}\n\n'
     'The review by {reviewer} ({reviewed}):\n\n{review}',
     known: const [
       ...DispatcherConfig.promptPlaceholders,
@@ -368,7 +368,7 @@ final class DispatchAssignment {
     '{context}\n\n'
     'The action:\n{task}\n\n'
     '{finish} If something is unclear, ask with `backlog ask {id} "<your question>"` and stop. {publish}\n'
-    '${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}',
+    '${DispatcherConfig.checklistRules}\n${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}',
     known: const [...ActionDefinition.promptPlaceholders, 'context', 'task', 'finish', 'publish'],
     label: 'action prompt',
   );

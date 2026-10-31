@@ -441,6 +441,14 @@ final class DispatcherConfig {
       'comments: that belongs in commit messages (and the pull request description). Write in the language the '
       'people in the item use.';
 
+  /// How every default prompt (and the frames of prompt actions and fixes)
+  /// tells the agent to tick off the item's checklist: through the CLI, since
+  /// the item file lies outside its worktree and editing it is denied.
+  static const checklistRules =
+      'The checklist of the item (`- [ ]` lines in its body): tick off what you finished with '
+      '`backlog check {id} <number or text>` (`backlog check {id}` lists it numbered, `backlog uncheck` undoes); '
+      'never edit the item file for that.';
+
   /// How every default prompt tells the agent to run things so that its tool
   /// whitelist lets them through (nobody can approve anything else).
   static const runRules =
@@ -461,7 +469,7 @@ final class DispatcherConfig {
       'it is and stop; you will be resumed with the answer.\n'
       '6. If a discussion in the item changes what it asks for, update its description or acceptance criteria in '
       'the body above the `## Discussion` section (never edit the comments; no comment about it is needed).\n'
-      '$talkRules\n$runRules';
+      '$checklistRules\n$talkRules\n$runRules';
 
   /// The prompt for continuing an agent's earlier session on the same item
   /// (unless `dispatcher.resume_prompt` replaces it).
@@ -478,7 +486,7 @@ final class DispatcherConfig {
       '- If the discussion changed what the item asks for, update its description or acceptance criteria in the body '
       'above `## Discussion` (never edit the comments; no comment about it is needed).\n'
       '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.\n'
-      '$talkRules\n$runRules';
+      '$checklistRules\n$talkRules\n$runRules';
 
   /// The prompt every agent gets when the project opens pull requests
   /// (`dispatcher.pr`) unless `dispatcher.prompt` replaces it: the agent
@@ -500,7 +508,7 @@ final class DispatcherConfig {
       'it is and stop; you will be resumed with the answer.\n'
       '6. If a discussion in the item changes what it asks for, update its description or acceptance criteria in '
       'the body above the `## Discussion` section (never edit the comments; no comment about it is needed).\n'
-      '$talkRules\n$runRules';
+      '$checklistRules\n$talkRules\n$runRules';
 
   /// The resume prompt when the project opens pull requests (`dispatcher.pr`).
   static const defaultPullRequestResumePrompt =
@@ -517,7 +525,7 @@ final class DispatcherConfig {
       '- If the discussion changed what the item asks for, update its description or acceptance criteria in the body '
       'above `## Discussion` (never edit the comments; no comment about it is needed).\n'
       '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.\n'
-      '$talkRules\n$runRules';
+      '$checklistRules\n$talkRules\n$runRules';
 
   /// In order of preference: free work goes to the first free worktree.
   final List<WorktreeDefinition> worktrees;
