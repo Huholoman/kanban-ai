@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:backlog_api/backlog_api.dart';
@@ -270,6 +271,69 @@ void main() {
       BacklogServer.buildHandler(projects: ProjectHub.single(BacklogHost(dir.path)), token: 'secret'),
     ).get(Uri.parse('http://backlog.test/api/health'));
     expect(health.statusCode, 200);
+  });
+
+  group('item cache', () {
+    File itemFile(String name) => File(p.join(dir.path, 'items', name));
+    void writeItem(String name, String id, String title, {String extra = ''}) =>
+        itemFile(name).writeAsStringSync('---\nid: $id\ntitle: $title\n$extra---\n');
+    Future<List<String>> titles() async => [for (final item in await api.items(includeDone: true)) item.title];
+
+    test('changes on disk are seen: edits of the same size, new, renamed and deleted files', () async {
+      writeItem('S-1.md', 'S-1', 'Aa');
+      expect(await titles(), ['Aa']);
+      for (final title in ['Bb', 'Cc']) {
+        writeItem('S-1.md', 'S-1', title, extra: 'status: todo\n'); // same size, usually the same mtime
+        expect(await titles(), [title]);
+        expect((await api.item('S-1')).item.title, title);
+        expect((await api.views()).firstWhere((view) => view.id == 'board').count, 1);
+      }
+      writeItem('S-2.md', 'S-2', 'New');
+      expect(await titles(), unorderedEquals(['Cc', 'New']));
+      itemFile('S-1.md').renameSync(itemFile('S-1-renamed.md').path);
+      expect((await api.item('S-1')).item.path, 'items/S-1-renamed.md');
+      itemFile('S-2.md').deleteSync();
+      expect(await titles(), ['Cc']);
+      expect(() => api.item('S-2'), throwsA(apiError(404, 'not_found')));
+    });
+
+    test('own writes and writes of an agent through the CLI are seen at once', () async {
+      final created = await api.createItem(const NewItemRequest(title: 'Mine'));
+      await api.updateItem(created.item.id, ItemUpdateRequest(changes: [ItemUpdateRequest.set('title', 'Ours')]));
+      expect(await titles(), ['Ours']);
+      await backlog.items.update(created.item.id, [FieldChange.parse('title=Them')]);
+      expect(await titles(), ['Them']);
+      expect((await api.lint()).where((issue) => issue.isError), isEmpty);
+    });
+
+    test('claims are read fresh and expire with the clock', () async {
+      final created = await api.createItem(const NewItemRequest(title: 'Work', status: 'todo'));
+      await backlog.claims.claim(created.item.id, 'agent-1');
+      final claimed = (await api.items()).single;
+      expect(claimed.claim?.agent, 'agent-1');
+      expect(claimed.claim?.expired, isFalse);
+      clock.advance(const Duration(days: 1));
+      expect((await api.items()).single.claim?.expired, isTrue);
+      expect((await api.item(created.item.id)).item.claim?.expired, isTrue);
+      await backlog.claims.release(created.item.id, agent: 'agent-1', force: true);
+      expect((await api.items()).single.claim, isNull);
+    });
+
+    test('a changed backlog.yaml drops the cache (new defaults apply to the files)', () async {
+      final host = BacklogHost(dir.path, clock: clock);
+      final cached = ApiHandler(host).handler;
+      Future<String> priority() async {
+        final response = await cached(shelf.Request('GET', Uri.parse('http://backlog.test/items')));
+        return (jsonDecode(await response.readAsString()) as List).single['priority'] as String;
+      }
+
+      writeItem('S-1.md', 'S-1', 'No priority');
+      expect(await priority(), 'p2');
+      final config = File(p.join(dir.path, 'backlog.yaml'));
+      config.writeAsStringSync(config.readAsStringSync().replaceFirst(RegExp(r'priority: p2'), 'priority: p1'));
+      host.reload();
+      expect(await priority(), 'p1');
+    });
   });
 
   test('a changed workflow applies after reload', () async {

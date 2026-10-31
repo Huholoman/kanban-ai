@@ -33,7 +33,16 @@ final class Backlog {
     required this.linter,
   });
 
-  static Future<Backlog> open(String root, {Clock clock = const SystemClock(), IdGenerator? ids}) async {
+  /// Opens the backlog at [root]. With [cacheItems] (long-running processes
+  /// such as the server) parsed item files are kept in memory and only
+  /// changed files are read again (see [FileSystemItemRepository]); claims
+  /// are always read fresh.
+  static Future<Backlog> open(
+    String root, {
+    Clock clock = const SystemClock(),
+    IdGenerator? ids,
+    bool cacheItems = false,
+  }) async {
     final layout = BacklogLayout(root);
     final config = File(layout.configFile);
     if (!await config.exists()) {
@@ -46,6 +55,7 @@ final class Backlog {
       MarkdownItemCodec(
         ItemDefaults(type: workflow.defaultType, status: workflow.defaultStatus, priority: workflow.defaultPriority),
       ),
+      cache: cacheItems,
     );
     final claimStore = FileSystemClaimStore(layout, defaultLease: workflow.claimLease);
     final viewRepository = YamlViewRepository(layout);
