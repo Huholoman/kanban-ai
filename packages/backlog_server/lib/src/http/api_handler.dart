@@ -104,11 +104,8 @@ final class ApiHandler {
   }
 
   Future<Response> _views(Request request) async {
-    final service = (await _host.backlog).views;
-    return _json([
-      for (final view in await service.all())
-        DtoMapper.viewSummary(view, count: (await service.evaluate(view)).items.toSet().length).toJson(),
-    ]);
+    final counts = await (await _host.backlog).views.counts();
+    return _json([for (final (view, count) in counts) DtoMapper.viewSummary(view, count: count).toJson()]);
   }
 
   Future<Response> _view(Request request, String id) async => _json(

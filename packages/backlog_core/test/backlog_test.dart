@@ -356,6 +356,17 @@ void main() {
   });
 
   group('views', () {
+    test('counts gives every view with the number of items it shows', () async {
+      final (backlog, _) = await tempBacklog();
+      await backlog.items.create(const NewItem(title: 'Open', status: 'todo'));
+      await backlog.items.create(const NewItem(title: 'Finished', status: 'done'));
+      final counts = await backlog.views.counts();
+      expect(counts.map((entry) => entry.$1.id), (await backlog.views.all()).map((view) => view.id));
+      for (final (view, count) in counts) {
+        expect(count, (await backlog.views.evaluate(view)).items.toSet().length, reason: view.id);
+      }
+    });
+
     test('sections are read from the YAML and set without touching the rest', () async {
       final (backlog, _) = await tempBacklog();
       final file = File(p.join(backlog.root, 'views', 'board.yaml'));
