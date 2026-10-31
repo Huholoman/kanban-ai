@@ -5,8 +5,8 @@ import 'package:test/test.dart';
 
 import 'support.dart';
 
-Comment _comment(String author, int minute, String text, {bool question = false}) =>
-    Comment(author: author, at: DateTime.utc(2026, 10, 31, 14, minute, 7), text: text, question: question);
+Comment _comment(String author, int minute, String text, {bool question = false, bool note = false}) =>
+    Comment(author: author, at: DateTime.utc(2026, 10, 31, 14, minute, 7), text: text, question: question, note: note);
 
 void main() {
   group('Discussion', () {
@@ -42,6 +42,31 @@ void main() {
       final again = _comment('w2', 4, 'And then?', question: true);
       expect(of([question, _comment('tobik', 3, 'This one.'), again]).openQuestion, same(again));
       expect(of([_comment('tobik', 1, 'Why so?')]).openQuestion, isNull, reason: 'comments are not questions');
+    });
+
+    test('a note is marked in its heading, answers no question and is left out of replies unless asked for', () {
+      final question = _comment('w2', 1, 'Which?', question: true);
+      final body = Discussion.append(
+        Discussion.append('', question),
+        _comment('tobik', 2, 'Thinking about it.', note: true),
+      );
+      expect(body, endsWith('### tobik · 2026-10-31 14:02:07 UTC · note\n\nThinking about it.\n'));
+      final parsed = Discussion.parse(body);
+      expect(parsed.comments.map((c) => (c.author, c.question, c.note)), [('w2', true, false), ('tobik', false, true)]);
+      expect(parsed.openQuestion!.text, 'Which?', reason: 'a note does not answer');
+      final since = DateTime.utc(2026, 10, 31, 14);
+      expect(parsed.after(since, except: 'w2'), isEmpty);
+      expect(parsed.after(since, except: 'w2', notes: true).single.text, 'Thinking about it.');
+
+      // Old and hand-written headings still parse; an unknown marker is no heading.
+      final old = Discussion.parse(
+        '## Discussion\n\n### tobik · 2026-10-31 14:05\n\nPlain.\n\n### tobik · 2026-10-31 14:06 · note\n\nN.\n',
+      );
+      expect(old.comments.map((c) => (c.text, c.note)), [('Plain.', false), ('N.', true)]);
+      expect(
+        () => Comment(author: 'a', at: since, text: 'x', question: true, note: true),
+        throwsA(isA<InvalidInputException>()),
+      );
     });
 
     test('keeps text after the section and hand-written comments; code fences are never structure', () {

@@ -90,7 +90,13 @@ abstract final class DtoMapper {
       waiting: [for (final other in snapshot.waitingOn(item.id)) _link(other.id, snapshot)],
       discussion: [
         for (final comment in item.discussion.comments)
-          CommentDto(author: comment.author, at: comment.at, text: comment.text, question: comment.question),
+          CommentDto(
+            author: comment.author,
+            at: comment.at,
+            text: comment.text,
+            question: comment.question,
+            note: comment.note,
+          ),
       ],
     );
   }

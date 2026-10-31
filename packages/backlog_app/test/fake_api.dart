@@ -129,9 +129,11 @@ final class FakeBacklogApi implements BacklogApi {
         at: DateTime.utc(2026, 10, 31, 12, comments.length),
         text: request.text,
         question: request.question,
+        note: request.note,
       ),
     );
-    items_[reference] = _with(items_[reference]!, needsHuman: request.question);
+    final waits = items_[reference]!.needsHuman;
+    items_[reference] = _with(items_[reference]!, needsHuman: request.question || (request.note && waits));
     return item(reference);
   }
 

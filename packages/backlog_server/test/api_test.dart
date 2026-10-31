@@ -160,9 +160,14 @@ void main() {
     expect(asked.discussion.single.question, isTrue);
     expect((await api.items()).single.needsHuman, isTrue);
 
+    final noted = await api.comment(id, const CommentRequest('Let me think.', note: true));
+    expect(noted.item.needsHuman, isTrue, reason: 'a note answers nothing');
+    expect(noted.discussion.last.note, isTrue);
+    expect(noted.item.body, contains(' · note\n\nLet me think.'));
+
     final answered = await api.comment(id, const CommentRequest('CSV.'));
     expect(answered.item.needsHuman, isFalse);
-    expect(answered.discussion.map((c) => c.text), ['CSV or JSON?', 'CSV.']);
+    expect(answered.discussion.map((c) => c.text), ['CSV or JSON?', 'Let me think.', 'CSV.']);
     expect(answered.discussion.last.author, isNot('w1'), reason: 'the server user or web');
     expect(answered.item.body, startsWith('Export it.\n\n## Discussion\n\n### w1 · '));
     await expectLater(api.comment(id, const CommentRequest(' ')), throwsA(apiError(400, 'invalid_input')));

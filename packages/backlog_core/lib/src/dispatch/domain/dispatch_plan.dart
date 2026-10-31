@@ -181,7 +181,7 @@ final class DispatchAssignment {
     final session = resume != null && resume.resumableBy(profile, worktree.name) ? resume : null;
     final prompt = session == null
         ? config.prompt.render(values)
-        : config.resumePrompt.render({...values, 'news': session.news(session.repliesIn(item.item))});
+        : config.resumePrompt.render({...values, 'news': session.news(session.commentsIn(item.item))});
     final full = {...values, 'prompt': prompt, 'session': ?session?.id};
     return DispatchAssignment(
       item: item,

@@ -2,10 +2,11 @@ import '../../shared/errors.dart';
 
 /// One comment of an item's discussion.
 final class Comment {
-  Comment({required String author, required this.at, required String text, this.question = false})
+  Comment({required String author, required this.at, required String text, this.question = false, this.note = false})
     : author = _author(author),
       text = text.trim() {
     if (this.text.isEmpty) throw const InvalidInputException('A comment needs some text.');
+    if (question && note) throw const InvalidInputException('A comment is either a question or a note.');
   }
 
   /// Who wrote it: an agent (its worktree name) or a person.
@@ -20,14 +21,25 @@ final class Comment {
   /// An agent asks a person and waits for the answer ([Discussion.openQuestion]).
   final bool question;
 
+  /// Only a note: it does not answer an open question and does not wake the
+  /// item's agent ([Discussion.after] leaves it out); a resumed agent sees it
+  /// as context.
+  final bool note;
+
   static String _author(String author) {
     final name = author.replaceAll(RegExp(r'\s+'), ' ').replaceAll('·', '-').trim();
     if (name.isEmpty) throw const InvalidInputException('A comment needs an author.');
     return name;
   }
 
-  /// `### <author> · 2026-10-31 14:05:12 UTC` (with ` · question`).
-  String get heading => '### $author · ${_stamp(at)}${question ? ' · question' : ''}';
+  /// `### <author> · 2026-10-31 14:05:12 UTC` (with ` · question` or
+  /// ` · note`).
+  String get heading =>
+      '### $author · ${_stamp(at)}${question
+          ? ' · question'
+          : note
+          ? ' · note'
+          : ''}';
 
   static String _stamp(DateTime time) {
     final utc = time.toUtc();
@@ -50,6 +62,10 @@ final class Comment {
 /// ### tobik · 2026-10-31 14:20:03 UTC
 ///
 /// CSV.
+///
+/// ### tobik · 2026-10-31 15:02:41 UTC · note
+///
+/// The export format may change next quarter.
 /// ```
 ///
 /// Plain Markdown, so it reads well in the file and in git and can be edited
@@ -69,29 +85,31 @@ final class Discussion {
   bool get isEmpty => comments.isEmpty;
 
   /// The latest question no one else has answered yet (an answer is any
-  /// later comment of another author); null when there is none.
+  /// later comment of another author that is not a [Comment.note]); null
+  /// when there is none.
   Comment? get openQuestion {
     Comment? open;
     for (final comment in comments) {
       if (comment.question) {
         open = comment;
-      } else if (open != null && comment.author != open.author) {
+      } else if (open != null && comment.author != open.author && !comment.note) {
         open = null;
       }
     }
     return open;
   }
 
-  /// Comments written after [time] by someone other than [author].
-  List<Comment> after(DateTime time, {String? except}) => [
+  /// Comments written after [time] by someone other than [except], notes
+  /// ([Comment.note]) only when [notes].
+  List<Comment> after(DateTime time, {String? except, bool notes = false}) => [
     for (final comment in comments)
-      if (comment.at.isAfter(time) && comment.author != except) comment,
+      if (comment.at.isAfter(time) && comment.author != except && (notes || !comment.note)) comment,
   ];
 
   static final _sectionHeading = RegExp(r'^##\s+Discussion\s*$', caseSensitive: false);
   static final _higherHeading = RegExp(r'^#{1,2}\s');
   static final _commentHeading = RegExp(
-    r'^###\s+(.+?)\s+·\s+(\d{4}-\d\d-\d\d)[ T](\d\d:\d\d(?::\d\d)?)(?:\s*(?:UTC|Z))?(?:\s+·\s+(question))?\s*$',
+    r'^###\s+(.+?)\s+·\s+(\d{4}-\d\d-\d\d)[ T](\d\d:\d\d(?::\d\d)?)(?:\s*(?:UTC|Z))?(?:\s+·\s+(question|note))?\s*$',
   );
   static final _fence = RegExp(r'^\s{0,3}(```|~~~)');
 
@@ -102,13 +120,13 @@ final class Discussion {
     final section = _section(lines);
     if (section == null) return empty;
     final comments = <Comment>[];
-    ({String author, DateTime at, bool question})? current;
+    ({String author, DateTime at, bool question, bool note})? current;
     final text = <String>[];
     void flush() {
       final head = current;
       final joined = text.join('\n').trim();
       if (head != null && joined.isNotEmpty) {
-        comments.add(Comment(author: head.author, at: head.at, text: joined, question: head.question));
+        comments.add(Comment(author: head.author, at: head.at, text: joined, question: head.question, note: head.note));
       }
       text.clear();
     }
@@ -121,7 +139,7 @@ final class Discussion {
       final at = match == null ? null : DateTime.tryParse('${match[2]}T${match[3]}Z');
       if (match != null && at != null) {
         flush();
-        current = (author: match[1]!, at: at, question: match[4] != null);
+        current = (author: match[1]!, at: at, question: match[4] == 'question', note: match[4] == 'note');
       } else if (current != null) {
         text.add(line);
       }

@@ -48,6 +48,7 @@ abstract final class JsonOutput {
     'at': comment.at.toUtc().toIso8601String(),
     'text': comment.text,
     'question': comment.question,
+    'note': comment.note,
   };
 
   static Map<String, Object?> claim(Claim claim, {bool? expired}) => {

@@ -43,15 +43,24 @@ final class AgentSession {
 
   /// Comments in [item]'s discussion written since this run started by
   /// someone other than the agent: what a person said to it meanwhile.
+  /// Notes ([Comment.note]) are not replies: they do not wake the agent.
   List<Comment> repliesIn(Item item) => item.discussion.after(startedAt, except: worktree);
 
+  /// The new comments of others since this run, notes included: what
+  /// `{news}` shows a resumed agent.
+  List<Comment> commentsIn(Item item) => item.discussion.after(startedAt, except: worktree, notes: true);
+
   /// What happened since this run, for the `{news}` of the resume prompt:
-  /// how it ended and the [replies] (see [repliesIn]).
-  String news([List<Comment> replies = const []]) {
+  /// how it ended and the new [comments] (see [commentsIn]); notes are
+  /// marked as context that needs no answer.
+  String news([List<Comment> comments = const []]) {
     final ended = [?reason, ?outcome].join('; ');
     final run = ended.isEmpty ? 'your last run ended.' : 'your last run $ended.';
-    if (replies.isEmpty) return '$run No new comments in the discussion.';
-    final comments = [for (final comment in replies) '${comment.heading}\n\n${comment.text}'].join('\n\n');
-    return '$run New comments in the item\'s discussion since then:\n\n$comments\n';
+    if (comments.isEmpty) return '$run No new comments in the discussion.';
+    final listed = [for (final comment in comments) '${comment.heading}\n\n${comment.text}'].join('\n\n');
+    final notes = comments.any((c) => c.note)
+        ? 'Comments marked "note" are context for you; they need no answer.\n'
+        : '';
+    return '$run New comments in the item\'s discussion since then:\n\n$listed\n$notes';
   }
 }

@@ -117,7 +117,8 @@ class ItemController extends ChangeNotifier {
 
   /// Adds [text] to the item's discussion, written by [agent] (the server's
   /// user when null).
-  Future<bool> comment(String text) => _run(() => _api.comment(_id, CommentRequest(text, author: agent)));
+  Future<bool> comment(String text, {bool note = false}) =>
+      _run(() => _api.comment(_id, CommentRequest(text, author: agent, note: note)));
 
   Future<bool> claim() => _run(() => _api.claim(_id, ClaimRequest(agent: agent, force: true)));
 

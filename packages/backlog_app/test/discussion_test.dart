@@ -142,8 +142,26 @@ void main() {
   testWidgets('in auto mode the agent continues by itself', (tester) async {
     final api = await _pump(tester, plan: _plan(mode: 'auto'));
     expect(_key('send-and-continue'), findsNothing);
-    expect(find.text('The agent continues in w1 by itself.'), findsOneWidget);
+    expect(find.text('Send: the agent continues in w1 by itself. Note only: it is not woken.'), findsOneWidget);
     await _reply(tester, 'CSV.', 'send-comment');
     expect(api.started, isEmpty);
+    expect(api.discussions['Q-1']!.last.note, isFalse);
+  });
+
+  testWidgets('Note only saves a note that wakes nobody and answers nothing', (tester) async {
+    final api = await _pump(tester, plan: _plan(mode: 'auto'));
+    await _reply(tester, 'Still deciding.', 'note-only');
+    final last = api.discussions['Q-1']!.last;
+    expect((last.text, last.note), ('Still deciding.', true));
+    expect(api.started, isEmpty);
+    expect(find.text('note'), findsOneWidget);
+    expect(find.text('question · waits for you'), findsOneWidget, reason: 'the question stays open');
+  });
+
+  testWidgets('without a session Note only is offered while a question is open', (tester) async {
+    await _pump(tester, plan: _plan(mode: 'auto', session: false));
+    expect(_key('note-only'), findsOneWidget);
+    await _reply(tester, 'CSV.', 'send-comment');
+    expect(_key('note-only'), findsNothing, reason: 'nothing left that a note would keep quiet');
   });
 }

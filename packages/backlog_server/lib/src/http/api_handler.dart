@@ -140,6 +140,7 @@ final class ApiHandler {
       author: payload.author ?? defaultAuthor,
       text: payload.text,
       question: payload.question,
+      note: payload.note,
     );
     return _detailOf(backlog, item.id.value);
   }

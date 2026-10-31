@@ -238,6 +238,29 @@ void main() {
       expect(() => plan.assignmentFor('T-2', fresh: true), throwsA(isA<InvalidInputException>()));
     });
 
+    test('a note of a person does not wake the agent; a resumed agent sees it as context', () {
+      const note = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC · note\n\nMaybe JSON later.\n';
+      final quiet = _plan(
+        [item('T-2', status: 'review', body: note)],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+      );
+      expect(quiet.assignments, isEmpty);
+      expect(quiet.waiting, isEmpty);
+
+      const both = '$note\n### tobik · 2026-10-29 11:40:00 UTC\n\nWhy CSV?\n';
+      final woken = _plan(
+        [item('T-2', status: 'review', body: both)],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+      );
+      expect(woken.assignments.single.key, 'T-2@w1+resume');
+      final prompt = woken.assignments.single.prompt;
+      expect(prompt, contains('### tobik · 2026-10-29 11:30:00 UTC · note\n\nMaybe JSON later.'));
+      expect(prompt, contains('Why CSV?'));
+      expect(prompt, contains('Comments marked "note" are context for you; they need no answer.'));
+    });
+
     test('replies wait for the session worktree; own comments and old comments are no replies', () {
       const reply = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nWhy?\n';
       final busy = _plan(

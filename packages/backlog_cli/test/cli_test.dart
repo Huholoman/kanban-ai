@@ -315,8 +315,20 @@ void main() {
     expect(json['needs_human'], isFalse);
     expect(json['ready'], isTrue);
     expect(json['discussion'], [
-      {'author': 'monorepo-2', 'at': '2026-10-29T12:00:00.000Z', 'text': 'CSV or JSON?', 'question': true},
-      {'author': 'tobik', 'at': '2026-10-29T12:00:00.000Z', 'text': 'CSV.\nWith a header.', 'question': false},
+      {
+        'author': 'monorepo-2',
+        'at': '2026-10-29T12:00:00.000Z',
+        'text': 'CSV or JSON?',
+        'question': true,
+        'note': false,
+      },
+      {
+        'author': 'tobik',
+        'at': '2026-10-29T12:00:00.000Z',
+        'text': 'CSV.\nWith a header.',
+        'question': false,
+        'note': false,
+      },
     ]);
     expect(
       File((json['path'] as String)).readAsStringSync(),
@@ -328,7 +340,21 @@ void main() {
     );
 
     expect((await backlog(['comment', id, 'x'])).exitCode, ExitCode.usage, reason: 'no author');
+    expect((await backlog(['ask', id, 'x', '--note'], env: agent)).exitCode, ExitCode.usage, reason: 'ask has no note');
     expect((await backlog(['comment', id], env: agent)).exitCode, ExitCode.usage, reason: 'no text');
     expect((await backlog(['comment', id, 'x'], env: {'USER': 'tobik'})).exitCode, 0);
+  });
+
+  test('comment --note keeps an open question open', () async {
+    final id = await create('Export', ['-s', 'todo']);
+    await backlog(['ask', id, 'CSV or JSON?'], env: {'BACKLOG_AGENT': 'monorepo-2'});
+    final noted = await backlog(['comment', id, '--note', 'Thinking.', '--as', 'tobik']);
+    expect(noted.exitCode, 0, reason: '$noted');
+    expect(noted.out, contains('does not wake its agent or answer a question'));
+    expect(noted.out, contains('needs a person'));
+    final json = (await backlog(['--json', 'show', id])).json! as Map;
+    expect(json['needs_human'], isTrue);
+    expect((json['discussion'] as List).last, containsPair('note', true));
+    expect(File(json['path'] as String).readAsStringSync(), contains('### tobik · 2026-10-29 12:00:00 UTC · note\n'));
   });
 }

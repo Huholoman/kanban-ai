@@ -14,7 +14,9 @@ import '../application/item_controller.dart';
 /// comments of agents and people, an open question highlighted, and a field
 /// for a reply. With a dispatcher that can continue the item's last agent
 /// session, *Send and continue* (manual mode) also resumes the agent with
-/// the reply; in auto mode it continues by itself.
+/// the reply; in auto mode it continues by itself. *Note only* (when there
+/// is an agent session or an open question) saves a note that neither wakes
+/// the agent nor answers the question; a resumed agent sees it as context.
 class DiscussionSection extends StatefulWidget {
   const DiscussionSection({super.key, required this.controller});
 
@@ -39,12 +41,12 @@ class _DiscussionSectionState extends State<DiscussionSection> {
     super.dispose();
   }
 
-  Future<void> _send({bool resume = false}) async {
+  Future<void> _send({bool resume = false, bool note = false}) async {
     final text = _reply.text.trim();
     if (text.isEmpty) return;
     final controller = widget.controller;
     final dispatch = DispatchScope.maybeOf(context);
-    if (!await controller.comment(text)) return;
+    if (!await controller.comment(text, note: note)) return;
     _reply.clear();
     if (resume && dispatch != null) await dispatch.startAgent(controller.item!.id);
   }
@@ -102,8 +104,23 @@ class _DiscussionSectionState extends State<DiscussionSection> {
             children: [
               if (resumable && !dispatch.plan.isManual)
                 Text(
-                  'The agent continues in ${session.worktree} by itself.',
+                  'Send: the agent continues in ${session.worktree} by itself. Note only: it is not woken.',
                   style: theme.textTheme.bodySmall?.copyWith(color: tokens.muted),
+                ),
+              if (resumable || open != null)
+                Tooltip(
+                  message: [
+                    'Saves a note: ',
+                    if (resumable) 'the agent is not woken (it sees the note when it next continues)',
+                    if (resumable && open != null) ' and ',
+                    if (open != null) 'the question of ${open.author} stays open',
+                  ].join(),
+                  child: SecondaryButton(
+                    key: const ValueKey('note-only'),
+                    label: 'Note only',
+                    icon: Icons.sticky_note_2_outlined,
+                    onPressed: canSend ? () => unawaited(_send(note: true)) : null,
+                  ),
                 ),
               if (resumable && dispatch.plan.isManual) ...[
                 SecondaryButton(
@@ -166,6 +183,7 @@ class _Comment extends StatelessWidget {
                 '${local.day}.${local.month}. ${two(local.hour)}:${two(local.minute)}',
                 style: small?.copyWith(color: tokens.muted),
               ),
+              if (comment.note) Tag('note', icon: Icons.sticky_note_2_outlined, color: tokens.muted),
               if (comment.question)
                 Tag(
                   open ? 'question · waits for you' : 'question',
