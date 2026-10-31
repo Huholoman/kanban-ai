@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import '../../../app/app_scope.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
+import '../../dispatch/application/dispatch_controller.dart';
+import '../../dispatch/presentation/dispatch_scope.dart';
 import '../../item/presentation/item_page.dart';
 import '../application/board_controller.dart';
 import 'columns_dialog.dart';
@@ -48,7 +50,9 @@ class BoardPage extends StatefulWidget {
 
 class _BoardPageState extends State<BoardPage> {
   BoardController? _controller;
+  DispatchController? _dispatch;
   StreamSubscription<String>? _notices;
+  StreamSubscription<String>? _dispatchNotices;
 
   /// Focus of the search field in the header; the `/` key moves it there.
   final _searchFocus = FocusNode();
@@ -61,15 +65,21 @@ class _BoardPageState extends State<BoardPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_controller != null) return;
-    final controller = _controller = BoardController(AppScope.of(context).api);
+    final api = AppScope.of(context).api;
+    final controller = _controller = BoardController(api);
     _notices = controller.notices.listen(_showNotice);
     unawaited(controller.start());
+    final dispatch = _dispatch = DispatchController(api);
+    _dispatchNotices = dispatch.notices.listen(_showNotice);
+    unawaited(dispatch.start());
   }
 
   @override
   void dispose() {
     unawaited(_notices?.cancel());
+    unawaited(_dispatchNotices?.cancel());
     _controller?.dispose();
+    _dispatch?.dispose();
     _searchFocus.dispose();
     super.dispose();
   }
@@ -89,7 +99,14 @@ class _BoardPageState extends State<BoardPage> {
   }
 
   Future<void> _openPage(String id) async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ItemPage(reference: id)));
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DispatchScope(
+          controller: _dispatch!,
+          child: ItemPage(reference: id),
+        ),
+      ),
+    );
     unawaited(_controller?.refresh(quiet: true));
   }
 
@@ -149,79 +166,82 @@ class _BoardPageState extends State<BoardPage> {
     final sheet = !panel && width >= BoardPage.detailSheetWidth;
     final veryWide = width >= BoardPage.veryWideWidth;
     final openId = panel || sheet ? _openId : null;
-    return CallbackShortcuts(
-      bindings: {const SingleActivator(LogicalKeyboardKey.escape): _closeDetail},
-      child: Focus(
-        autofocus: true,
-        onKeyEvent: _onKey,
-        child: ListenableBuilder(
-          listenable: controller,
-          builder: (context, _) => Scaffold(
-            key: _scaffold,
-            drawer: sideNavigation
-                ? null
-                : Drawer(
-                    child: ViewNavigation(
-                      controller: controller,
-                      onCreate: () {
-                        _scaffold.currentState?.closeDrawer();
-                        unawaited(_create(controller));
-                      },
-                      onOpenItem: (id) {
-                        _scaffold.currentState?.closeDrawer();
-                        unawaited(_open(id));
-                      },
-                      onNavigate: () => _scaffold.currentState?.closeDrawer(),
-                    ),
-                  ),
-            bottomNavigationBar: phone
-                ? PinnedBottomBar(controller: controller, onMore: () => _scaffold.currentState?.openDrawer())
-                : null,
-            floatingActionButton: controller.workflow == null || sideNavigation || openId != null
-                ? null
-                : FloatingActionButton.extended(
-                    onPressed: () => _create(controller),
-                    icon: const Icon(Icons.add),
-                    label: const Text('New item'),
-                  ),
-            body: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (sideNavigation) ...[
-                  SizedBox(
-                    width: veryWide ? 240 : 208,
-                    child: ViewNavigation(
-                      controller: controller,
-                      onCreate: () => _create(controller),
-                      onOpenItem: _open,
-                    ),
-                  ),
-                  const VerticalDivider(width: 1),
-                ],
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      BoardHeader(
+    return DispatchScope(
+      controller: _dispatch!,
+      child: CallbackShortcuts(
+        bindings: {const SingleActivator(LogicalKeyboardKey.escape): _closeDetail},
+        child: Focus(
+          autofocus: true,
+          onKeyEvent: _onKey,
+          child: ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) => Scaffold(
+              key: _scaffold,
+              drawer: sideNavigation
+                  ? null
+                  : Drawer(
+                      child: ViewNavigation(
                         controller: controller,
-                        filter: controller.visible == null ? null : _filterBar(controller),
-                        onEditColumns: () => _editColumns(controller),
-                        compact: phone,
-                        onMenu: sideNavigation ? null : () => _scaffold.currentState?.openDrawer(),
+                        onCreate: () {
+                          _scaffold.currentState?.closeDrawer();
+                          unawaited(_create(controller));
+                        },
+                        onOpenItem: (id) {
+                          _scaffold.currentState?.closeDrawer();
+                          unawaited(_open(id));
+                        },
+                        onNavigate: () => _scaffold.currentState?.closeDrawer(),
                       ),
-                      if (!sideNavigation && !phone) ViewTabs(controller: controller),
-                      Expanded(child: _board(controller, openId, sheet: sheet)),
-                    ],
+                    ),
+              bottomNavigationBar: phone
+                  ? PinnedBottomBar(controller: controller, onMore: () => _scaffold.currentState?.openDrawer())
+                  : null,
+              floatingActionButton: controller.workflow == null || sideNavigation || openId != null
+                  ? null
+                  : FloatingActionButton.extended(
+                      onPressed: () => _create(controller),
+                      icon: const Icon(Icons.add),
+                      label: const Text('New item'),
+                    ),
+              body: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (sideNavigation) ...[
+                    SizedBox(
+                      width: veryWide ? 240 : 208,
+                      child: ViewNavigation(
+                        controller: controller,
+                        onCreate: () => _create(controller),
+                        onOpenItem: _open,
+                      ),
+                    ),
+                    const VerticalDivider(width: 1),
+                  ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        BoardHeader(
+                          controller: controller,
+                          filter: controller.visible == null ? null : _filterBar(controller),
+                          onEditColumns: () => _editColumns(controller),
+                          compact: phone,
+                          onMenu: sideNavigation ? null : () => _scaffold.currentState?.openDrawer(),
+                        ),
+                        if (!sideNavigation && !phone) ViewTabs(controller: controller),
+                        Expanded(child: _board(controller, openId, sheet: sheet)),
+                      ],
+                    ),
                   ),
-                ),
-                if (panel && openId != null) ...[
-                  const VerticalDivider(width: 1),
-                  SizedBox(
-                    width: veryWide ? 520 : 480,
-                    child: _detail(openId, onClose: _closeDetail, onScope: controller.scopeToEpic),
-                  ),
+                  if (panel && openId != null) ...[
+                    const VerticalDivider(width: 1),
+                    SizedBox(
+                      width: veryWide ? 520 : 480,
+                      child: _detail(openId, onClose: _closeDetail, onScope: controller.scopeToEpic),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),

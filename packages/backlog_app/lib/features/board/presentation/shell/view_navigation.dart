@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../shared/tokens.dart';
 import '../../../../shared/ui/ui.dart';
+import '../../../dispatch/presentation/dispatch_overview.dart';
 import '../../../projects/presentation/project_switcher.dart';
 import '../../application/board_controller.dart';
 import '../../application/board_filter.dart';
@@ -34,7 +35,7 @@ class ViewNavigation extends StatelessWidget {
   final BoardController controller;
   final VoidCallback onCreate;
 
-  /// Opens an item chosen in the lint dialog.
+  /// Opens an item chosen in the lint dialog or the agents overview.
   final void Function(String id) onOpenItem;
 
   /// Called after a view was chosen (closes the drawer).
@@ -84,6 +85,7 @@ class ViewNavigation extends StatelessWidget {
                   for (final (agent, count) in people)
                     _PersonRow(controller: controller, agent: agent, count: count, onNavigate: onNavigate),
                 ],
+                DispatchOverview(onOpenItem: onOpenItem),
               ],
             ),
           ),

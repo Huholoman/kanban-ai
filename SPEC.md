@@ -363,7 +363,7 @@ The record is replaced by `<id>.last.json` (exit code, reason, outcome, end time
 
 Two servers hosting the same project share `$STATE` and would both look after its agents; run one.
 
-**Manual start and stop** go through the API (§8.1): a start re-plans first, takes the first free worktree (even one the plan proposes for a more urgent item) and launches as above; it works in `auto` mode too. Every published plan is also sent as a `dispatch` event over the project's WebSocket.
+**Manual start and stop** go through the API (§8.1) and the board (§9): a start re-plans first, takes the first free worktree (even one the plan proposes for a more urgent item) and launches as above; it works in `auto` mode too. Every published plan is also sent as a `dispatch` event over the project's WebSocket.
 
 ## 9. Web board## 9. Web board
 
@@ -378,6 +378,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - *New item* button (dialog: title, type, status, priority, milestone, parent, labels, body).
 - Saved views with their item count; views with `section` grouped under foldable section headings; the ⋮ menu of a view moves it to an existing or new section (persisted to the YAML) or pins it to the phone's bottom bar.
 - *People*: agents holding a live claim with how many items each holds (busiest first); a click narrows the board to that agent's items (the People filter).
+- *Agents* (with a dispatcher, §8.2): heading *Agents · mode · running/max*; one row per worktree — the item its agent works on (or holds a claim on), *free* or *unavailable* (reason as tooltip) — a click opens the item; the plan's assignments (*X → w2*, with ▶ *Start* in `manual` mode), held items (reason as tooltip) and *N more ready*. Reloaded on `dispatch` events.
 - *Lint* summary at the bottom ("Lint: 2 warnings"); a click lists the problems with links to items.
 
 **Header** (56 px, top of the main area): the filter bar, then *Group: status ▾* (regroups the current view for the session by status, priority, type, milestone, assignee, labels or epic, or none; *The view's own* goes back; an asterisk marks a changed grouping; only an icon when the header is narrow), compact buttons for columns, theme and reload, and a loading indicator. `/` focuses the search when no text field has focus.
@@ -401,6 +402,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - Items grouped by the view's `group_by` (headers like column headers, rows are the same cards); the graph layout shows each item with an expandable tree of its dependencies (titles, statuses, *blocked* / *waiting* tags, cycle-safe), clickable.
 
 **Detail**
+- **Agent:** *Start agent* among the actions of a ready item when the dispatcher has a free worktree (either mode). While an agent works on the item, a box under the header shows *Agent <profile> in <worktree> since HH:MM (N min) · <branch>*, *Log* (the last 60 lines of its log, refreshed every 5 s while running; for a finished run its path, reason, outcome and `claude --resume` session) and *Stop* (after a confirmation). A held item shows *Held: <reason>*.
 - Header: back (when the detail has history), breadcrumb of the parent chain (*Epic › Story › X-2c91 Title*, ancestors clickable), close; below it "Story 2 of 5" with ‹ 2 / 5 › stepping through the parent's children (disabled at the ends, hidden without a parent; no history entry), or "Task · X-7f3a" without a parent; id (click copies), Claim / Release / Done actions.
 - **Navigation inside the detail:** every link (ancestor, sibling, child, relation, blocker) shows the item in the same panel or page; ← walks back the way taken. The board resets it when another card is opened.
 - "Blocked by X-7f3a Title" warning line when blocked; "Waits for X-7f3a Title (touches the same files)" when conflicting; a muted "Holds up …" line on an active item that open items wait for. The ids open in the panel.
@@ -434,7 +436,7 @@ Dart pub workspace (`backlog_core`, `backlog_cli`, `backlog_api`, `backlog_serve
 - **backlog_cli** — thin adapter; text and JSON renderers.
 - **backlog_api** — DTOs, `BacklogApi` and `ProjectsApi` interfaces, `HttpBacklogApi`, `HttpProjectsApi` (pure Dart, compiles for the web).
 - **backlog_server** — shelf: `ProjectHub` (hosted projects, `/api/p/<id>` routing, `/api/projects`) with a `HostedProject` per backlog (`BacklogHost`, `ChangeFeed` → its WebSocket and dispatcher, `ApiHandler` + `DtoMapper`), `RegistryWatcher` (live registry), middleware (token, client allowlist, CORS), multi-address binding.
-- **backlog_app** — features `board`, `item` and `projects` (`ProjectsController` picks the open project; one session per project), each with `application/` (ChangeNotifier controllers and pure logic: `BoardFilter`, `ColumnArrangement`, `DetailNavigation`; shared design tokens in `shared/tokens.dart`) and `presentation/`; depends only on `ProjectsApi` and `BacklogApi`.
+- **backlog_app** — features `board`, `item`, `projects` (`ProjectsController` picks the open project; one session per project) and `dispatch` (`DispatchController`: the plan, Start and Stop, shared by the board and the detail through `DispatchScope`), each with `application/` (ChangeNotifier controllers and pure logic: `BoardFilter`, `ColumnArrangement`, `DetailNavigation`; shared design tokens in `shared/tokens.dart`) and `presentation/`; depends only on `ProjectsApi` and `BacklogApi`.
 
 Development: `mise run check` (format check, analysis, all tests), `mise run playground` (demo backlog), `mise run serve`.
 
