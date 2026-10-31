@@ -377,6 +377,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 ## 10. Installation and operation
 
 - **Per project with mise** (recommended): `[plugins] nix = "https://github.com/jbadeau/mise-nix.git"` and `[tools] "nix:kanban-ai" = "github+Huholoman/kanban-ai#kanban-ai"` (optionally pinned `…/kanban-ai/<commit>#kanban-ai`); update with `mise install --force nix:kanban-ai`.
+- **From a clone, per user**: `mise run install [ref]` (or `tool/install.sh [ref]`, default `main`; a branch, tag or commit of the clone) builds `git+file://<clone>?rev=<sha>` with Nix, out-link `~/.local/state/kanban-ai/release` (GC root) and symlinks `backlog`, `backlog-server` in `~/.local/bin`; `mise run install-dev` (`tool/install.sh --dev`) builds the worktree as it is (uncommitted changes of tracked files included) into `…/dev` and links `backlog-dev`, `backlog-server-dev`. `KANBAN_AI_BIN_DIR`, `KANBAN_AI_STATE_DIR` override the folders (state defaults to `$XDG_STATE_HOME/kanban-ai`). Prints the ref and commit it installed.
 - **Nix flake**: `nix run github:Huholoman/kanban-ai`, `#server`; packages `kanban-ai` (CLI + server with the web bundled) and `web`; `overlays.default`.
 - **NixOS module** `services.kanban-ai`: `enable`, `package`, `backlog`, `user`, `host` (string or list, default `127.0.0.1`), `port` (8640), `allow` (list), `tokenFile` (`BACKLOG_TOKEN=…`), `openFirewall`; runs a systemd service.
 - **Without Nix**: Dart ≥ 3.8 and Flutter ≥ 3.32; `dart compile exe` the two entry points, `flutter build web` the app.
