@@ -394,6 +394,16 @@ void main() {
       );
       expect(issues.map((i) => i.message), isNot(contains(contains('"Fine"'))));
     });
+
+    test('warns about a pull request command that is not on the PATH', () async {
+      final (backlog, _) = await tempBacklog(
+        config:
+            'dispatcher: {command: sh, worktrees: [{name: here, path: .}], pr: {create: no-such-tea-xyz, find: sh}}\n',
+      );
+      final issues = await backlog.linter.run();
+      expect(issues.map((i) => i.code), ['dispatcher-pr']);
+      expect(issues.single.message, contains('"no-such-tea-xyz", which is not on the PATH'));
+    });
   });
 
   group('views', () {

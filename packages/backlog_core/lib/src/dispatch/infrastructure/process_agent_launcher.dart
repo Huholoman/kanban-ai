@@ -7,16 +7,20 @@ import 'package:path/path.dart' as p;
 
 import '../../backlog.dart';
 import '../../items/application/field_change.dart';
+import '../../items/domain/discussion.dart';
+import '../../items/domain/item.dart';
 import '../../items/domain/item_id.dart';
 import '../../planning/domain/backlog_snapshot.dart';
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+import '../../workflow/domain/workflow.dart';
 import '../domain/action_run.dart';
 import '../domain/agent_log_format.dart';
 import '../domain/agent_session.dart';
 import '../domain/dispatch_plan.dart';
 import 'built_in_actions.dart';
+import 'pull_request_opener.dart';
 
 /// Starts agents as detached processes that outlive the server, and looks
 /// after them while they run.
@@ -39,7 +43,9 @@ import 'built_in_actions.dart';
 /// that the dispatcher does not start it again by itself — unless it waits
 /// for a person to answer its question ([PlannedItem.needsHuman]), which
 /// keeps it from starting until the answer; an item the agent
-/// handed over (e.g. `review`) keeps its status and loses only the claim.
+/// handed over (e.g. `review`) keeps its status and loses only the claim;
+/// with `dispatcher.pr` it also gets the pull request the agent did not
+/// open ([PullRequestOpener]), noted in its discussion.
 /// The outcome is logged, appended to the log and kept in
 /// `agents/<project>/<id>.last.json`, with the agent's session id, which a
 /// later start of the item continues ([DispatchConditions.sessions]).
@@ -622,7 +628,8 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final backlog = await _backlog();
     final snapshot = await backlog.planning.snapshot();
     final planned = snapshot[id];
-    final String outcome;
+    var outcome = '';
+    var handedOver = false;
     if (planned == null) {
       outcome = 'the item is gone';
     } else if (planned.claim?.agent == run.worktree) {
@@ -640,6 +647,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
       } else {
         await backlog.claims.drop(id.value, run.worktree);
         outcome = 'it handed over as ${planned.item.status}, claim dropped';
+        handedOver = backlog.workflow.categoryOf(planned.item.status) == StatusCategory.active;
       }
     } else {
       outcome =
@@ -648,6 +656,9 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final session = record.output == AgentOutput.claudeStreamJson
         ? await _claudeSession(run.log) ?? record.resumed
         : record.resumed;
+    if (handedOver && planned != null) {
+      if (await _pullRequestFallback(backlog, record, planned.item) case final done?) outcome = '$outcome; $done';
+    }
     final ended = _clock.now();
     await _write(_lastFile(id), {
       ...record.toJson(),
@@ -674,6 +685,80 @@ final class ProcessAgentLauncher extends AgentLauncher {
       'Dispatcher: the agent for $id in ${run.worktree} $reason; $outcome'
       '${session == null ? '' : '; resume: cd ${record.path} && claude --resume $session'}.',
     );
+  }
+
+  /// The safety net for `dispatcher.pr`: an agent handed its item over
+  /// (e.g. to `review`) without a pull request — it did not run
+  /// `backlog pr`, or that failed. Pushes the branch and opens one with the
+  /// agent's last message (or its last comment, else a description made
+  /// from the item) and notes the result in the discussion; on failure the
+  /// note says why and the item stays where the agent put it. Returns what
+  /// happened for the log; null when there is nothing to do.
+  Future<String?> _pullRequestFallback(Backlog backlog, _Record record, Item item) async {
+    if (backlog.workflow.dispatcher?.pr == null) return null;
+    if (item.pr case final pr? when pr.trim().isNotEmpty) return null;
+    final branch = item.branch ?? record.run.branch;
+    if (branch == null) return null;
+    final base = backlog.workflow.dispatcher!.base;
+    final ahead = await Process.run('git', ['rev-list', '--count', '$base..$branch'], workingDirectory: record.path);
+    if (ahead.exitCode == 0 && '${ahead.stdout}'.trim() == '0') {
+      await _note(backlog, item, 'No pull request: $branch has no commits that are not in $base.');
+      return 'no pull request ($branch has no commits of its own)';
+    }
+    final description =
+        (record.output == AgentOutput.claudeStreamJson ? await _claudeResult(record.run.log) : null) ??
+        _lastComment(item, record.run.worktree);
+    try {
+      final opened = await PullRequestOpener(
+        environment: _environment,
+      ).open(backlog, item.id.value, workingDirectory: record.path, description: description);
+      await _note(
+        backlog,
+        item,
+        opened.created
+            ? 'The agent handed over without a pull request; pushed $branch and opened ${opened.url}'
+            : 'The agent handed over without recording its pull request; pushed $branch, found ${opened.url}',
+      );
+      return 'opened its pull request ${opened.url}';
+    } on BacklogException catch (error) {
+      await _note(
+        backlog,
+        item,
+        'Could not open a pull request for $branch: ${error.message}\n\n'
+        'The item stays ${item.status}; `backlog pr ${item.id}` in ${record.run.worktree} tries again.',
+      );
+      return 'opening its pull request failed: ${error.message}';
+    }
+  }
+
+  static Future<void> _note(Backlog backlog, Item item, String text) =>
+      backlog.items.comment(item.id.value, author: dispatcherAuthor, text: text, note: true);
+
+  /// The author of the dispatcher's notes in a discussion.
+  static const dispatcherAuthor = 'dispatcher';
+
+  static String? _lastComment(Item item, String agent) {
+    final own = Discussion.parse(item.body).comments.where((c) => c.author == agent && !c.question);
+    return own.isEmpty ? null : own.last.text;
+  }
+
+  /// The agent's final message: the `result` of the last `result` event.
+  static Future<String?> _claudeResult(String log) async {
+    final file = File(log);
+    if (!await file.exists()) return null;
+    String? result;
+    for (final line in await file.readAsLines()) {
+      if (!line.startsWith('{') || !line.contains('"type":"result"')) continue;
+      try {
+        final json = jsonDecode(line);
+        if (json is Map && json['result'] is String && (json['result'] as String).trim().isNotEmpty) {
+          result = (json['result'] as String).trim();
+        }
+      } on FormatException {
+        continue;
+      }
+    }
+    return result;
   }
 
   static Future<String?> _claudeSession(String log) async {

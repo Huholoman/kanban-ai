@@ -1,3 +1,9 @@
+import 'dart:io';
+
+import 'package:args/command_runner.dart';
+import 'package:backlog_core/backlog_core.dart';
+import 'package:path/path.dart' as p;
+
 import '../render/json_output.dart';
 import '../render/text_output.dart';
 import '../where.dart';
@@ -213,6 +219,66 @@ final class ClaimsCommand extends BacklogCommand {
           '${claim.isExpiredAt(now) ? 'EXPIRED' : 'until'} ${TextOutput.time(claim.expiresAt)}',
         );
       }
+    }
+    return 0;
+  }
+}
+
+final class PrCommand extends BacklogCommand {
+  PrCommand(super.context) {
+    argParser
+      ..addOption('description', abbr: 'd', help: 'The pull request\'s description.', valueHelp: 'text')
+      ..addOption(
+        'description-file',
+        help: 'Read the description from a file (- reads standard input).',
+        valueHelp: 'file',
+      );
+  }
+
+  @override
+  String get name => 'pr';
+
+  @override
+  String get description =>
+      'Push the item\'s branch and open its pull request (dispatcher.pr in backlog.yaml); the URL goes into pr. '
+      'When the item has one already, it only pushes. Run it in the item\'s worktree.';
+
+  @override
+  String get invocation => 'backlog pr <id> [--description "<text>" | --description-file <file|->]';
+
+  @override
+  Future<int> run() async {
+    final id = singleArgument('item id');
+    final text = args.option('description');
+    final file = args.option('description-file');
+    if (text != null && file != null) {
+      throw UsageException('Give --description or --description-file, not both.', usage);
+    }
+    final description =
+        text ??
+        switch (file) {
+          null => null,
+          '-' => await (context.readInput ?? (throw UsageException('No standard input to read.', usage)))(),
+          final path => await File(p.join(context.cwd, path)).readAsString(),
+        };
+    final backlog = await openBacklog();
+    final outcome = await PullRequestOpener(
+      environment: context.environment.isEmpty ? null : context.environment,
+    ).open(backlog, id, workingDirectory: context.cwd, description: description);
+    if (json) {
+      emitJson({
+        'url': outcome.url,
+        'created': outcome.created,
+        'branch': outcome.branch,
+        'base': outcome.base,
+        'remote': outcome.remote,
+      });
+    } else {
+      line(
+        outcome.created
+            ? 'Pushed ${outcome.branch} to ${outcome.remote} and opened ${outcome.url} (into ${outcome.base}).'
+            : 'Pushed ${outcome.branch} to ${outcome.remote}; the pull request exists: ${outcome.url}',
+      );
     }
     return 0;
   }

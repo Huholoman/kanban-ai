@@ -203,6 +203,101 @@ dispatcher:
     expect((await plan()).worktrees.first.isFree, isTrue, reason: 'committed work leaves the worktree clean');
   });
 
+  group('pull requests (dispatcher.pr)', () {
+    late String remote;
+
+    /// Adds a bare repository as origin and `dispatcher.pr` with a fake
+    /// create command that records its stdin and prints [output].
+    Future<void> configure(String output, {int exitCode = 0}) async {
+      remote = path('remote.git');
+      await _git(root.path, ['init', '-q', '--bare', '-b', 'main', remote]);
+      await _git(path('repo'), ['remote', 'add', 'origin', remote]);
+      File(path('fake-tea.sh')).writeAsStringSync(
+        'cat > "${path('pr-stdin')}"\necho "args \$*" > "${path('pr-args')}"\necho "$output"\nexit $exitCode\n',
+      );
+      final config = File(p.join(path('backlog'), 'backlog.yaml'));
+      config.writeAsStringSync(
+        '${config.readAsStringSync()}'
+        '  pr:\n    create: [sh, ${path('fake-tea.sh')}, --head, "{branch}", --base, "{base}"]\n',
+      );
+      backlog = await Backlog.open(path('backlog'), clock: clock, ids: SequentialIds());
+    }
+
+    Future<void> handOver({bool commit = true, String? message}) async {
+      await backlog.items.create(const NewItem(title: 'Usage section', status: 'todo'));
+      await launcher.launch((await plan()).assignmentFor('T-0001'));
+      await waitForLog('T-0001', 'agent wt-1');
+      if (commit) {
+        File(path('wt-1/USAGE.md')).writeAsStringSync('Run it.\n');
+        await _git(path('wt-1'), ['add', '.']);
+        await _git(path('wt-1'), ['-c', 'user.email=a@b', '-c', 'user.name=A', 'commit', '-q', '-m', 'Usage (T-0001)']);
+      }
+      if (message != null) {
+        final log = (await launcher.agentLogSource(ItemId('T-0001')))!.path;
+        File(log).writeAsStringSync(
+          '${jsonEncode({'type': 'result', 'result': message, 'session_id': 'sess-T-0001'})}\n',
+          mode: FileMode.append,
+        );
+      }
+      await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+      await finish('T-0001', 0);
+    }
+
+    test('an agent in review without a pull request gets one from the launcher', () async {
+      await configure('Created https://git.example/o/r/pulls/5');
+      await handOver(message: 'Adds a usage section.\n\nChecked the README renders.');
+
+      final after = await planned('T-0001');
+      expect(after.item.status, 'review');
+      expect(after.item.pr, 'https://git.example/o/r/pulls/5');
+      expect(await _git(remote, ['log', '-1', '--format=%s', 'agent/T-0001']), 'Usage (T-0001)');
+      expect(File(path('pr-args')).readAsStringSync().trim(), 'args --head agent/T-0001 --base main');
+      expect(
+        File(path('pr-stdin')).readAsStringSync(),
+        'Adds a usage section.\n\nChecked the README renders.\n\nBacklog item: T-0001',
+        reason: 'the description is the agent\'s last message',
+      );
+      final note = Discussion.parse(after.item.body).comments.single;
+      expect((note.author, note.note), ('dispatcher', true));
+      expect(note.text, contains('opened https://git.example/o/r/pulls/5'));
+      expect(logs.last, contains('opened its pull request https://git.example/o/r/pulls/5'));
+    });
+
+    test('when that fails, a note says why and the item stays in review', () async {
+      await configure('fatal: unable to connect', exitCode: 1);
+      await handOver();
+
+      final after = await planned('T-0001');
+      expect(after.item.status, 'review');
+      expect(after.item.pr, isNull);
+      final note = Discussion.parse(after.item.body).comments.single;
+      expect(note.note, isTrue, reason: 'a note does not wake the agent');
+      expect(note.text, allOf(contains('Could not open a pull request'), contains('unable to connect')));
+      expect(note.text, contains('`backlog pr T-0001` in wt-1 tries again'));
+    });
+
+    test('no pull request for a branch without commits, nor for an item that has one', () async {
+      await configure('https://git.example/o/r/pulls/5');
+      await handOver(commit: false);
+      expect(Discussion.parse((await planned('T-0001')).item.body).comments.single.text, contains('no commits'));
+      expect(File(path('pr-args')).existsSync(), isFalse);
+
+      await backlog.items.update('T-0001', [FieldChange.parse('pr=https://git.example/o/r/pulls/1')]);
+      await backlog.items.update('T-0001', [FieldChange.parse('status=todo')]);
+      File(path('go-T-0001')).deleteSync();
+      await launcher.launch((await plan()).assignmentFor('T-0001'));
+      await waitForLog('T-0001', 'agent wt-1');
+      File(path('wt-1/MORE.md')).writeAsStringSync('More.\n');
+      await _git(path('wt-1'), ['add', '.']);
+      await _git(path('wt-1'), ['-c', 'user.email=a@b', '-c', 'user.name=A', 'commit', '-q', '-m', 'More (T-0001)']);
+      await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+      await finish('T-0001', 0);
+      expect(logs.last, contains('handed over as review'));
+      expect(File(path('pr-args')).existsSync(), isFalse);
+      expect((await planned('T-0001')).item.pr, 'https://git.example/o/r/pulls/1');
+    });
+  });
+
   test('an agent that ends without finishing releases and holds its item', () async {
     await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
     await launcher.launch((await plan()).assignmentFor('T-0001'));
