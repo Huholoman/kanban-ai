@@ -550,7 +550,7 @@ backlog_cli ──────────────────────�
 
 | Module | domain | application | infrastructure |
 |---|---|---|---|
-| `workflow` | `Workflow`, statuses and categories, `DispatcherConfig`, `AgentProfile` | – | `backlog.yaml` parser |
+| `workflow` | `Workflow`, statuses and categories, `DispatcherConfig`, `AgentProfile`, port `WorkflowSource` (load, revision, edits) | – | `backlog.yaml` parser, `FileWorkflowSource` (`yaml_edit`, keeps comments; revision = content hash) |
 | `projects` | `ProjectRegistry`, `ProjectEntry`, port `ProjectRegistryStore` | `ProjectService` | `projects.yaml` (`yaml_edit`, keeps comments) |
 | `items` | `Item`, `ItemId`, `Checklist`, ports `ItemRepository`, `IdGenerator` | `ItemService`, `FieldChange` | Markdown codec (`yaml_edit`, keeps formatting), file-system repository |
 | `claims` | `Claim` (lease), port `ClaimStore` | `ClaimService` (claim, next, heartbeat, release, drop, done) | lock files |
@@ -559,7 +559,7 @@ backlog_cli ──────────────────────�
 | `views` | `Filter`, `ViewDefinition`, `ViewEngine` | `ViewService` | YAML views |
 | `validation` | `LintIssue` | `Linter` | – |
 
-`Backlog.open()` is the composition root that wires the ports to the file-system adapters. To support several users on a database, you would write other adapters (`ItemRepository`, `ClaimStore`) and leave the domain unchanged. The DDD is light:
+`Backlog.open()` is the composition root that wires the ports to the file-system adapters. To support several users on a database, you would write other adapters (`ItemRepository`, `ClaimStore`, `WorkflowSource`) and leave the domain unchanged. The DDD is light:
 - value objects
 - an immutable `Item` entity
 - the domain service `BacklogSnapshot`, the only place where planning state is computed

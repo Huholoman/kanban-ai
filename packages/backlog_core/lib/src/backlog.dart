@@ -24,6 +24,8 @@ import 'views/application/view_service.dart';
 import 'views/infrastructure/yaml_views.dart';
 import 'workflow/domain/dispatcher_config.dart';
 import 'workflow/domain/workflow.dart';
+import 'workflow/domain/workflow_source.dart';
+import 'workflow/infrastructure/file_workflow_source.dart';
 import 'workflow/infrastructure/yaml_workflow.dart';
 
 /// Composition root: one backlog folder wired to its file-system adapters.
@@ -33,7 +35,9 @@ import 'workflow/infrastructure/yaml_workflow.dart';
 final class Backlog {
   Backlog._({
     required this.layout,
+    required this.configuration,
     required this.workflow,
+    required this.revision,
     required this.items,
     required this.planning,
     required this.claims,
@@ -52,11 +56,9 @@ final class Backlog {
     bool cacheItems = false,
   }) async {
     final layout = BacklogLayout(root);
-    final config = File(layout.configFile);
-    if (!await config.exists()) {
-      throw NotFoundException('No ${BacklogLayout.configFileName} in ${layout.root}; run `backlog init` first.');
-    }
-    final workflow = parseWorkflowYaml(await config.readAsString(), origin: layout.configFile);
+    final configuration = FileWorkflowSource(layout);
+    final loaded = await configuration.load();
+    final workflow = loaded.workflow;
 
     final itemRepository = FileSystemItemRepository(
       layout,
@@ -82,7 +84,9 @@ final class Backlog {
 
     return Backlog._(
       layout: layout,
+      configuration: configuration,
       workflow: workflow,
+      revision: loaded.revision,
       items: ItemService(
         repository: itemRepository,
         workflow: workflow,
@@ -205,7 +209,20 @@ final class Backlog {
   static String? locate(String start) => BacklogLayout.locate(start);
 
   final BacklogLayout layout;
+
+  /// Where [workflow] comes from; edits made through it apply to backlogs
+  /// opened afterwards.
+  final WorkflowSource configuration;
+
   final Workflow workflow;
+
+  /// The revision of the configuration [workflow] was read from.
+  final WorkflowRevision revision;
+
+  /// Whether the configuration changed since this backlog was opened (then
+  /// open it again to apply the change).
+  Future<bool> get isStale async => await configuration.revision() != revision;
+
   final ItemService items;
   final PlanningService planning;
   final ClaimService claims;
