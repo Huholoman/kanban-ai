@@ -704,6 +704,10 @@ class _DependencyRowState extends State<_DependencyRow> {
                   const SizedBox(width: 4),
                   Tag('blocked', icon: Icons.block, color: tokens.warning),
                 ],
+                if (item?.conflicting ?? false) ...[
+                  const SizedBox(width: 4),
+                  Tag('waiting', icon: Icons.hourglass_empty, color: tokens.warning),
+                ],
               ],
             ),
           ),

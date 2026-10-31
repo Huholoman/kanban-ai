@@ -7,8 +7,8 @@ import '../../../shared/pr_link.dart';
 import '../../../shared/tokens.dart';
 
 /// Compact summary of an item for boards and lists: id and priority, the
-/// title and one meta line that tells the state (ready, blocked, claimed,
-/// claim expired, or just labels).
+/// title and one meta line that tells the state (ready, blocked, waiting for
+/// overlapping work, claimed, claim expired, or just labels).
 class ItemCard extends StatelessWidget {
   const ItemCard({
     super.key,
@@ -140,6 +140,13 @@ class ItemCard extends StatelessWidget {
       // Nothing to report on finished work except what it was about.
     } else if (item.blocked) {
       parts.add(Text('Blocked by ${item.blockedBy.join(', ')}', style: base.copyWith(color: tokens.warning)));
+    } else if (item.conflicting) {
+      parts.add(
+        Tooltip(
+          message: 'Touches the same files as work in progress',
+          child: Text('Waits for ${item.conflictsWith.join(', ')}', style: base.copyWith(color: tokens.warning)),
+        ),
+      );
     } else if (claim != null && claim.expired) {
       parts.add(Text('Claim expired · ${claim.agent}', style: base.copyWith(color: tokens.faint)));
     } else if (claim != null) {

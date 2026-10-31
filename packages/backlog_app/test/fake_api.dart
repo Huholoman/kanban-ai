@@ -25,6 +25,8 @@ ItemDto item(
   String type = 'task',
   String? parent,
   List<String> dependsOn = const [],
+  List<String> touches = const [],
+  List<String> conflictsWith = const [],
 }) => ItemDto(
   id: id,
   title: 'Item $id',
@@ -35,6 +37,9 @@ ItemDto item(
   parent: parent,
   dependsOn: dependsOn,
   labels: labels,
+  touches: touches,
+  conflicting: conflictsWith.isNotEmpty,
+  conflictsWith: conflictsWith,
   body: body,
 );
 
@@ -95,6 +100,11 @@ final class FakeBacklogApi implements BacklogApi {
           if (other.dependsOn.contains(found.id)) link(other),
       ],
       related: [for (final id in found.related) linkTo(id)],
+      conflicts: [for (final id in found.conflictsWith) linkTo(id)],
+      waiting: [
+        for (final other in items_.values)
+          if (other.conflictsWith.contains(found.id)) link(other),
+      ],
     );
   }
 
@@ -254,6 +264,9 @@ final class FakeBacklogApi implements BacklogApi {
     category: _workflow.categoryOf(status ?? item.status),
     priority: priority ?? item.priority,
     labels: item.labels,
+    touches: item.touches,
+    conflicting: item.conflicting,
+    conflictsWith: item.conflictsWith,
     parent: item.parent,
     dependsOn: item.dependsOn,
     children: children ?? item.children,

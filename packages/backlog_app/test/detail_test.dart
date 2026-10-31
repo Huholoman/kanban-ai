@@ -19,6 +19,8 @@ List<ItemDto> _tree() => [
   item('T-1', parent: 'S-2', body: 'Record restore time into the runbook.', status: 'done'),
   item('T-2', parent: 'S-2'),
   item('T-3', parent: 'T-1'),
+  item('W-1', status: 'in-progress', touches: ['lib/pay/']),
+  item('W-2', touches: ['lib/pay/stripe.dart', 'docs/*.{md,txt}'], conflictsWith: ['W-1']),
 ];
 
 Future<FakeBacklogApi> _pumpDetail(
@@ -189,6 +191,30 @@ void main() {
       await _tap(tester, _key('link-S-1'));
       expect(find.text('S-1 Item S-1'), findsOneWidget);
       expect(_key('relation-dependents'), findsOneWidget, reason: 'S-1 blocks S-2');
+    });
+  });
+
+  group('ItemDetailView touches', () {
+    testWidgets('a waiting item names the work it waits for, which opens', (tester) async {
+      await _pumpDetail(tester, 'W-2');
+      expect(find.text('Waits for'), findsOneWidget);
+      await _tap(tester, _key('conflict-W-1'));
+      expect(find.text('Holds up'), findsOneWidget);
+      expect(_key('waiting-W-2'), findsOneWidget);
+    });
+
+    testWidgets('touches are chips: removed with x, added from the + chip', (tester) async {
+      final api = await _pumpDetail(tester, 'W-2');
+      expect(_key('touches-docs/*.{md,txt}'), findsOneWidget);
+      await _tap(tester, find.descendant(of: _key('touches-docs/*.{md,txt}'), matching: find.byIcon(Icons.clear)));
+      await _tap(tester, _key('add-touches'));
+      await tester.enterText(find.byType(TextField).last, 'lib/a/, lib/b/');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(api.updates.map((u) => u.$2.changes), [
+        ['touches-=docs/*.{md,txt}'],
+        ['touches+=lib/a/, lib/b/'],
+      ]);
     });
   });
 

@@ -48,9 +48,10 @@ enum ItemFlag {
   ready(
     'Ready',
     'Can be picked up now: in a pickable status (todo), all dependencies done, '
-        'no open children, nobody holds it.',
+        'no overlapping work in progress, no open children, nobody holds it.',
   ),
   blocked('Blocked', 'Waits for a dependency that is not done yet.'),
+  conflicting('Waiting', 'Touches the same files as an item in progress; waits until that one is done or released.'),
   claimed('Claimed', 'An agent (or someone in the app) holds it: work is in progress.');
 
   const ItemFlag(this.title, this.description);
@@ -61,6 +62,7 @@ enum ItemFlag {
   bool of(ItemDto item) => switch (this) {
     ready => item.ready,
     blocked => item.blocked,
+    conflicting => item.conflicting,
     claimed => item.isClaimed,
   };
 }
