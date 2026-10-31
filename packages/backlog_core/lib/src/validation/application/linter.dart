@@ -25,17 +25,26 @@ final class Linter {
     required ViewRepository views,
     required Workflow workflow,
     required Clock clock,
+    String? root,
+    Future<bool> Function(String path)? directoryExists,
   }) : _items = items,
        _claims = claims,
        _views = views,
        _workflow = workflow,
-       _clock = clock;
+       _clock = clock,
+       _root = root,
+       _directoryExists = directoryExists;
 
   final ItemRepository _items;
   final ClaimStore _claims;
   final ViewRepository _views;
   final Workflow _workflow;
   final Clock _clock;
+
+  /// The backlog folder and a way to look at the disk; without them the
+  /// dispatcher's worktree folders are not checked.
+  final String? _root;
+  final Future<bool> Function(String path)? _directoryExists;
 
   Future<List<LintIssue>> run() async {
     final issues = <LintIssue>[];
@@ -130,6 +139,24 @@ final class Linter {
     final views = await _views.load();
     for (final (location, message) in views.problems) {
       issues.add(LintIssue(Severity.error, 'invalid-view', message, location: location));
+    }
+
+    final dispatcher = _workflow.dispatcher;
+    final root = _root, exists = _directoryExists;
+    if (dispatcher != null && root != null && exists != null) {
+      for (final worktree in dispatcher.worktrees) {
+        final path = worktree.resolvePath(root);
+        if (!await exists(path)) {
+          issues.add(
+            LintIssue(
+              Severity.warning,
+              'dispatcher-worktree',
+              'Dispatcher worktree "${worktree.name}" points to $path, which is not a folder.',
+              location: 'backlog.yaml',
+            ),
+          );
+        }
+      }
     }
 
     return issues..sort((a, b) => a.severity.index.compareTo(b.severity.index));

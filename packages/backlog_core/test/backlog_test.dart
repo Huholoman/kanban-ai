@@ -344,6 +344,15 @@ void main() {
       final codes = (await backlog.linter.run()).map((i) => i.code);
       expect(codes, containsAll(['expired-claim', 'stale-claim']));
     });
+
+    test('warns about dispatcher worktrees that are not folders', () async {
+      final (backlog, _) = await tempBacklog(
+        config: 'dispatcher: {command: agent, worktrees: [{name: here, path: .}, {name: gone, path: ../nowhere}]}\n',
+      );
+      final issues = await backlog.linter.run();
+      expect(issues.map((i) => (i.severity, i.code)), [(Severity.warning, 'dispatcher-worktree')]);
+      expect(issues.single.message, contains('"gone"'));
+    });
   });
 
   group('views', () {

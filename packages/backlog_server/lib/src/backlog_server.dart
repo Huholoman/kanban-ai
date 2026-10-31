@@ -17,11 +17,15 @@ import 'http/web_app.dart';
 /// Composition root of the server: the API, change events and the static web
 /// app in front of one backlog folder.
 final class BacklogServer {
-  BacklogServer._(this._servers, this._feed, this.host);
+  BacklogServer._(this._servers, this._feed, this.host, this.dispatcher);
 
   /// Starts serving [root] on each of [addresses] (all on the same port).
   /// Port 0 picks a free port (see [uri]). With [allow], only clients from
   /// these ranges get an answer other than 403.
+  ///
+  /// The [dispatcher] re-plans after every change (debounced by
+  /// [dispatchDebounce]) and, in auto mode, hands assignments to [launcher];
+  /// without one it only logs what it would start.
   static Future<BacklogServer> start({
     required String root,
     List<Object> addresses = const ['0.0.0.0'],
@@ -32,12 +36,28 @@ final class BacklogServer {
     Clock clock = const SystemClock(),
     Duration debounce = const Duration(milliseconds: 150),
     void Function(String message)? log,
+    AgentLauncher? launcher,
+    Duration dispatchDebounce = const Duration(milliseconds: 500),
   }) async {
     final host = BacklogHost(root, clock: clock);
     await host.backlog; // fail fast on a missing or broken backlog
     final feed = ChangeFeed(host.root, debounce: debounce);
     await feed.start();
-    feed.events.where((event) => event.paths.contains(BacklogLayout.configFileName)).listen((_) => host.reload());
+    final say = log ?? (_) {};
+    final dispatcher = Dispatcher(
+      snapshot: () async => (await host.backlog).planning.snapshot(),
+      backlogRoot: host.root,
+      launcher: launcher ?? LoggingLauncher(say),
+      clock: clock,
+      debounce: dispatchDebounce,
+      onError: (error, _) => say('Dispatcher: $error'),
+    );
+    dispatcher.plans.listen((plan) => say(describePlan(plan)));
+    feed.events.listen((event) {
+      if (event.paths.contains(BacklogLayout.configFileName)) host.reload();
+      dispatcher.notifyChanged();
+    });
+    unawaited(dispatcher.evaluate());
 
     final handler = buildHandler(
       host: host,
@@ -57,10 +77,21 @@ final class BacklogServer {
       for (final server in servers) {
         await server.close(force: true);
       }
+      await dispatcher.close();
       await feed.close();
       rethrow;
     }
-    return BacklogServer._(servers, feed, host);
+    return BacklogServer._(servers, feed, host, dispatcher);
+  }
+
+  /// One log line about a new [plan].
+  static String describePlan(DispatchPlan? plan) {
+    if (plan == null) return 'Dispatcher: off (no dispatcher section in backlog.yaml).';
+    final verb = plan.mode == DispatchMode.auto ? 'starts' : 'proposes';
+    final assignments = plan.assignments.map((a) => '${a.id} → ${a.agent}').join(', ');
+    return 'Dispatcher (${plan.mode.name}): ${plan.running}/${plan.config.maxAgents} running; '
+        '${assignments.isEmpty ? 'nothing to start' : '$verb $assignments'}'
+        '${plan.waiting.isEmpty ? '' : '; ${plan.waiting.length} ready item(s) waiting'}.';
   }
 
   /// The whole request pipeline, without sockets, for tests.
@@ -96,6 +127,10 @@ final class BacklogServer {
   final ChangeFeed _feed;
   final BacklogHost host;
 
+  /// Plans ready work for the worktrees in `backlog.yaml` (idle without a
+  /// `dispatcher` section).
+  final Dispatcher dispatcher;
+
   /// The first bound address.
   Uri get uri => uris.first;
 
@@ -109,6 +144,7 @@ final class BacklogServer {
     for (final server in _servers) {
       await server.close(force: true);
     }
+    await dispatcher.close();
     await _feed.close();
   }
 }

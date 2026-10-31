@@ -72,6 +72,16 @@ appearance:                            # optional; colours "#rrggbb" (quoted!), 
   priorities: {p0: "#e53935"}
   types: {epic: "#6a1b9a"}
   labels: {infra: "#00897b"}
+
+dispatcher:                            # optional; without it there is no dispatcher
+  mode: manual                         # manual (propose, a person starts) | auto (start by itself)
+  max_agents: 2                        # at most this many at once; default one per worktree
+  worktrees:                           # in order of preference
+    - name: monorepo-2                 # also the agent name of its claims
+      path: ../monorepo-2              # absolute, or relative to the backlog folder
+    - monorepo-3                       # bare name = {name: monorepo-3, path: ../monorepo-3}
+  command: claude -p "Work on backlog item {id}, run backlog show {id} first"
+  # or as a list of arguments: [claude, -p, "Work on {id}"]
 ```
 
 Semantics:
@@ -83,6 +93,7 @@ Semantics:
 - **Types** are labels; the hierarchy comes from `parent`, not from the type. `epic` is special only in the UI (epic filter, the default Board view hides epics).
 - **Statuses are the board columns.** Add, rename or reorder them here; each view chooses which to show with `columns:` (§6), also editable from the app.
 - **Appearance** only affects the web board: the palette is generated from `seed` per brightness, `primary`/`secondary`/`background` override parts of it; status, priority, type and label colours replace the built-in ones (columns, card stripes, tags). Invalid colours or modes are configuration errors.
+- **Dispatcher** hands ready items to agents running in the listed worktrees. A worktree is *free* when no live claim is held under its name; at most `max_agents` of the listed worktrees are busy at once. `command` is split into arguments like a shell would (quotes, backslashes) but never run through one, so pipes or variables need an explicit `[sh, -c, "…"]`; in every argument `{id}`, `{title}`, `{worktree}`, `{path}` (absolute worktree path) and `{backlog}` (absolute backlog path) are replaced, `{{`/`}}` are literal braces. The agent runs inside the worktree folder. Unknown keys and placeholders, a missing `command` or `worktrees`, duplicate names or paths, names other than `[A-Za-z0-9._-]`, `max_agents` < 1 and a `mode` other than `auto`/`manual` are configuration errors; `lint` warns about worktree paths that are not folders. The running server plans with it (§8.2); agents are not started yet, it only logs what it would start.
 - Changes to `backlog.yaml` are picked up by a running server (and the board's theme) without restart.
 
 ## 3. Items — `items/<id>-<slug>.md`
@@ -231,7 +242,9 @@ Default views from `init`: **Board** (kanban by status, epics hidden), **Ready t
 
 Errors and warnings with a code, item and location:
 
-`unreadable` (broken file / front matter), `duplicate-id`, `file-name`, `unknown-status`, `unknown-priority`, `unknown-type`, `unknown-milestone`, `dangling-reference` (parent/depends_on/related to a missing item), `self-reference`, `dependency-cycle`, `parent-cycle`, `invalid-touches` (warning, §3.2), `touches-overlap` (warning: two active items with overlapping `touches`), `invalid-view`, `expired-claim`, `stale-claim`, `orphan-claim`.
+`unreadable` (broken file / front matter), `duplicate-id`, `file-name`, `unknown-status`, `unknown-priority`, `unknown-type`, `unknown-milestone`, `dangling-reference` (parent/depends_on/related to a missing item), `self-reference`, `dependency-cycle`, `parent-cycle`, `invalid-touches` (warning, §3.2), `touches-overlap` (warning: two active items with overlapping `touches`), `invalid-view`, `expired-claim`, `stale-claim`, `orphan-claim`, `dispatcher-worktree` (a dispatcher worktree path is not a folder).
+
+A broken `backlog.yaml` (including the `dispatcher` section) is not a lint issue: every command, `lint` included, fails with the configuration error (exit 1).
 
 ## 8. Server — `backlog-server`
 
@@ -267,6 +280,16 @@ At start it prints the board URLs (with the token). The web app is served with `
 | `WS /api/events` | `?token=` | `{"type": "changed", "paths": [...]}` |
 
 Errors: `{"error": {"type", "message", "candidates"?}}` with `not_found` 404, `ambiguous_reference` 409, `invalid_input` 400, `claim_conflict` 409, `configuration` 500, `unauthorized` 401, `forbidden` 403. CORS is open (`*`) so the app can run from another origin.
+
+### 8.2 Dispatcher
+
+With a `dispatcher` section in `backlog.yaml` (§2) the server keeps a dispatch plan: after every change event (debounced again by 500 ms) and whenever a live claim expires (that frees a worktree or an item without touching a file) it takes a snapshot and computes
+
+- **busy worktrees** — those with a live claim under their name; claims of other agents do not occupy worktrees and do not count against `max_agents`,
+- **assignments** — ready items (§3.1) in the order of `backlog next` paired with free worktrees in the configured order, at most `max_agents` minus the busy ones,
+- **waiting** — ready items left over.
+
+The plan is logged whenever it changes (`Dispatcher (auto): 1/2 running; starts X-7f3a → monorepo-3.`). In `auto` mode every new assignment goes to the agent launcher once (again only after it dropped out of the plan or its launch failed); in `manual` mode nothing starts by itself. For now the launcher only logs the command it would run, in its worktree; claiming the item under the worktree name and starting the process come next, as does a Start button for `manual` mode. Without the section the dispatcher is idle; edits of the section apply live. `-q` also silences the dispatcher log.
 
 ## 9. Web board
 
@@ -329,10 +352,10 @@ Agents get the workflow from `backlog instructions` (paste into CLAUDE.md / AGEN
 
 Dart pub workspace (`backlog_core`, `backlog_cli`, `backlog_api`, `backlog_server`) plus the Flutter app outside it.
 
-- **backlog_core** — hexagonal modules `workflow`, `items`, `claims`, `planning`, `views`, `validation`; pure `domain/`, use cases in `application/`, file-system adapters in `infrastructure/`; `Backlog` is the composition root; derived state lives in `BacklogSnapshot`.
+- **backlog_core** — hexagonal modules `workflow`, `items`, `claims`, `planning`, `dispatch`, `views`, `validation`; pure `domain/`, use cases in `application/`, file-system adapters in `infrastructure/`; `Backlog` is the composition root; derived state lives in `BacklogSnapshot`; `DispatchPlan` (pure) turns a snapshot into assignments, `Dispatcher` re-plans on changes and hands them to the `AgentLauncher` port.
 - **backlog_cli** — thin adapter; text and JSON renderers.
 - **backlog_api** — DTOs, `BacklogApi` interface, `HttpBacklogApi` (pure Dart, compiles for the web).
-- **backlog_server** — shelf: `ApiHandler` + `DtoMapper`, `ChangeFeed` (watcher → WebSocket), middleware (token, client allowlist, CORS), multi-address binding.
+- **backlog_server** — shelf: `ApiHandler` + `DtoMapper`, `ChangeFeed` (watcher → WebSocket and the dispatcher), middleware (token, client allowlist, CORS), multi-address binding.
 - **backlog_app** — features `board` and `item`, each with `application/` (ChangeNotifier controllers and pure logic: `BoardFilter`, `ColumnArrangement`, `DetailNavigation`; shared design tokens in `shared/tokens.dart`) and `presentation/`; depends only on `BacklogApi`.
 
 Development: `mise run check` (format check, analysis, all tests), `mise run playground` (demo backlog), `mise run serve`.
@@ -341,6 +364,7 @@ Development: `mise run check` (format check, analysis, all tests), `mise run pla
 
 - Prototype; formats may still change.
 - Overlapping `touches` are judged on one snapshot: two agents running `next` at the same moment can still take two overlapping open items (the lock is per item). `lint` then reports `touches-overlap`.
+- The dispatcher only plans and logs: it does not claim or start agents yet, the plan is not in the API and there is no Start button.
 - Claims coordinate agents sharing one filesystem; agents on different machines need a shared backlog folder (or the server).
 - The web app has no user accounts; protection is the token plus `--host`/`--allow`.
 - Filter state, folded columns and the detail's navigation history are not kept across page reloads.

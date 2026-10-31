@@ -281,6 +281,7 @@ Derived properties are computed, never stored: `blocked`, `conflicting` (waits f
 - statuses `backlog`, `todo`, `in-progress`, `review`, `done` and `cancelled`
 - priorities `p0`–`p3`
 - types, milestones, defaults and the claim lease
+- commented examples of `appearance` and `dispatcher`
 
 Every status belongs to the category `open`, `active` or `done`. Items in the `done` category satisfy dependencies, and agents pick up work from statuses marked `pickable`. The statuses are the possible board columns; which of them a view shows, and in what order, is set by `columns:` in the view (or from the app, see below).
 
@@ -298,6 +299,21 @@ appearance:
 ```
 
 The board picks up changes to it live.
+
+**Dispatcher** (optional): which worktrees agents may run in, how many at once and how to start one. Without the section there is no dispatcher. A worktree is free when nobody holds a live claim under its name.
+
+```yaml
+dispatcher:
+  mode: manual          # manual: a person presses Start in the board | auto: starts by itself
+  max_agents: 2         # default: one per worktree
+  worktrees:            # path relative to the backlog folder; a bare name means ../<name>
+    - name: monorepo-2
+      path: ../monorepo-2
+    - monorepo-3
+  command: claude -p "Work on backlog item {id}, run backlog show {id} first"
+```
+
+The command is split into arguments like in a shell, but no shell runs it (use `[sh, -c, "…"]` if you need one). Placeholders: `{id}`, `{title}`, `{worktree}`, `{path}` (absolute path of the worktree), `{backlog}`. Mistakes in the section are configuration errors; `lint` warns about worktree paths that do not exist. A running `backlog-server` re-plans after every change and whenever a claim expires: ready items in the order of `backlog next` go to free worktrees, at most `max_agents` at once, and it logs the plan. In `auto` mode each new assignment goes to the agent launcher; for now that only logs the command it would run (claiming and starting the agent, and a Start button for `manual` mode, come next).
 
 ### View (`views/*.yaml`)
 
@@ -332,7 +348,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `claim / heartbeat / release / done <id> --as <agent>` | work with claims (`--force` overrides the checks) |
 | `claims` | who works on what |
 | `view [name]` | saved views |
-| `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches (exit 1 on errors) |
+| `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches, dispatcher worktrees (exit 1 on errors) |
 | `instructions` | the guide for agents, in Markdown |
 
 Global options are `-C <dir>` and `--json`. The agent comes from `--as` or `BACKLOG_AGENT`. **Exit codes:** 0 ok, 1 error, 2 nothing to do, 3 claim conflict, 4 not found, 64 usage. JSON fields are only ever added, never renamed.
@@ -365,10 +381,11 @@ backlog_cli ──────────────────────�
 
 | Module | domain | application | infrastructure |
 |---|---|---|---|
-| `workflow` | `Workflow`, statuses and categories | – | `backlog.yaml` parser |
+| `workflow` | `Workflow`, statuses and categories, `DispatcherConfig` | – | `backlog.yaml` parser |
 | `items` | `Item`, `ItemId`, `Checklist`, ports `ItemRepository`, `IdGenerator` | `ItemService`, `FieldChange` | Markdown codec (`yaml_edit`, keeps formatting), file-system repository |
 | `claims` | `Claim` (lease), port `ClaimStore` | `ClaimService` (claim, next, heartbeat, release, done) | lock files |
 | `planning` | `BacklogSnapshot`, `PlannedItem`: blocked, conflicting, ready, cycles, children | `PlanningService` | – |
+| `dispatch` | `DispatchPlan` (ready items → free worktrees), port `AgentLauncher` | `Dispatcher` (debounce, wake-up on claim expiry, auto launch), `LoggingLauncher` | – |
 | `views` | `Filter`, `ViewDefinition`, `ViewEngine` | `ViewService` | YAML views |
 | `validation` | `LintIssue` | `Linter` | – |
 
@@ -379,7 +396,7 @@ backlog_cli ──────────────────────�
 
 There is no event bus or event sourcing: the state lives in files and git keeps the history.
 
-**The server** is a driving adapter. `ApiHandler` parses requests, calls the core services and maps the results through `DtoMapper` to the DTOs of `backlog_api`. `ChangeFeed` watches the folder, debounces bursts of changes and ignores `.git` and temporary files. `BacklogHost` reloads the workflow after `backlog.yaml` changes, and `BacklogServer` is the composition root.
+**The server** is a driving adapter. `ApiHandler` parses requests, calls the core services and maps the results through `DtoMapper` to the DTOs of `backlog_api`. `ChangeFeed` watches the folder, debounces bursts of changes and ignores `.git` and temporary files. `BacklogHost` reloads the workflow after `backlog.yaml` changes, the core's `Dispatcher` re-plans on the same change events, and `BacklogServer` is the composition root.
 
 **The app** is split by feature (`features/board`, `features/item`). Each feature has `application/` (`ChangeNotifier` controllers without widgets, and pure logic such as `ColumnArrangement`) and `presentation/`. It depends only on the `BacklogApi` interface, which `AppScope` provides.
 

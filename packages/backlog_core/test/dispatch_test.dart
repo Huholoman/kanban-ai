@@ -1,0 +1,312 @@
+import 'dart:async';
+
+import 'package:backlog_core/backlog_core.dart';
+import 'package:test/test.dart';
+
+import 'support.dart';
+
+const _root = '/work/backlog';
+
+Workflow _workflow({String mode = 'manual', int? maxAgents, List<String> worktrees = const ['w1', 'w2', 'w3']}) =>
+    parseWorkflowYaml('''
+dispatcher:
+  mode: $mode
+  ${maxAgents == null ? '' : 'max_agents: $maxAgents'}
+  worktrees: [${worktrees.join(', ')}]
+  command: agent --item {id} --title "{title}" --in {path} --as {worktree} --backlog {backlog}
+''');
+
+DispatchPlan _plan(List<Item> items, {Workflow? workflow, List<Claim> claims = const [], DateTime? now}) =>
+    DispatchPlan.of(
+      BacklogSnapshot.build(
+        items: items,
+        workflow: workflow ?? _workflow(),
+        claims: claims,
+        now: now ?? DateTime.utc(2026, 10, 29, 12),
+      ),
+      backlogRoot: _root,
+    )!;
+
+Claim _claim(String id, String agent, {DateTime? at, Duration lease = const Duration(hours: 2)}) {
+  final time = at ?? DateTime.utc(2026, 10, 29, 11);
+  return Claim(itemId: ItemId(id), agent: agent, claimedAt: time, heartbeatAt: time, lease: lease);
+}
+
+void main() {
+  group('DispatchPlan', () {
+    test('no plan without a dispatcher section', () {
+      expect(DispatchPlan.of(snapshotOf([item('T-1')]), backlogRoot: _root), isNull);
+    });
+
+    test('ready items in next order go to free worktrees in configured order', () {
+      final plan = _plan([
+        item('T-1', priority: 'p2'),
+        item('T-2', priority: 'p0'),
+        item('T-3', status: 'backlog'),
+        item('T-4', dependsOn: ['T-3']),
+        item('T-5', priority: 'p1'),
+      ]);
+      expect(plan.assignments.map((a) => a.key), ['T-2@w1', 'T-5@w2', 'T-1@w3']);
+      expect(plan.waiting, isEmpty);
+      expect(plan.running, 0);
+      expect(plan.recheckAt, isNull);
+      expect(plan.assignments.first.path, '/work/w1');
+      expect(plan.assignments.first.command, [
+        'agent',
+        '--item',
+        'T-2',
+        '--title',
+        'Item T-2',
+        '--in',
+        '/work/w1',
+        '--as',
+        'w1',
+        '--backlog',
+        _root,
+      ]);
+    });
+
+    test('a live claim under a worktree name makes it busy and counts against the limit', () {
+      final plan = _plan(
+        [item('T-1', status: 'in-progress'), item('T-2'), item('T-3'), item('T-4')],
+        workflow: _workflow(maxAgents: 2),
+        claims: [_claim('T-1', 'w1')],
+      );
+      expect(plan.worktrees.map((w) => w.isBusy), [true, false, false]);
+      expect(plan.running, 1);
+      expect(plan.capacity, 1);
+      expect(plan.assignments.map((a) => a.key), ['T-2@w2']);
+      expect(plan.waiting.map((i) => '${i.id}'), ['T-3', 'T-4']);
+      expect(plan.recheckAt, DateTime.utc(2026, 10, 29, 13)); // claimed 11:00 + 2 h
+    });
+
+    test('claims of other agents do not occupy worktrees; expired claims free them', () {
+      final plan = _plan(
+        [item('T-1', status: 'in-progress'), item('T-2', status: 'in-progress'), item('T-3')],
+        workflow: _workflow(worktrees: ['w1']),
+        claims: [
+          _claim('T-1', 'someone'),
+          _claim('T-2', 'w1', lease: const Duration(minutes: 30)),
+        ],
+      );
+      expect(plan.worktrees.single.isBusy, isFalse);
+      expect(plan.assignments.map((a) => a.key), ['T-3@w1']);
+      expect(plan.recheckAt, DateTime.utc(2026, 10, 29, 13)); // only the live claim of "someone"
+    });
+
+    test('nothing to assign when every worktree is busy', () {
+      final plan = _plan(
+        [item('T-1', status: 'in-progress'), item('T-2')],
+        workflow: _workflow(worktrees: ['w1']),
+        claims: [_claim('T-1', 'w1')],
+      );
+      expect(plan.assignments, isEmpty);
+      expect(plan.capacity, 0);
+      expect(plan.waiting.map((i) => '${i.id}'), ['T-2']);
+    });
+
+    test('sameDecisionAs compares assignments, waiting items and busy worktrees', () {
+      final a = _plan([item('T-1')]);
+      expect(a.sameDecisionAs(_plan([item('T-1')])), isTrue);
+      expect(a.sameDecisionAs(_plan([item('T-1'), item('T-2')])), isFalse);
+      expect(a.sameDecisionAs(null), isFalse);
+    });
+  });
+
+  group('Dispatcher', () {
+    late Backlog backlog;
+    late FixedClock clock;
+    late _FakeTimers timers;
+    late _RecordingLauncher launcher;
+    late List<Object> errors;
+
+    Future<Dispatcher> start(String mode, {int? maxAgents, List<String> worktrees = const ['w1', 'w2']}) async {
+      final config =
+          '''
+dispatcher:
+  mode: $mode
+  ${maxAgents == null ? '' : 'max_agents: $maxAgents'}
+  worktrees: [${worktrees.join(', ')}]
+  command: agent {id}
+''';
+      (backlog, clock) = await tempBacklog(config: config);
+      timers = _FakeTimers();
+      launcher = _RecordingLauncher(backlog);
+      errors = [];
+      final dispatcher = Dispatcher(
+        snapshot: backlog.planning.snapshot,
+        backlogRoot: backlog.root,
+        launcher: launcher,
+        clock: clock,
+        timer: timers.create,
+        onError: (error, _) => errors.add(error),
+      );
+      addTearDown(dispatcher.close);
+      return dispatcher;
+    }
+
+    Future<void> todo(String title, {String priority = 'p2'}) =>
+        backlog.items.create(NewItem(title: title, status: 'todo', priority: priority));
+
+    test('auto mode launches each assignment once, then only new ones', () async {
+      final dispatcher = await start('auto');
+      launcher.claims = false;
+      await todo('A');
+      await todo('B', priority: 'p0');
+      await dispatcher.evaluate();
+      expect(launcher.launched, ['T-0002@w1', 'T-0001@w2']);
+
+      await dispatcher.evaluate();
+      expect(launcher.launched, hasLength(2), reason: 'an unchanged plan is not launched again');
+      expect(errors, isEmpty);
+    });
+
+    test('a launcher that claims frees the plan of its items', () async {
+      final dispatcher = await start('auto', maxAgents: 1);
+      await todo('A');
+      await todo('B');
+      await dispatcher.evaluate();
+      expect(launcher.launched, ['T-0001@w1']);
+      expect((await backlog.planning.snapshot())[ItemId('T-0001')]!.claim!.agent, 'w1');
+
+      final plan = await dispatcher.evaluate();
+      expect(plan!.running, 1);
+      expect(plan.assignments, isEmpty, reason: 'max_agents is reached');
+      expect(plan.waiting.map((i) => '${i.id}'), ['T-0002']);
+
+      await backlog.claims.complete('T-0001', agent: 'w1');
+      await dispatcher.evaluate();
+      expect(launcher.launched, ['T-0001@w1', 'T-0002@w1']);
+    });
+
+    test('manual mode only publishes the plan', () async {
+      final dispatcher = await start('manual');
+      final plans = <DispatchPlan?>[];
+      dispatcher.plans.listen(plans.add);
+      await todo('A');
+      await dispatcher.evaluate();
+      await dispatcher.evaluate();
+      await Future<void>.delayed(Duration.zero);
+      expect(launcher.launched, isEmpty);
+      expect(plans, hasLength(1), reason: 'only changes are published');
+      expect(dispatcher.current!.assignments.map((a) => a.key), ['T-0001@w1']);
+    });
+
+    test('changes are debounced into one evaluation', () async {
+      final dispatcher = await start('auto');
+      launcher.claims = false;
+      await todo('A');
+      dispatcher.notifyChanged();
+      dispatcher.notifyChanged();
+      expect(timers.pending.map((t) => t.delay), [dispatcher.debounce]);
+      timers.fireAll();
+      await dispatcher.evaluate(); // waits for the triggered one
+      expect(launcher.launched, ['T-0001@w1']);
+    });
+
+    test('wakes up when a claim expires and the worktree frees up', () async {
+      final dispatcher = await start('auto', worktrees: ['w1']);
+      await todo('A');
+      await todo('B');
+      await backlog.claims.claim('T-0001', 'w1');
+      await dispatcher.evaluate();
+      expect(launcher.launched, isEmpty);
+      expect(timers.pending.map((t) => t.delay), [backlog.workflow.claimLease]);
+
+      clock.advance(backlog.workflow.claimLease);
+      timers.fireAll();
+      await dispatcher.evaluate();
+      expect(launcher.launched, ['T-0002@w1']);
+    });
+
+    test('a failed launch is reported and tried again on the next evaluation', () async {
+      final dispatcher = await start('auto', worktrees: ['w1']);
+      await todo('A');
+      launcher.failNext = true;
+      await dispatcher.evaluate();
+      expect(errors, hasLength(1));
+      expect(launcher.launched, isEmpty);
+      await dispatcher.evaluate();
+      expect(launcher.launched, ['T-0001@w1']);
+    });
+
+    test('a broken snapshot is reported and keeps the previous plan', () async {
+      var fail = false;
+      (backlog, clock) = await tempBacklog(config: 'dispatcher: {worktrees: [w1], command: agent}\n');
+      final errors = <Object>[];
+      final dispatcher = Dispatcher(
+        snapshot: () => fail ? Future.error(const ConfigurationException('broken')) : backlog.planning.snapshot(),
+        backlogRoot: backlog.root,
+        launcher: _RecordingLauncher(backlog),
+        clock: clock,
+        timer: _FakeTimers().create,
+        onError: (error, _) => errors.add(error),
+      );
+      addTearDown(dispatcher.close);
+      final first = await dispatcher.evaluate();
+      fail = true;
+      expect(await dispatcher.evaluate(), same(first));
+      expect(errors.single, isA<ConfigurationException>());
+    });
+  });
+}
+
+/// Records launches; claims the item like a real launcher would, unless told not to.
+final class _RecordingLauncher implements AgentLauncher {
+  _RecordingLauncher(this.backlog);
+
+  final Backlog backlog;
+  final launched = <String>[];
+  bool claims = true;
+  bool failNext = false;
+
+  @override
+  Future<void> launch(DispatchAssignment assignment) async {
+    if (failNext) {
+      failNext = false;
+      throw StateError('cannot start');
+    }
+    if (claims) await backlog.claims.claim('${assignment.id}', assignment.agent);
+    launched.add(assignment.key);
+  }
+}
+
+final class _FakeTimers {
+  final _all = <_FakeTimer>[];
+
+  Iterable<_FakeTimer> get pending => _all.where((t) => t.isActive);
+
+  Timer create(Duration delay, void Function() callback) {
+    final timer = _FakeTimer(delay, callback);
+    _all.add(timer);
+    return timer;
+  }
+
+  void fireAll() {
+    for (final timer in pending.toList()) {
+      timer.fire();
+    }
+  }
+}
+
+final class _FakeTimer implements Timer {
+  _FakeTimer(this.delay, this._callback);
+
+  final Duration delay;
+  final void Function() _callback;
+  bool _active = true;
+
+  void fire() {
+    _active = false;
+    _callback();
+  }
+
+  @override
+  void cancel() => _active = false;
+
+  @override
+  bool get isActive => _active;
+
+  @override
+  int get tick => 0;
+}
