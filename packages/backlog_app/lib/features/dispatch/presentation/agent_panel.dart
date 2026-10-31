@@ -158,6 +158,7 @@ class _AgentPanelState extends State<AgentPanel> {
   /// `Agent claude in wt-2`, `Action "AI review" · claude in wt-2`,
   /// `Action "Tests" (command) in wt-2`.
   static String _running(AgentRunDto run) => switch (run) {
+    AgentRunDto(action: null, epic: true) => 'Agent ${run.agent} implements the epic in ${run.worktree}',
     AgentRunDto(action: null) => 'Agent ${run.agent} in ${run.worktree}',
     AgentRunDto(kind: 'agent') => 'Action "${run.action}" · ${run.agent} in ${run.worktree}',
     _ => 'Action "${run.action}" (${run.kind == 'builtin' ? 'built-in' : run.kind}) in ${run.worktree}',

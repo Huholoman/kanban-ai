@@ -69,6 +69,42 @@ class DispatchController extends ChangeNotifier {
     _notices.add(run == null ? '$verb an agent for $item.' : '$verb ${run.agent} for $item in ${run.worktree}.');
   });
 
+  /// Whether one agent could be started for all of [item]'s children (*Implement
+  /// epic*): a dispatcher with a free worktree, an unfinished item with
+  /// children, nothing running for it and not implemented already. Whether
+  /// the epic can really start is [epic]'s verdict.
+  bool canImplementEpic(ItemDto item) =>
+      plan.canStart &&
+      !item.isDone &&
+      item.children.total > 0 &&
+      runFor(item.id) == null &&
+      !isEpic(item.id) &&
+      !pending.contains(item.id);
+
+  /// One agent implements [item] as an epic (it runs, or ran last).
+  bool isEpic(String item) => plan.epics.contains(item);
+
+  /// Whether one agent can implement [item] as an epic, and how far it is;
+  /// null when the server cannot say.
+  Future<EpicDto?> epic(String item) async {
+    try {
+      return await _api.epic(item);
+    } on BacklogApiException {
+      return null;
+    }
+  }
+
+  /// Starts one agent implementing all of [item]'s children on one branch.
+  Future<void> startEpic(String item) => _act(item, () async {
+    plan = await _api.startEpic(item);
+    final run = plan.runFor(item);
+    _notices.add(
+      run == null
+          ? 'Started an agent for the epic $item.'
+          : 'Started ${run.agent} for the epic $item in ${run.worktree}.',
+    );
+  });
+
   /// Whether an action can start on [item] now: a dispatcher runs and
   /// nothing runs for the item yet.
   bool canRunAction(String item) => configured && runFor(item) == null && !pending.contains(item);

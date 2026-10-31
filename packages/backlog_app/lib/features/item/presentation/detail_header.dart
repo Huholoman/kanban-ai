@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 
@@ -6,6 +8,7 @@ import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
 import '../../dispatch/presentation/action_buttons.dart';
 import '../../dispatch/presentation/dispatch_scope.dart';
+import '../../dispatch/presentation/epic_panel.dart';
 import '../application/item_controller.dart';
 
 /// Top of the detail: back, the breadcrumb of parents and close; the item's
@@ -196,6 +199,14 @@ class DetailHeader extends StatelessWidget {
             onPressed: enabled ? () => dispatch.startAgent(item.id) : null,
           ),
       ],
+      if (dispatch != null && dispatch.canImplementEpic(item))
+        BarAction(
+          key: const ValueKey('implement-epic'),
+          label: 'Implement epic',
+          icon: Icons.account_tree_outlined,
+          tooltip: 'One agent implements all items under this one on one branch, with one pull request',
+          onPressed: enabled ? () => unawaited(confirmEpicStart(context, dispatch, item.id)) : null,
+        ),
       ...itemActions(context, item, controller.detail?.actions ?? const [], enabled: enabled),
       if (onAddChild case final onAddChild?)
         BarAction(

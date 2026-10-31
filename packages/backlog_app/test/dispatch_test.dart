@@ -72,7 +72,24 @@ List<ItemDto> _items() => [
   item('R-2', ready: true),
   item('R-3', ready: true),
   item('B-1', status: 'backlog'),
+  item('E-1', type: 'epic', children: const Progress(0, 2)),
+  item('E-2', type: 'epic', children: const Progress(0, 1)),
+  item('T-1', parent: 'E-1', ready: true),
+  item('T-9', parent: 'E-2'),
 ];
+
+const _epicCheck = EpicDto(
+  epic: 'E-1',
+  title: 'Item E-1',
+  branch: 'agent/E-1',
+  verdict: 'warning',
+  warnings: ['T-2 waits for X-1 (todo) outside the epic; the agent stops there and asks.'],
+  next: 'T-1',
+  members: [
+    EpicMemberDto(id: 'T-1', title: 'Item T-1', status: 'todo', state: 'to-do'),
+    EpicMemberDto(id: 'T-2', title: 'Item T-2', status: 'todo', state: 'to-do', waits: ['X-1 (todo)']),
+  ],
+);
 
 Future<(FakeBacklogApi, DispatchController)> _pumpDetail(
   WidgetTester tester,
@@ -203,6 +220,76 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.started, ['R-2', 'R-2']);
     expect(api.startedFresh, ['R-2']);
+  });
+
+  group('Implement epic', () {
+    final run = AgentRunDto(
+      item: 'E-1',
+      worktree: 'w1',
+      pid: 8,
+      startedAt: _started,
+      log: '/state/logs/E-1.log',
+      agent: 'claude',
+      branch: 'agent/E-1',
+      epic: true,
+    );
+    final implementing = DispatchDto(
+      configured: true,
+      mode: 'manual',
+      agent: 'claude',
+      maxAgents: 2,
+      running: 1,
+      capacity: 1,
+      worktrees: [
+        DispatchWorktreeDto(name: 'w1', path: '/w/w1', busy: true, claims: const ['E-1'], run: run),
+        const DispatchWorktreeDto(name: 'w2', path: '/w/w2', busy: false),
+      ],
+      runs: [run],
+      epics: const ['E-1'],
+    );
+
+    testWidgets('checks the epic, starts it after a confirmation and shows how far it is', (tester) async {
+      expect(DispatchDto.fromJson(implementing.toJson()).toJson(), implementing.toJson());
+      expect(EpicDto.fromJson(_epicCheck.toJson()).toJson(), _epicCheck.toJson());
+      final (api, _) = await _pumpDetail(tester, 'E-1', _plan());
+      api
+        ..epics['E-1'] = _epicCheck
+        ..afterStart = implementing;
+      expect(_key('start-agent'), findsNothing, reason: 'an epic is not ready');
+      await tester.tap(_key('implement-epic'));
+      await tester.pumpAndSettle();
+      expect(_key('epic-dialog'), findsOneWidget);
+      expect(find.text('It can start, but the agent will probably stop and ask:'), findsOneWidget);
+      expect(find.textContaining('T-2  Item T-2 (todo) · waits for X-1 (todo)'), findsOneWidget);
+      expect(find.text('Start anyway'), findsOneWidget);
+
+      await tester.tap(_key('epic-start'));
+      await tester.pumpAndSettle();
+      expect(api.startedEpics, ['E-1']);
+      expect(_key('implement-epic'), findsNothing);
+      expect(find.textContaining('Agent claude implements the epic in w1 since'), findsOneWidget);
+      expect(_key('epic-progress'), findsOneWidget);
+      expect(find.text('0 done · 0 handed over · 0 in progress · 2 to do'), findsOneWidget);
+    });
+
+    testWidgets('an epic that cannot start says why and offers no start', (tester) async {
+      final (api, _) = await _pumpDetail(tester, 'E-2', _plan());
+      api.epics['E-2'] = const EpicDto(
+        epic: 'E-2',
+        title: 'Item E-2',
+        branch: 'agent/E-2',
+        verdict: 'forbidden',
+        problems: ['E-2 depends on X-9, which does not exist.'],
+      );
+      await tester.tap(_key('implement-epic'));
+      await tester.pumpAndSettle();
+      expect(find.text('It cannot start:'), findsOneWidget);
+      expect(find.text('✗ E-2 depends on X-9, which does not exist.'), findsOneWidget);
+      expect(_key('epic-start'), findsNothing);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(api.startedEpics, isEmpty);
+    });
   });
 
   testWidgets('no Start without a free worktree or for items that are not ready', (tester) async {

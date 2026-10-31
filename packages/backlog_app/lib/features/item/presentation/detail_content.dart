@@ -9,6 +9,7 @@ import '../../../shared/pr_link.dart';
 import '../../../shared/review_badge.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
+import '../../dispatch/presentation/epic_panel.dart';
 import '../application/item_body.dart';
 import '../application/item_controller.dart';
 import 'ask_text.dart';
@@ -79,6 +80,7 @@ class DetailContent extends StatelessWidget {
                     warning: false,
                   ),
                 ),
+              EpicProgress(key: ValueKey('epic-progress-${item.id}'), item: item),
               const SizedBox(height: 12),
               _Status(item: item),
               if (workflow != null) ...[
