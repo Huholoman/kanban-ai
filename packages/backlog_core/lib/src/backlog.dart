@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:yaml/yaml.dart';
+import 'package:yaml_edit/yaml_edit.dart';
 
 import 'claims/application/claim_service.dart';
 import 'claims/infrastructure/file_system_claim_store.dart';
@@ -13,6 +15,8 @@ import 'items/infrastructure/file_system_item_repository.dart';
 import 'items/infrastructure/markdown_item_codec.dart';
 import 'planning/application/planning_service.dart';
 import 'planning/infrastructure/git_branch_heads.dart';
+import 'presets/domain/init_preset.dart';
+import 'presets/infrastructure/built_in_presets.dart';
 import 'shared/clock.dart';
 import 'shared/errors.dart';
 import 'validation/application/linter.dart';
@@ -119,14 +123,40 @@ final class Backlog {
   }
 
   /// Creates the folder structure with a default configuration and views.
-  static Future<BacklogLayout> init(String root, {String idPrefix = 'T'}) async {
+  static Future<BacklogLayout> init(String root, {String idPrefix = 'T'}) async =>
+      (await create(root, idPrefix: idPrefix)).layout;
+
+  /// Creates the folder structure from [preset] (default: the built-in
+  /// `default`): `backlog.yaml`, `views/`, `items/`, `docs/` and a
+  /// `.gitignore` (unless there is one). Its placeholders get [idPrefix]
+  /// (default `T`), the project's name (the folder, or its parent for a
+  /// folder named `backlog`), [repo], the code repository relative to
+  /// [root] (default `..`), and its folder name. A given [idPrefix] also replaces the prefix of
+  /// a preset that names its own. Nothing is written when the configuration
+  /// or a view does not parse.
+  static Future<BacklogCreation> create(String root, {String? idPrefix, InitPreset? preset, String repo = '..'}) async {
     final layout = BacklogLayout(root);
     final config = File(layout.configFile);
     if (await config.exists()) {
       throw InvalidInputException('${layout.configFile} already exists.');
     }
-    final template = workflowTemplate(idPrefix: idPrefix);
-    parseWorkflowYaml(template); // fails early on an invalid prefix
+    final name = p.basename(layout.root);
+    final rendered = (preset ?? builtInPresets.first).render({
+      'prefix': idPrefix ?? 'T',
+      'project': name == 'backlog' ? p.basename(p.dirname(layout.root)) : name,
+      'repo': repo,
+      'repo_name': p.basename(p.normalize(p.join(layout.root, repo))),
+    });
+    var template = rendered.config;
+    if (idPrefix != null) template = _withPrefix(template, idPrefix);
+    final workflow = parseWorkflowYaml(template, origin: '${rendered.name} preset'); // fails early on an invalid prefix
+    for (final MapEntry(key: id, value: yaml) in rendered.views.entries) {
+      try {
+        parseViewYaml(id, yaml);
+      } on ConfigurationException catch (error) {
+        throw ConfigurationException('View $id of the ${rendered.name} preset: ${error.message}');
+      }
+    }
 
     await Directory(layout.itemsDir).create(recursive: true);
     await Directory(layout.docsDir).create(recursive: true);
@@ -134,14 +164,29 @@ final class Backlog {
     await config.writeAsString(template);
     await File(p.join(layout.itemsDir, '.gitkeep')).writeAsString('');
     await File(p.join(layout.docsDir, '.gitkeep')).writeAsString('');
-    for (final MapEntry(key: id, value: yaml) in defaultViews.entries) {
+    for (final MapEntry(key: id, value: yaml) in rendered.views.entries) {
       await File(p.join(layout.viewsDir, '$id.yaml')).writeAsString(yaml);
     }
     final gitignore = File(p.join(layout.root, '.gitignore'));
     if (!await gitignore.exists()) {
       await gitignore.writeAsString('# claim locks are machine-local\n.locks/\n*.tmp\n*.stale\n');
     }
-    return layout;
+    return BacklogCreation(layout, preset: rendered, idPrefix: workflow.idPrefix);
+  }
+
+  /// [yaml] with `id.prefix` set to [prefix], keeping comments and layout.
+  static String _withPrefix(String yaml, String prefix) {
+    final editor = YamlEditor(yaml);
+    final id = editor.parseAt(['id'], orElse: () => wrapAsYamlNode(null));
+    if (id is YamlMap) {
+      if (id['prefix'] == prefix) return yaml;
+      editor.update(['id', 'prefix'], prefix);
+    } else if (editor.parseAt([], orElse: () => wrapAsYamlNode(null)) is YamlMap) {
+      editor.update(['id'], {'prefix': prefix});
+    } else {
+      return yaml;
+    }
+    return editor.toString();
   }
 
   /// Why the backlog at [root] cannot be opened (missing folder, no or a
@@ -172,4 +217,14 @@ final class Backlog {
   /// Requests to run actions, for a server's dispatcher to pick up
   /// (`backlog action`).
   ActionRequests get actionRequests => FileActionRequests(layout);
+}
+
+/// What [Backlog.create] made: where, from which preset (its placeholders
+/// filled) and the id prefix of the new backlog.
+final class BacklogCreation {
+  const BacklogCreation(this.layout, {required this.preset, required this.idPrefix});
+
+  final BacklogLayout layout;
+  final InitPreset preset;
+  final String idPrefix;
 }

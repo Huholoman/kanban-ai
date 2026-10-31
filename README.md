@@ -131,6 +131,8 @@ dart compile exe packages/backlog_server/bin/backlog_server.dart -o ~/.local/bin
 ```bash
 cd ~/projects/myapp                    # next to the worktrees: myapp/{monorepo,monorepo-2,…}
 backlog init backlog --prefix MA       # creates myapp/backlog/ and registers it for backlog-server
+# or with a preset: --preset minimal | agents | agents-review (backlog init --list-presets),
+# or --from ../other/backlog to copy another backlog's configuration and views
 cd backlog && git init && git add -A && git commit -m "backlog" && cd ..
 
 backlog new "Payments" -t epic -p p1
@@ -325,6 +327,8 @@ Derived properties are computed, never stored: `blocked`, `conflicting` (waits f
 - priorities `p0`–`p3`
 - types, milestones, defaults and the claim lease
 - commented examples of `appearance` and `dispatcher` (with actions)
+
+**Presets:** `backlog init --preset <name>` starts from another kanban: `minimal` (a personal to-do list: todo / in-progress / done, no milestones, no dispatcher), `default` (the file above), `agents` (set up like kanban-ai itself: a review status, versions as milestones plus `later`, a manual dispatcher that creates its own worktrees next to the repository — `--repo`, default the parent folder — and a guide for the repository's `CLAUDE.md` / `AGENTS.md`, printed or appended with `--agents-file CLAUDE.md`) and `agents-review` (plus an AI review on entering review and a local *Merge* button). Own presets are folders in `~/.config/kanban-ai/presets/<name>/` (`backlog.yaml`, optional `views/`, `AGENTS.md`, `preset.yaml` with a description) with the placeholders `${prefix}`, `${project}`, `${repo}`, `${repo_name}`; `--preset ./folder` takes one from anywhere, `--from <backlog>` copies the configuration and views of an existing backlog without its items. `backlog init --list-presets` lists them.
 
 Every status belongs to the category `open`, `active` or `done`. Items in the `done` category satisfy dependencies, and agents pick up work from statuses marked `pickable`. The statuses are the possible board columns; which of them a view shows, and in what order, is set by `columns:` in the view (or from the app, see below).
 

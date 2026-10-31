@@ -316,6 +316,161 @@ void main() {
     expect((await backlog(['projects'], env: {...env, 'BACKLOG_PROJECTS': explicit})).out, contains(backlogDir));
   });
 
+  group('init presets', () {
+    late Map<String, String> env;
+    late String userPresets;
+
+    setUp(() {
+      env = {'XDG_CONFIG_HOME': p.join(workspace.path, 'config'), 'HOME': p.join(workspace.path, 'home')};
+      userPresets = p.join(workspace.path, 'config', 'kanban-ai', 'presets');
+    });
+
+    Future<Run> init(List<String> args) => backlog(['init', '--no-register', ...args], env: env);
+    String read(String path) => File(p.join(workspace.path, path)).readAsStringSync();
+
+    test('--list-presets names the built-in ones and the user\'s', () async {
+      final builtIn = await init(['--list-presets']);
+      expect(builtIn.exitCode, 0);
+      expect(builtIn.out.split('\n').map((line) => line.split(' ').first), [
+        'default',
+        'minimal',
+        'agents',
+        'agents-review',
+        '',
+      ]);
+
+      Directory(p.join(userPresets, 'shop', 'views')).createSync(recursive: true);
+      File(p.join(userPresets, 'shop', 'backlog.yaml')).writeAsStringSync('id: {prefix: SHOP}\n');
+      File(p.join(userPresets, 'shop', 'preset.yaml')).writeAsStringSync('description: Our shop projects\n');
+      final listed = await backlog(['--json', 'init', '--list-presets'], env: env);
+      expect((listed.json! as List).last, {
+        'name': 'shop',
+        'description': 'Our shop projects',
+        'source': p.join(userPresets, 'shop'),
+        'agents_guide': false,
+      });
+      expect(Directory(p.join(workspace.path, 'views')).existsSync(), isFalse, reason: 'listing creates nothing');
+    });
+
+    test('without a preset init writes the default template, as before', () async {
+      expect((await init(['plain', '--prefix', 'PL'])).out, startsWith('Created backlog in '));
+      expect(read('plain/backlog.yaml'), startsWith('# Backlog configuration. Items live in items/'));
+      expect(read('plain/backlog.yaml'), contains('  prefix: PL      # new items get ids like PL-7f3a\n'));
+      expect(read('plain/backlog.yaml'), contains('# dispatcher:\n'));
+      expect(Directory(p.join(workspace.path, 'plain', 'views')).listSync().map((f) => p.basename(f.path)).toSet(), {
+        for (final id in builtInPresets.first.views.keys) '$id.yaml',
+      });
+    });
+
+    test('minimal: three statuses, no dispatcher; the backlog lints clean', () async {
+      final run = await init(['todo', '--preset', 'minimal', '--prefix', 'TD']);
+      expect(run.exitCode, 0, reason: '$run');
+      expect(run.out, contains('from preset minimal (ids TD-…)'));
+      expect(run.out, isNot(contains('CLAUDE.md')));
+      final opened = await Backlog.open(p.join(workspace.path, 'todo'));
+      expect(opened.workflow.statuses.map((s) => s.id), ['todo', 'in-progress', 'done']);
+      expect(opened.workflow.dispatcher, isNull);
+      expect((await opened.linter.run()).where((issue) => issue.severity == Severity.error), isEmpty);
+    });
+
+    test('agents: dispatcher for the repository, milestones, and the guide printed or appended', () async {
+      Directory(p.join(workspace.path, 'app')).createSync();
+      final run = await init(['app/backlog', '--preset', 'agents', '--prefix', 'AP']);
+      expect(run.exitCode, 0, reason: '$run');
+      expect(run.out, contains('Add this guide for agents to CLAUDE.md / AGENTS.md'));
+      expect(run.out, contains('Work on app is planned in a kanban-ai backlog (Markdown files, ids\n`AP-…`)'));
+      final opened = await Backlog.open(p.join(workspace.path, 'app', 'backlog'));
+      expect(opened.workflow.milestones.map((m) => m.id), ['v0.1', 'later']);
+      expect(opened.workflow.dispatcher!.mode, DispatchMode.manual);
+      expect(read('app/backlog/backlog.yaml'), contains('repo: ..        #'));
+      expect(read('app/backlog/backlog.yaml'), contains('worktree_name: "app-agent-{n}"'));
+      expect((await opened.linter.run()).where((issue) => issue.severity == Severity.error), isEmpty);
+
+      final claude = p.join(workspace.path, 'repo', 'CLAUDE.md');
+      File(claude)
+        ..createSync(recursive: true)
+        ..writeAsStringSync('# Repo rules\n');
+      final reviewed = await backlog([
+        '--json',
+        'init',
+        'other',
+        '--no-register',
+        '--preset',
+        'agents-review',
+        '--repo',
+        'repo',
+        '--agents-file',
+        claude,
+      ], env: env);
+      expect(reviewed.exitCode, 0, reason: '$reviewed');
+      expect((reviewed.json! as Map)['agents_file'], claude);
+      expect((reviewed.json! as Map)['prefix'], 'T');
+      expect(read('repo/CLAUDE.md'), startsWith('# Repo rules\n\n## Backlog\n'));
+      expect(read('other/backlog.yaml'), contains('repo: ../repo'));
+      expect(read('other/backlog.yaml'), contains('worktree_name: "repo-agent-{n}"'));
+      expect((await Backlog.open(p.join(workspace.path, 'other'))).workflow.dispatcher!.actions.map((a) => a.name), [
+        'AI review',
+        'Merge',
+      ]);
+      final again = await init(['third', '--preset', 'agents', '--agents-file', claude]);
+      expect(again.out, contains('has the guide for agents already'));
+      expect('## Backlog'.allMatches(read('repo/CLAUDE.md')), hasLength(1));
+    });
+
+    test(
+      'a preset folder or a user preset by name, with placeholders; --from copies a backlog without items',
+      () async {
+        final folder = Directory(p.join(workspace.path, 'presets', 'mine'))..createSync(recursive: true);
+        File(p.join(folder.path, 'backlog.yaml')).writeAsStringSync(r'''
+# ${project} backlog
+id:
+  prefix: ${prefix}
+statuses: [{id: open, category: open, pickable: true}, {id: doing, category: active}, {id: closed, category: done}]
+''');
+        File(p.join(folder.path, 'AGENTS.md')).writeAsStringSync(
+          r'Ids are ${prefix}-xxxx; keep ${unknown}.'
+          '\n',
+        );
+        final run = await init(['made', '--preset', './presets/mine', '--prefix', 'MD']);
+        expect(run.exitCode, 0, reason: '$run');
+        expect(read('made/backlog.yaml'), startsWith('# made backlog\nid:\n  prefix: MD\n'));
+        expect(
+          run.out,
+          endsWith(
+            r'Ids are MD-xxxx; keep ${unknown}.'
+            '\n',
+          ),
+        );
+        expect(
+          Directory(p.join(workspace.path, 'made', 'views')).listSync(),
+          hasLength(builtInPresets.first.views.length),
+          reason: 'no views/: the default ones',
+        );
+
+        Directory(userPresets).createSync(recursive: true);
+        folder.renameSync(p.join(userPresets, 'mine'));
+        expect((await init(['by-name', '--preset', 'mine'])).out, contains('(ids T-…)'));
+        expect(
+          (await init(['nope', '--preset', 'nope'])).err,
+          contains('No preset "nope"; there are default, minimal'),
+        );
+
+        await create('Not copied');
+        final copied = await init(['copy', '--from', '.', '--prefix', 'CP']);
+        expect(copied.out, contains('from the backlog $backlogDir (ids CP-…)'));
+        expect(
+          read('copy/backlog.yaml'),
+          File(p.join(backlogDir, 'backlog.yaml')).readAsStringSync().replaceFirst('HB', 'CP'),
+        );
+        expect(Directory(p.join(workspace.path, 'copy', 'items')).listSync().map((f) => p.basename(f.path)), [
+          '.gitkeep',
+        ]);
+        expect((await init(['kept', '--from', 'backlog'])).out, contains('(ids HB-…)'));
+        expect((await init(['x', '--from', 'backlog', '--preset', 'minimal'])).exitCode, ExitCode.usage);
+      },
+    );
+  });
+
   test('init registers the new backlog unless told not to', () async {
     final env = {'XDG_CONFIG_HOME': p.join(workspace.path, 'config')};
     final registry = p.join(workspace.path, 'config', 'kanban-ai', 'projects.yaml');
