@@ -21,6 +21,7 @@ class DetailHeader extends StatelessWidget {
     this.onClose,
     this.closeIcon = Icons.close,
     this.onScope,
+    this.onAddChild,
   });
 
   final ItemController controller;
@@ -38,6 +39,9 @@ class DetailHeader extends StatelessWidget {
 
   /// Scopes the board to an epic, see [ItemDetailView.onScope].
   final void Function(String epicId)? onScope;
+
+  /// Creates a new item under this one, see [ItemDetailView.onAddChild].
+  final ValueChanged<ItemDto>? onAddChild;
 
   @override
   Widget build(BuildContext context) {
@@ -193,6 +197,14 @@ class DetailHeader extends StatelessWidget {
           ),
       ],
       ...itemActions(context, item, controller.detail?.actions ?? const [], enabled: enabled),
+      if (onAddChild case final onAddChild?)
+        BarAction(
+          key: const ValueKey('add-child'),
+          label: 'Add child',
+          icon: Icons.add,
+          tooltip: 'A new item under this one',
+          onPressed: () => onAddChild(item),
+        ),
       if (onScope case final onScope? when item.type == 'epic')
         BarAction(
           key: const ValueKey('scope-board'),

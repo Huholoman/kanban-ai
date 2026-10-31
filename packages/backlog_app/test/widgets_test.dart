@@ -84,6 +84,68 @@ void main() {
     expect(find.text('Fresh idea'), findsOneWidget); // detail opened
   });
 
+  testWidgets('the parent of a new item is searched by id or title', (tester) async {
+    final api = await pumpApp(
+      tester,
+      items: [
+        item('E', type: 'epic'),
+        item('T-1'),
+        item('D', status: 'done'),
+      ],
+    );
+    await tester.tap(find.text('New item'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('new-title')), 'Under the epic');
+    await tester.enterText(find.byKey(const ValueKey('new-parent-field')), 'item');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('parent-option-E')), findsOneWidget);
+    expect(find.byKey(const ValueKey('parent-option-D')), findsNothing, reason: 'done items are not offered');
+    await tester.tap(find.byKey(const ValueKey('parent-option-E')));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('new-parent')), matching: find.text('E Item E')),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(api.createdItems.single.parent, 'E');
+    expect(api.createdItems.single.type, 'story', reason: 'the child type of an epic');
+  });
+
+  testWidgets('Add child in the detail opens the dialog under the item', (tester) async {
+    final api = await pumpApp(
+      tester,
+      items: [
+        item('S', type: 'story'),
+        item('T-1'),
+      ],
+    );
+    await tester.tap(find.text('Item S'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-child')));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('new-parent')), matching: find.text('S Item S')),
+      findsOneWidget,
+    );
+    await tester.enterText(find.byKey(const ValueKey('new-title')), 'A step');
+    await tester.tap(find.byKey(const ValueKey('new-parent-clear')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('new-parent-field')), findsOneWidget, reason: 'the parent can be cleared');
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(api.createdItems, isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('add-child')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('new-title')), 'A step');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(api.createdItems.single.parent, 'S');
+    expect(api.createdItems.single.type, 'task');
+    expect(find.text('A step'), findsOneWidget, reason: 'the new item opens');
+  });
+
   testWidgets('on a wide screen the detail opens next to the board', (tester) async {
     await pumpApp(tester);
     await tester.tap(find.text('Item T-2'));

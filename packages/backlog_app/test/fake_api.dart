@@ -10,7 +10,7 @@ const _workflow = WorkflowDto(
     StatusDto(id: 'done', category: StatusCategoryDto.done),
   ],
   priorities: ['p0', 'p1', 'p2', 'p3'],
-  types: ['task', 'epic', 'bug'],
+  types: ['task', 'story', 'epic', 'bug'],
   defaultStatus: 'backlog',
   defaultPriority: 'p2',
   defaultType: 'task',
@@ -149,6 +149,9 @@ final class FakeBacklogApi implements BacklogApi {
     return item(reference);
   }
 
+  /// Items created through [createItem], in order.
+  final createdItems = <NewItemRequest>[];
+
   @override
   Future<ItemDetailDto> createItem(NewItemRequest request) async {
     final id = 'T-${items_.length + 1}';
@@ -159,8 +162,10 @@ final class FakeBacklogApi implements BacklogApi {
       status: request.status ?? 'backlog',
       category: _workflow.categoryOf(request.status ?? 'backlog'),
       priority: request.priority ?? 'p2',
+      parent: request.parent,
       body: request.body,
     );
+    createdItems.add(request);
     return ItemDetailDto(item: items_[id]!);
   }
 
