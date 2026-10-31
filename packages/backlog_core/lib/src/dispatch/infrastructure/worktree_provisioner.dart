@@ -8,6 +8,7 @@ import '../../planning/domain/backlog_snapshot.dart';
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+import '../domain/agent_log_format.dart';
 import '../domain/dispatch_plan.dart';
 import 'process_agent_launcher.dart';
 
@@ -247,6 +248,9 @@ final class WorktreeProvisioner extends AgentLauncher {
 
   @override
   Future<AgentLog?> agentLog(ItemId item, {int lines = 100}) => _inner.agentLog(item, lines: lines);
+
+  @override
+  Future<AgentLogSource?> agentLogSource(ItemId item) => _inner.agentLogSource(item);
 
   @override
   void attach(void Function() onChange) => _inner.attach(onChange);

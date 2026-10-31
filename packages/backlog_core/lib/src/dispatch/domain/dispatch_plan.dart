@@ -6,6 +6,7 @@ import '../../planning/domain/backlog_snapshot.dart';
 import '../../planning/domain/planned_item.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+import 'agent_log_format.dart';
 
 /// An agent process started by the dispatcher that is still running.
 final class AgentRun {
@@ -456,6 +457,10 @@ abstract class AgentLauncher {
   /// The last [lines] lines of the log of the agent running for [item], or
   /// of its last run; null when there is none.
   Future<AgentLog?> agentLog(ItemId item, {int lines = 100}) async => null;
+
+  /// Where the log of the agent running for [item] is, else that of its
+  /// last run; null when there is none. For following a log as it grows.
+  Future<AgentLogSource?> agentLogSource(ItemId item) async => null;
 
   /// Starts background work (watching processes); [onChange] is called when
   /// something the plan depends on changed outside the backlog files.

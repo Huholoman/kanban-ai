@@ -6,6 +6,7 @@ export 'src/backlog.dart';
 export 'src/claims/application/claim_service.dart';
 export 'src/claims/domain/claim.dart';
 export 'src/dispatch/application/dispatcher.dart';
+export 'src/dispatch/domain/agent_log_format.dart';
 export 'src/dispatch/domain/dispatch_plan.dart';
 export 'src/dispatch/infrastructure/process_agent_launcher.dart';
 export 'src/dispatch/infrastructure/worktree_provisioner.dart';
