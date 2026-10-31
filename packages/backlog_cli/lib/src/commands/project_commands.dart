@@ -6,8 +6,8 @@ import 'package:path/path.dart' as p;
 
 import 'backlog_command.dart';
 
-/// `backlog projects [list | add [<path>] | remove <id>]`: the registry of
-/// backlogs that `backlog-server` hosts.
+/// `backlog projects [list | add [<path>] | remove <id> | pin <id> | unpin <id>]`:
+/// the registry of backlogs that `backlog-server` hosts.
 final class ProjectsCommand extends BacklogCommand {
   ProjectsCommand(super.context) {
     argParser
@@ -25,10 +25,11 @@ final class ProjectsCommand extends BacklogCommand {
 
   @override
   String get description =>
-      'List, add or remove the backlogs backlog-server hosts (the first one is the default project).';
+      'List, add, remove, pin or unpin the backlogs backlog-server hosts (the first one is the default project; '
+      'the board lists pinned ones first).';
 
   @override
-  String get invocation => 'backlog projects [list | add [<path>] | remove <id>]';
+  String get invocation => 'backlog projects [list | add [<path>] | remove <id> | pin <id> | unpin <id>]';
 
   ProjectService get _service =>
       projectService(args.option('projects')) ??
@@ -48,6 +49,10 @@ final class ProjectsCommand extends BacklogCommand {
       case 'remove' when rest.length == 1:
         final entry = await _service.remove(rest.single);
         json ? emitJson(await _describe(entry)) : line('Removed ${entry.id} (${entry.path}).');
+        return 0;
+      case 'pin' || 'unpin' when rest.length == 1:
+        final entry = await _service.setPinned(rest.single, action == 'pin');
+        json ? emitJson(await _describe(entry)) : line('${entry.pinned ? 'Pinned' : 'Unpinned'} ${entry.id}.');
         return 0;
       default:
         throw UsageException('Unknown or incomplete `projects ${args.rest.join(' ')}`.', usage);
@@ -73,7 +78,7 @@ final class ProjectsCommand extends BacklogCommand {
       final error = await Backlog.problem(entry.path);
       line(
         '${entry.id.padRight(idWidth)}  ${entry.displayName.padRight(nameWidth)}  ${entry.path}'
-        '${entry == registry.defaultProject ? '  (default)' : ''}${error == null ? '' : '\n  error: $error'}',
+        '${entry == registry.defaultProject ? '  (default)' : ''}${entry.pinned ? '  (pinned)' : ''}${error == null ? '' : '\n  error: $error'}',
       );
     }
     return 0;
@@ -103,6 +108,7 @@ final class ProjectsCommand extends BacklogCommand {
     'name': entry.displayName,
     'path': entry.path,
     'default': ?isDefault,
+    'pinned': entry.pinned,
     'error': await Backlog.problem(entry.path),
   };
 }

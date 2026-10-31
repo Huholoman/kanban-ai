@@ -10,7 +10,7 @@ const _workflow = WorkflowDto(
     StatusDto(id: 'done', category: StatusCategoryDto.done),
   ],
   priorities: ['p0', 'p1', 'p2', 'p3'],
-  types: ['task', 'epic', 'bug'],
+  types: ['task', 'story', 'epic', 'bug'],
   defaultStatus: 'backlog',
   defaultPriority: 'p2',
   defaultType: 'task',
@@ -149,6 +149,9 @@ final class FakeBacklogApi implements BacklogApi {
     return item(reference);
   }
 
+  /// Items created through [createItem], in order.
+  final createdItems = <NewItemRequest>[];
+
   @override
   Future<ItemDetailDto> createItem(NewItemRequest request) async {
     final id = 'T-${items_.length + 1}';
@@ -159,8 +162,10 @@ final class FakeBacklogApi implements BacklogApi {
       status: request.status ?? 'backlog',
       category: _workflow.categoryOf(request.status ?? 'backlog'),
       priority: request.priority ?? 'p2',
+      parent: request.parent,
       body: request.body,
     );
+    createdItems.add(request);
     return ItemDetailDto(item: items_[id]!);
   }
 
@@ -402,8 +407,8 @@ final class FakeBacklogApi implements BacklogApi {
   );
 }
 
-ProjectDto fakeProject(String id, {String? error}) =>
-    ProjectDto(id: id, name: 'Project $id', path: '/srv/$id/backlog', error: error);
+ProjectDto fakeProject(String id, {String? error, bool pinned = false}) =>
+    ProjectDto(id: id, name: 'Project $id', path: '/srv/$id/backlog', error: error, pinned: pinned);
 
 /// In-memory [ProjectsApi]: [list] as the registry, one [FakeBacklogApi]
 /// per project in [backlogs]; [failure] is thrown by [projects].
@@ -428,5 +433,15 @@ final class FakeProjectsApi implements ProjectsApi {
   BacklogApi project(String id) {
     opened.add(id);
     return backlogs[id]!;
+  }
+
+  @override
+  Future<ProjectDto> setPinned(String id, bool pinned) async {
+    final index = list.indexWhere((project) => project.id == id);
+    if (index < 0) throw BacklogApiException(404, 'not_found', 'No project "$id".');
+    final old = list[index];
+    final updated = ProjectDto(id: old.id, name: old.name, path: old.path, error: old.error, pinned: pinned);
+    list = [...list]..[index] = updated;
+    return updated;
   }
 }

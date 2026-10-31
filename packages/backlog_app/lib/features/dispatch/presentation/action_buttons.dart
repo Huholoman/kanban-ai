@@ -29,22 +29,20 @@ String actionHint(ActionDto action) => switch (action.kind) {
   _ => 'Runs the built-in action; the result goes into the discussion',
 };
 
-/// The buttons of the item's [actions] (`dispatcher.actions` offered in its
-/// status), for the detail; disabled while something runs for the item.
-List<Widget> actionButtons(BuildContext context, ItemDto item, List<ActionDto> actions, {bool enabled = true}) {
+/// The item's [actions] (`dispatcher.actions` offered in its status) for the
+/// detail's [ActionBar]; disabled while something runs for the item.
+List<BarAction> itemActions(BuildContext context, ItemDto item, List<ActionDto> actions, {bool enabled = true}) {
   final dispatch = DispatchScope.maybeOf(context);
   if (dispatch == null || !dispatch.configured || actions.isEmpty) return const [];
   final can = enabled && dispatch.canRunAction(item.id);
   return [
     for (final action in actions)
-      Tooltip(
-        message: actionHint(action),
-        child: SecondaryButton(
-          key: ValueKey('action-${action.name}'),
-          label: action.name,
-          icon: actionIcon(action),
-          onPressed: can ? () => unawaited(dispatch.runAction(item.id, action.name)) : null,
-        ),
+      BarAction(
+        key: ValueKey('action-${action.name}'),
+        label: action.name,
+        icon: actionIcon(action),
+        tooltip: actionHint(action),
+        onPressed: can ? () => unawaited(dispatch.runAction(item.id, action.name)) : null,
       ),
   ];
 }

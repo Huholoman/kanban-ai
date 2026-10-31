@@ -179,7 +179,7 @@ final class HostedProject {
 
   Future<ProjectDto> describe() async {
     await ensureStarted();
-    return ProjectDto(id: id, name: entry.displayName, path: host.root, error: await problem());
+    return ProjectDto(id: id, name: entry.displayName, path: host.root, error: await problem(), pinned: entry.pinned);
   }
 
   /// Stops watching and dispatching; open event sockets are closed.

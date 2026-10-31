@@ -83,6 +83,9 @@ abstract interface class ProjectsApi {
 
   /// The API of one project (paths under `/api/p/<id>`).
   BacklogApi project(String id);
+
+  /// Pins project [id] in the registry or unpins it; the updated project.
+  Future<ProjectDto> setPinned(String id, bool pinned);
 }
 
 /// URL paths of the API, shared by the server and the client.
@@ -121,4 +124,7 @@ abstract final class ApiPaths {
   static String agentLogLive(String reference) => '${agentLog(reference)}/live';
 
   static String view(String id) => '$views/${Uri.encodeComponent(id)}';
+
+  /// One project of the registry (`PATCH` pins it).
+  static String project(String id) => '$projects/${Uri.encodeComponent(id)}';
 }

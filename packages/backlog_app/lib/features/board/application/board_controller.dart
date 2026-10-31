@@ -9,8 +9,12 @@ import 'board_filter.dart';
 /// State of the board screen: the saved views, the evaluated current view and
 /// the lint summary. Reloads by itself when the backlog changes on disk.
 class BoardController extends ChangeNotifier {
-  BoardController(this._api, {Duration refreshDelay = const Duration(milliseconds: 300)})
+  BoardController(this._api, {Duration refreshDelay = const Duration(milliseconds: 300), this.onViewChosen})
     : _refreshDelay = refreshDelay;
+
+  /// Called with the view the user switches to (or saves and opens), so
+  /// that it can be remembered for the next visit of the project.
+  final ValueChanged<String>? onViewChosen;
 
   /// Fields whose value a card can get by being dropped into a column.
   static const movableFields = {'status', 'priority', 'type', 'milestone', 'assignee'};
@@ -142,6 +146,7 @@ class BoardController extends ChangeNotifier {
       );
       filter = BoardFilter.none;
       selectedViewId = created.id;
+      onViewChosen?.call(created.id);
     } catch (e) {
       _notices.add('$e');
       return false;
@@ -215,6 +220,7 @@ class BoardController extends ChangeNotifier {
 
   Future<void> selectView(String id) async {
     selectedViewId = id;
+    onViewChosen?.call(id);
     groupByOverride = null;
     await refresh();
   }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 
 import '../../../app/app_scope.dart';
@@ -11,14 +12,15 @@ import 'detail_header.dart';
 
 /// The item detail as a full screen, for narrow windows.
 class ItemPage extends StatelessWidget {
-  const ItemPage({super.key, required this.reference});
+  const ItemPage({super.key, required this.reference, this.onAddChild});
 
   final String reference;
+  final ValueChanged<ItemDto>? onAddChild;
 
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(
-      child: ItemDetailView(reference: reference, onClose: () => Navigator.of(context).pop()),
+      child: ItemDetailView(reference: reference, onClose: () => Navigator.of(context).pop(), onAddChild: onAddChild),
     ),
   );
 }
@@ -29,7 +31,14 @@ class ItemPage extends StatelessWidget {
 /// and relations from their lists), with a back button for the way taken.
 /// Give it a new key to start over at another [reference].
 class ItemDetailView extends StatefulWidget {
-  const ItemDetailView({super.key, required this.reference, this.onClose, this.closeIcon = Icons.close, this.onScope});
+  const ItemDetailView({
+    super.key,
+    required this.reference,
+    this.onClose,
+    this.closeIcon = Icons.close,
+    this.onScope,
+    this.onAddChild,
+  });
 
   /// Id (or a shortened id) of the item shown first.
   final String reference;
@@ -39,6 +48,10 @@ class ItemDetailView extends StatefulWidget {
   /// Narrows the board to everything under an epic; without it the epic has
   /// no *Scope board* button.
   final void Function(String epicId)? onScope;
+
+  /// Opens the *New item* dialog for a child of the shown item; without it
+  /// there is no *Add child* button.
+  final ValueChanged<ItemDto>? onAddChild;
 
   @override
   State<ItemDetailView> createState() => _ItemDetailViewState();
@@ -106,6 +119,7 @@ class _ItemDetailViewState extends State<ItemDetailView> {
             onClose: widget.onClose,
             closeIcon: widget.closeIcon,
             onScope: widget.onScope,
+            onAddChild: widget.onAddChild,
           ),
           if (controller.item case final item?) AgentPanel(key: ValueKey('agent-${item.id}'), item: item),
           const Divider(height: 1),

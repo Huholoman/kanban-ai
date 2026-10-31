@@ -166,4 +166,29 @@ void main() {
       expect(removed, 1);
     });
   });
+
+  group('ActionBar', () {
+    List<BarAction> actions(int count, List<String> fired) => [
+      for (var i = 0; i < count; i++)
+        BarAction(key: ValueKey('a$i'), label: 'Action $i', onPressed: () => fired.add('a$i')),
+    ];
+
+    testWidgets('a few actions are all buttons', (tester) async {
+      await pump(tester, ActionBar(actions: actions(4, [])));
+      expect(find.byType(SecondaryButton), findsNWidgets(4));
+      expect(find.byKey(const ValueKey('action-bar-more')), findsNothing);
+    });
+
+    testWidgets('many actions put the rest behind More…', (tester) async {
+      final fired = <String>[];
+      await pump(tester, ActionBar(actions: actions(6, fired)));
+      expect(find.text('Action 2'), findsOneWidget);
+      expect(find.text('Action 3'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('action-bar-more')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('a5')));
+      await tester.pumpAndSettle();
+      expect(fired, ['a5']);
+    });
+  });
 }

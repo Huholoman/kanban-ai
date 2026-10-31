@@ -270,7 +270,7 @@ void main() {
     expect((await backlog(['check'])).exitCode, ExitCode.usage);
   });
 
-  test('projects: add the backlog found here or a given one, list, remove', () async {
+  test('projects: add the backlog found here or a given one, list, pin, remove', () async {
     final env = {'HOME': p.join(workspace.path, 'home'), 'XDG_CONFIG_HOME': p.join(workspace.path, 'config')};
     final registry = p.join(workspace.path, 'config', 'kanban-ai', 'projects.yaml');
     final worktree = await Directory(p.join(workspace.path, 'repo-2')).create();
@@ -295,14 +295,35 @@ void main() {
     expect(twice.exitCode, ExitCode.failure);
     expect(twice.err, contains('already registered as "tools"'));
 
+    expect((await backlog(['projects', 'pin', 'tools'], env: env)).out, contains('Pinned tools.'));
+    expect(File(registry).readAsStringSync(), contains('pinned: true'));
+    expect((await backlog(['projects', 'pin', 'nope'], env: env)).exitCode, ExitCode.notFound);
+
     await Directory(other).rename('$other-moved');
     final listed = await backlog(['--json', 'projects'], env: env);
     expect(listed.json, [
-      {'id': ProjectRegistry.deriveId(backlogDir), 'name': project, 'path': backlogDir, 'default': true, 'error': null},
-      {'id': 'tools', 'name': 'Tools', 'path': other, 'default': false, 'error': 'Folder $other does not exist.'},
+      {
+        'id': ProjectRegistry.deriveId(backlogDir),
+        'name': project,
+        'path': backlogDir,
+        'default': true,
+        'pinned': false,
+        'error': null,
+      },
+      {
+        'id': 'tools',
+        'name': 'Tools',
+        'path': other,
+        'default': false,
+        'pinned': true,
+        'error': 'Folder $other does not exist.',
+      },
     ]);
     final text = await backlog(['projects'], env: env);
     expect(text.out, contains('(default)'));
+    expect(text.out, contains('(pinned)'));
+    final unpinned = await backlog(['--json', 'projects', 'unpin', 'tools'], env: env);
+    expect((unpinned.json! as Map)['pinned'], isFalse);
     expect(text.out, contains('error: Folder $other does not exist.'));
 
     expect((await backlog(['projects', 'remove', 'tools'], env: env)).out, contains('Removed tools'));

@@ -13,8 +13,9 @@ import 'hosted_project.dart';
 /// global [ApiPaths.health] and [ApiPaths.projects]) to the default project,
 /// the first one.
 final class ProjectHub {
-  /// [create] builds the project for a new registry entry.
-  ProjectHub(this._create);
+  /// [create] builds the project for a new registry entry; [registry] edits
+  /// the registry file (pinning), null when the server hosts a fixed backlog.
+  ProjectHub(this._create, {ProjectService? registry}) : _registry = registry;
 
   /// One project fed by [events], for tests without sockets.
   factory ProjectHub.single(
@@ -29,6 +30,7 @@ final class ProjectHub {
   }
 
   final HostedProject Function(ProjectEntry entry) _create;
+  final ProjectService? _registry;
   final _projects = <HostedProject>[];
   Future<void> _queue = Future.value();
   bool _closed = false;
@@ -96,6 +98,9 @@ final class ProjectHub {
       if (request.method != 'GET') return _notFound('No such endpoint.');
       return _json([for (final project in projects) (await project.describe()).toJson()]);
     }
+    if (segments.length == 3 && segments[1] == 'projects' && request.method == 'PATCH') {
+      return _patchProject(Uri.decodeComponent(segments[2]), await request.readAsString());
+    }
     if (segments.length >= 3 && segments[1] == 'p') {
       final id = Uri.decodeComponent(segments[2]);
       final project = this[id];
@@ -106,6 +111,36 @@ final class ProjectHub {
     if (fallback == null) return _notFound('No projects registered; add one with `backlog projects add`.');
     return fallback.handler(request.change(path: 'api'));
   };
+
+  /// `PATCH /api/projects/<id>` `{pinned}`: writes `pinned` into the
+  /// registry file and applies it at once (the registry watcher would too).
+  Future<Response> _patchProject(String id, String body) async {
+    final registry = _registry;
+    if (registry == null) {
+      return _invalid('This server hosts one backlog without a project registry; nothing to pin.');
+    }
+    final Object? payload;
+    try {
+      payload = body.trim().isEmpty ? null : jsonDecode(body);
+    } on FormatException catch (error) {
+      return _invalid('Request body is not JSON: ${error.message}');
+    }
+    if (payload is! Map || payload['pinned'] is! bool) return _invalid('Give {"pinned": true|false}.');
+    try {
+      await registry.setPinned(id, payload['pinned'] as bool);
+      await sync(await registry.registry());
+    } on NotFoundException catch (error) {
+      return _notFound(error.message);
+    } on BacklogException catch (error) {
+      return _invalid(error.message);
+    }
+    final project = this[id];
+    if (project == null) return _notFound('No project "$id"; see ${ApiPaths.projects}.');
+    return _json((await project.describe()).toJson());
+  }
+
+  static Response _invalid(String message) =>
+      _json(BacklogApiException(400, 'invalid_input', message).toJson(), status: 400);
 
   static Response _notFound(String message) =>
       _json(BacklogApiException(404, 'not_found', message).toJson(), status: 404);

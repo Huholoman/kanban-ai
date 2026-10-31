@@ -45,6 +45,21 @@ class ProjectsController extends ChangeNotifier {
   /// Projects that can be opened.
   Iterable<ProjectDto> get available => projects.where((project) => project.isAvailable);
 
+  /// Projects pinned in the registry, offered first by the switcher.
+  List<ProjectDto> get pinned => [
+    for (final project in projects)
+      if (project.pinned) project,
+  ];
+
+  /// Pins project [id] in the server's registry (shared by every viewer) or
+  /// unpins it. Throws when the server refuses.
+  Future<void> setPinned(String id, bool pinned) async {
+    final updated = await _projectsApi!.setPinned(id, pinned);
+    projects = [for (final project in projects) project.id == id ? updated : project];
+    if (current?.id == id) current = updated;
+    notifyListeners();
+  }
+
   Future<void> start() async {
     final projectsApi = _projectsApi;
     if (projectsApi == null) return _openSingle();
@@ -78,6 +93,13 @@ class ProjectsController extends ChangeNotifier {
     if (id == current?.id) return;
     if (_selectable(id) case final project?) _open(project);
   }
+
+  /// The view last chosen in the open project (or the single backlog).
+  String? get lastView => _memory.readView(current?.id);
+
+  /// Remembers [view] as the one to show when the open project is opened
+  /// again.
+  void rememberView(String view) => _memory.writeView(current?.id, view);
 
   ProjectDto? _selectable(String? id) => id == null ? null : available.where((p) => p.id == id).firstOrNull;
 

@@ -62,15 +62,18 @@ final class BacklogServer {
       prefixLogs: projectsFile != null,
       stateDir: stateDir,
     );
-    final hub = ProjectHub((entry) => HostedProject.live(entry, runtime));
+    final store = projectsFile == null ? null : YamlProjectRegistryStore(projectsFile, home: home);
+    final hub = ProjectHub(
+      (entry) => HostedProject.live(entry, runtime),
+      registry: store == null ? null : ProjectService(store),
+    );
     RegistryWatcher? watcher;
     try {
       if (root != null) {
         final entry = ProjectEntry.at(BacklogLayout(root).root);
         await Backlog.open(entry.path, clock: clock); // fail fast on a missing or broken backlog
         await hub.sync(ProjectRegistry([entry]));
-      } else {
-        final store = YamlProjectRegistryStore(projectsFile!, home: home);
+      } else if (store != null) {
         await hub.sync(await store.load());
         watcher = RegistryWatcher(
           store,

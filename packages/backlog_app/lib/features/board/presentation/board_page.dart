@@ -11,6 +11,7 @@ import '../../dispatch/application/dispatch_controller.dart';
 import '../../dispatch/presentation/dispatch_scope.dart';
 import '../../item/presentation/item_page.dart';
 import '../application/board_controller.dart';
+import '../application/new_item_defaults.dart';
 import 'columns_dialog.dart';
 import 'filter_bar.dart';
 import 'new_item_dialog.dart';
@@ -65,10 +66,13 @@ class _BoardPageState extends State<BoardPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_controller != null) return;
-    final api = AppScope.of(context).api;
-    final controller = _controller = BoardController(api);
+    final scope = AppScope.of(context);
+    final api = scope.api;
+    final projects = scope.projects;
+    final controller = _controller = BoardController(api, onViewChosen: projects?.rememberView);
     _notices = controller.notices.listen(_showNotice);
-    unawaited(controller.start());
+    // The view last chosen in this project; a deleted one falls back to the default.
+    unawaited(controller.start(viewId: projects?.lastView));
     final dispatch = _dispatch = DispatchController(api);
     _dispatchNotices = dispatch.notices.listen(_showNotice);
     unawaited(dispatch.start());
@@ -103,7 +107,10 @@ class _BoardPageState extends State<BoardPage> {
       MaterialPageRoute<void>(
         builder: (_) => DispatchScope(
           controller: _dispatch!,
-          child: ItemPage(reference: id),
+          child: ItemPage(
+            reference: id,
+            onAddChild: (parent) => unawaited(_create(_controller!, parent: parent)),
+          ),
         ),
       ),
     );
@@ -147,10 +154,16 @@ class _BoardPageState extends State<BoardPage> {
 
   void _closeDetail() => setState(() => _openId = null);
 
-  Future<void> _create(BoardController controller) async {
+  /// The *New item* dialog, under [parent] when given; opens the new item.
+  Future<void> _create(BoardController controller, {ItemDto? parent}) async {
     final workflow = controller.workflow;
     if (workflow == null) return;
-    final request = await showNewItemDialog(context, workflow);
+    final request = await showNewItemDialog(
+      context,
+      workflow,
+      candidates: NewItemDefaults.parentCandidates(controller.index.values),
+      parent: parent,
+    );
     if (request == null) return;
     final created = await controller.create(request);
     if (created != null && mounted) await _open(created.item.id);
@@ -250,8 +263,13 @@ class _BoardPageState extends State<BoardPage> {
   }
 
   /// The item detail; it navigates to parents, siblings and children itself.
-  Widget _detail(String reference, {VoidCallback? onClose, void Function(String epicId)? onScope}) =>
-      ItemDetailView(key: ValueKey('detail-$reference'), reference: reference, onClose: onClose, onScope: onScope);
+  Widget _detail(String reference, {VoidCallback? onClose, void Function(String epicId)? onScope}) => ItemDetailView(
+    key: ValueKey('detail-$reference'),
+    reference: reference,
+    onClose: onClose,
+    onScope: onScope,
+    onAddChild: (parent) => unawaited(_create(_controller!, parent: parent)),
+  );
 
   /// The board; with [sheet] the open item is a bottom sheet over it.
   Widget _board(BoardController controller, String? openId, {required bool sheet}) {
