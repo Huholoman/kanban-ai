@@ -82,6 +82,7 @@ abstract final class JsonOutput {
         InvalidInputException() => 'invalid_input',
         ClaimConflictException() => 'claim_conflict',
         ConfigurationException() => 'configuration',
+        UnavailableException() => 'unavailable',
       },
       'message': error.message,
       if (error is AmbiguousReferenceException) 'candidates': error.candidates,

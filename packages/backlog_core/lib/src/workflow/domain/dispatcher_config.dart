@@ -291,6 +291,7 @@ final class DispatcherConfig {
     TextTemplate? prompt,
     DispatchMode mode = DispatchMode.manual,
     int? maxAgents,
+    String base = 'main',
   }) {
     if (worktrees.isEmpty) throw const ConfigurationException('dispatcher.worktrees must list at least one worktree.');
     final names = <String>{}, paths = <String>{};
@@ -308,21 +309,24 @@ final class DispatcherConfig {
       prompt ?? TextTemplate(defaultPrompt, known: promptPlaceholders, label: 'dispatcher.prompt'),
       mode,
       limit,
+      base,
     );
   }
 
-  DispatcherConfig._(this.worktrees, this.agent, this.prompt, this.mode, this.maxAgents);
+  DispatcherConfig._(this.worktrees, this.agent, this.prompt, this.mode, this.maxAgents, this.base);
 
   /// What the prompt may refer to: the item id and title, the worktree name,
-  /// its absolute path and the absolute path of the backlog folder.
-  static const promptPlaceholders = ['id', 'title', 'worktree', 'path', 'backlog'];
+  /// its absolute path, the absolute path of the backlog folder and the
+  /// branch prepared for the agent.
+  static const promptPlaceholders = ['id', 'title', 'worktree', 'path', 'backlog', 'branch'];
 
   /// The prompt every agent gets unless `dispatcher.prompt` replaces it.
   static const defaultPrompt =
       'You are the coding agent {worktree}, working on backlog item {id} ("{title}") in this git worktree.\n'
       '1. First run `backlog instructions` and `backlog show {id}` and follow them. The item is already claimed '
       'for you (BACKLOG_AGENT={worktree}); do not take other items.\n'
-      '2. Work on your own branch, never on the main branch. Make small commits; every commit message contains {id}.\n'
+      '2. The worktree is on branch {branch}, prepared for this item: commit there and do not switch branches. '
+      'Make small commits; every commit message contains {id}.\n'
       '3. When the work is finished, run `backlog set {id} status=review`.\n'
       '4. Never push and never open pull requests.\n'
       '5. If something is unclear or blocks you, write your question into the body of the item (its file is shown '
@@ -341,6 +345,10 @@ final class DispatcherConfig {
   /// At most this many agents run at once (defaults to one per worktree;
   /// more than there are worktrees has no effect).
   final int maxAgents;
+
+  /// The branch new item branches start from (`dispatcher.base`, default
+  /// `main`).
+  final String base;
 
   /// The command of [agent].
   CommandTemplate get command => agent.command;

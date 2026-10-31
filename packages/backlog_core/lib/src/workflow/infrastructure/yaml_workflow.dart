@@ -79,7 +79,7 @@ Workflow parseWorkflowYaml(String source, {String origin = 'backlog.yaml'}) {
 DispatcherConfig? _dispatcher(Object? node, String origin) {
   if (node == null) return null;
   final yaml = _map(node, 'dispatcher', origin);
-  const known = {'mode', 'max_agents', 'worktrees', 'agent', 'agents', 'prompt', 'command'};
+  const known = {'mode', 'max_agents', 'worktrees', 'base', 'agent', 'agents', 'prompt', 'command'};
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
       throw ConfigurationException('$origin: unknown key "dispatcher.$key" (expected ${known.join(', ')}).');
@@ -96,6 +96,7 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     return DispatcherConfig(
       mode: DispatchMode.parse('${yaml['mode'] ?? 'manual'}'.trim()),
       maxAgents: maxAgents as int?,
+      base: yaml['base'] == null ? 'main' : _base(_string(yaml['base'], 'dispatcher.base', origin)),
       agent: _agent(yaml, origin),
       prompt: prompt == null
           ? null
@@ -123,6 +124,10 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     throw ConfigurationException('$origin: ${e.message}');
   }
 }
+
+String _base(String base) => base.startsWith('-') || base.contains(RegExp(r'\s'))
+    ? throw ConfigurationException('dispatcher.base "$base" is not a branch name.')
+    : base;
 
 /// The profile named by `dispatcher.agent` (built-in or from
 /// `dispatcher.agents`), or the legacy `dispatcher.command` as a profile.
@@ -312,7 +317,7 @@ claims:
 # without this section). A worktree is free when no live claim is held under
 # its name. Placeholders in prompt, commands and env: {id}, {title},
 # {worktree}, {path} (absolute path of the worktree), {backlog} (absolute path
-# of this folder); commands and env also {prompt}.
+# of this folder), {branch}; commands and env also {prompt}.
 # dispatcher:
 #   mode: manual          # manual: propose, a person starts | auto: start by itself
 #   max_agents: 2         # at most this many at once (default: one per worktree)
@@ -320,6 +325,7 @@ claims:
 #     - name: monorepo-2
 #       path: ../monorepo-2
 #     - monorepo-3
+#   base: main            # new branches agent/<id> start here (an item's own branch field wins)
 #   agent: claude         # built-in: claude; unverified presets: codex, gemini, aider
 #   # Own profiles (or replacing a built-in one), chosen with agent: <name>:
 #   agents:

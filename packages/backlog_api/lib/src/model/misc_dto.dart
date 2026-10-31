@@ -53,7 +53,7 @@ final class BacklogApiException implements Exception {
   /// HTTP status; 0 when the server could not be reached.
   final int statusCode;
 
-  /// `not_found`, `ambiguous_reference`, `invalid_input`, `claim_conflict`,
+  /// `not_found`, `ambiguous_reference`, `invalid_input`, `claim_conflict`, `unavailable`,
   /// `configuration`, `unauthorized`, `network` or `internal`.
   final String type;
   final String message;

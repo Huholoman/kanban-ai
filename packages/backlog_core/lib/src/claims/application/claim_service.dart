@@ -107,6 +107,18 @@ final class ClaimService {
     return released;
   }
 
+  /// Drops the claim of [agent] and leaves the item as it is (status and
+  /// assignee), e.g. once an agent handed its work over for review. Nothing
+  /// happens when [agent] does not hold the claim.
+  Future<bool> drop(String reference, String agent) async {
+    agent = Claim.validateAgent(agent);
+    final id = await _resolve(reference);
+    final claim = await _claims.find(id);
+    if (claim == null || claim.agent != agent) return false;
+    await _claims.remove(id);
+    return true;
+  }
+
   /// Marks the item done (or another done-category [status]) and drops the
   /// claim. The assignee stays as a record of who did it.
   Future<Item> complete(String reference, {String? agent, String? status, bool force = false}) async {

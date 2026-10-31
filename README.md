@@ -330,6 +330,7 @@ dispatcher:
     - name: monorepo-2
       path: ../monorepo-2
     - monorepo-3
+  base: main            # new branches agent/<id> start here
   agent: claude         # a profile; claude is the default
   agents:               # optional: own profiles, or replacements of built-in ones
     claude-sonnet:
@@ -351,9 +352,11 @@ dispatcher:
 
 The `claude` profile runs Claude Code headless on your subscription login: no API key, never `--bare` (it ignores the login) and never `--dangerously-skip-permissions` — edits are accepted, a whitelist of tools is allowed, everything else is refused and `git push` is forbidden. For other tools (tests of another language, …) define your own profile. The unverified presets follow the CLIs' documentation and have not been run here; `lint` reminds you of that.
 
-**The prompt** (`dispatcher.prompt`) is shared by all profiles and fills `{prompt}`. By default it tells the agent its name and item, to run `backlog instructions` and `backlog show {id}` first, to work on its own branch in small commits with the item id, to finish with `backlog set {id} status=review`, never to push, and when something is unclear to write the question into the item and stop.
+**The prompt** (`dispatcher.prompt`) is shared by all profiles and fills `{prompt}`. By default it tells the agent its name and item, to run `backlog instructions` and `backlog show {id}` first, to commit on the branch prepared for it in small commits with the item id, to finish with `backlog set {id} status=review`, never to push, and when something is unclear to write the question into the item and stop.
 
-Commands are split into arguments like in a shell, but no shell runs them (use `[sh, -c, "…"]` if you need one). Placeholders in the prompt, commands and `env`: `{id}`, `{title}`, `{worktree}`, `{path}` (absolute path of the worktree), `{backlog}`; commands and `env` also `{prompt}`. The agent always gets `BACKLOG_AGENT=<worktree>` and `BACKLOG_DIR=<backlog folder>`. The older `command: …` (instead of `agent`) still works as a plain profile. Mistakes in the section are configuration errors; `lint` warns about worktree paths that do not exist, an agent command that is not on the `PATH` and unverified presets. A running `backlog-server` re-plans after every change and whenever a claim expires: ready items in the order of `backlog next` go to free worktrees, at most `max_agents` at once, and it logs the plan. In `auto` mode each new assignment goes to the agent launcher; for now that only logs the command it would run (claiming and starting the agent, and a Start button for `manual` mode, come next).
+Commands are split into arguments like in a shell, but no shell runs them (use `[sh, -c, "…"]` if you need one). Placeholders in the prompt, commands and `env`: `{id}`, `{title}`, `{worktree}`, `{path}` (absolute path of the worktree), `{backlog}`, `{branch}`; commands and `env` also `{prompt}`. The agent always gets `BACKLOG_AGENT=<worktree>` and `BACKLOG_DIR=<backlog folder>`. The older `command: …` (instead of `agent`) still works as a plain profile. Mistakes in the section are configuration errors; `lint` warns about worktree paths that do not exist, an agent command that is not on the `PATH` and unverified presets. A running `backlog-server` re-plans after every change and whenever a claim expires: ready items in the order of `backlog next` go to free worktrees, at most `max_agents` at once, and it logs the plan. In `auto` mode it starts each new assignment by itself; in `manual` mode it only proposes.
+
+**How an agent runs.** The server checks that the worktree is a clean git worktree (uncommitted changes or untracked files make it unavailable until cleaned up), claims the item under the worktree's name (if someone was faster, nothing starts), switches the worktree to the item's branch (its `branch` field, else `agent/<id>` created from `base` and written into the item) and starts the agent there as a detached process: it keeps running when the server restarts, and a restarted server finds it again. Its output goes to `~/.local/state/kanban-ai/logs/<project>/<id>-<time>.log`, its pid and details to `~/.local/state/kanban-ai/agents/<project>/<id>.json` (`$XDG_STATE_HOME` or `$KANBAN_AI_STATE_DIR` move them). While it runs, the server renews the claim. When it ends: an item the agent moved to `review` keeps its status and loses the claim; an item still `in-progress` is released back to `todo` and *held* — `auto` mode does not start it again until a person does (no retry loops on errors or rate limits). For Claude the log's session id is kept, so `claude --resume <session>` in the worktree continues the run. The `backlog` on the agent's `PATH` must be new enough to read your `backlog.yaml`.
 
 ### View (`views/*.yaml`)
 
@@ -427,9 +430,9 @@ backlog_cli ──────────────────────�
 | `workflow` | `Workflow`, statuses and categories, `DispatcherConfig`, `AgentProfile` | – | `backlog.yaml` parser |
 | `projects` | `ProjectRegistry`, `ProjectEntry`, port `ProjectRegistryStore` | `ProjectService` | `projects.yaml` (`yaml_edit`, keeps comments) |
 | `items` | `Item`, `ItemId`, `Checklist`, ports `ItemRepository`, `IdGenerator` | `ItemService`, `FieldChange` | Markdown codec (`yaml_edit`, keeps formatting), file-system repository |
-| `claims` | `Claim` (lease), port `ClaimStore` | `ClaimService` (claim, next, heartbeat, release, done) | lock files |
+| `claims` | `Claim` (lease), port `ClaimStore` | `ClaimService` (claim, next, heartbeat, release, drop, done) | lock files |
 | `planning` | `BacklogSnapshot`, `PlannedItem`: blocked, conflicting, ready, cycles, children | `PlanningService` | – |
-| `dispatch` | `DispatchPlan` (ready items → free worktrees), port `AgentLauncher` | `Dispatcher` (debounce, wake-up on claim expiry, auto launch), `LoggingLauncher` | – |
+| `dispatch` | `DispatchPlan` (ready items → free worktrees; held items, unavailable worktrees, running agents), port `AgentLauncher` | `Dispatcher` (debounce, wake-up on claim expiry, auto launch, manual start/stop), `LoggingLauncher` | `ProcessAgentLauncher` (detached processes, state files, heartbeat, end of run) |
 | `views` | `Filter`, `ViewDefinition`, `ViewEngine` | `ViewService` | YAML views |
 | `validation` | `LintIssue` | `Linter` | – |
 

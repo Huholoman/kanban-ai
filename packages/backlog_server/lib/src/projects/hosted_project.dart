@@ -10,6 +10,10 @@ import '../events/change_feed.dart';
 import '../events/event_socket.dart';
 import '../http/api_handler.dart';
 
+/// Creates the agent launcher of project [projectId]; [log] writes to the
+/// server log (prefixed with the project when several are served).
+typedef LauncherFactory = AgentLauncher Function(String projectId, BacklogHost host, void Function(String message) log);
+
 /// How live projects are run; shared by every project of a server.
 final class ProjectRuntime {
   const ProjectRuntime({
@@ -27,8 +31,9 @@ final class ProjectRuntime {
   final Duration debounce;
   final Duration dispatchDebounce;
 
-  /// Receives the dispatcher's assignments; null logs what would start.
-  final AgentLauncher? launcher;
+  /// Makes each project's launcher, which receives the dispatcher's
+  /// assignments; null logs what would start.
+  final LauncherFactory? launcher;
   final void Function(String message)? log;
 
   /// Whether log lines start with `[<project id>] ` (several projects).
@@ -61,6 +66,7 @@ final class HostedProject {
   StreamSubscription<BacklogChangeEvent>? _fixed;
   ChangeFeed? _feed;
   Dispatcher? _dispatcher;
+  AgentLauncher? _launcher;
   Future<void>? _starting;
   bool _closed = false;
   late final Handler _api = ApiHandler(host).handler;
@@ -74,6 +80,9 @@ final class HostedProject {
   /// Plans ready work of this project; null until it is watched (and for
   /// [HostedProject.fixed]).
   Dispatcher? get dispatcher => _dispatcher;
+
+  /// Starts the dispatcher's agents; null until the project is watched.
+  AgentLauncher? get launcher => _launcher;
 
   /// The API of this project, for requests whose `url` is relative to its
   /// prefix (`items`, `events`, …).
@@ -104,10 +113,11 @@ final class HostedProject {
       return;
     }
     final say = _say(runtime);
+    final launcher = runtime.launcher?.call(id, host, say) ?? LoggingLauncher(say);
     final dispatcher = Dispatcher(
       snapshot: () async => (await host.backlog).planning.snapshot(),
       backlogRoot: host.root,
-      launcher: runtime.launcher ?? LoggingLauncher(say),
+      launcher: launcher,
       clock: runtime.clock,
       debounce: runtime.dispatchDebounce,
       onError: (error, _) => say('Dispatcher: $error'),
@@ -120,6 +130,8 @@ final class HostedProject {
     });
     _feed = feed;
     _dispatcher = dispatcher;
+    _launcher = launcher;
+    launcher.attach(dispatcher.notifyChanged);
     unawaited(dispatcher.evaluate());
   }
 
@@ -151,6 +163,7 @@ final class HostedProject {
     await _starting;
     await _fixed?.cancel();
     await _dispatcher?.close();
+    await _launcher?.close();
     await _feed?.close();
     await _events.close();
   }
@@ -162,6 +175,9 @@ final class HostedProject {
     final assignments = plan.assignments.map((a) => '${a.id} → ${a.agent}').join(', ');
     return 'Dispatcher (${plan.mode.name}): ${plan.running}/${plan.config.maxAgents} running; '
         '${assignments.isEmpty ? 'nothing to start' : '$verb $assignments'}'
-        '${plan.waiting.isEmpty ? '' : '; ${plan.waiting.length} ready item(s) waiting'}.';
+        '${plan.waiting.isEmpty ? '' : '; ${plan.waiting.length} ready item(s) waiting'}'
+        '${plan.held.isEmpty ? '' : '; held: ${plan.held.map((h) => h.item.id).join(', ')}'}'
+        '${[for (final w in plan.worktrees)
+          if (w.unavailable != null) '; ${w.name} unavailable: ${w.unavailable}'].join()}.';
   }
 }

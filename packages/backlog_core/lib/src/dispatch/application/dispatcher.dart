@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import '../../items/domain/item_id.dart';
 import '../../planning/domain/backlog_snapshot.dart';
 import '../../shared/clock.dart';
+import '../../shared/errors.dart';
 import '../../workflow/domain/dispatcher_config.dart';
 import '../domain/dispatch_plan.dart';
 
@@ -15,8 +17,10 @@ typedef TimerFactory = Timer Function(Duration delay, void Function() callback);
 /// collected for [debounce] and evaluated once. Evaluations never overlap,
 /// and the dispatcher wakes up by itself when a live claim expires
 /// ([DispatchPlan.recheckAt]), since that changes the plan without touching
-/// any file. An assignment is launched once; it is tried again only after
-/// it dropped out of the plan or its launch failed.
+/// any file, and every [unavailableRecheck] while a worktree is unavailable
+/// (uncommitted changes are not watched). An assignment is launched once; it
+/// is tried again only after it dropped out of the plan or its launch
+/// failed. [start] launches one item by hand, in either mode.
 final class Dispatcher {
   Dispatcher({
     required Future<BacklogSnapshot> Function() snapshot,
@@ -24,6 +28,7 @@ final class Dispatcher {
     required AgentLauncher launcher,
     required Clock clock,
     this.debounce = const Duration(milliseconds: 500),
+    this.unavailableRecheck = const Duration(seconds: 30),
     TimerFactory timer = Timer.new,
     void Function(Object error, StackTrace stackTrace)? onError,
   }) : _snapshot = snapshot,
@@ -34,6 +39,7 @@ final class Dispatcher {
 
   final String backlogRoot;
   final Duration debounce;
+  final Duration unavailableRecheck;
   final Future<BacklogSnapshot> Function() _snapshot;
   final AgentLauncher _launcher;
   final Clock _clock;
@@ -67,8 +73,35 @@ final class Dispatcher {
 
   /// Evaluates now (after any evaluation already running) and returns the
   /// plan; errors go to `onError` and leave the previous plan in place.
-  Future<DispatchPlan?> evaluate() {
-    final result = _queue.then((_) => _evaluate());
+  Future<DispatchPlan?> evaluate() => _serialized(_evaluate);
+
+  /// Starts the ready item [reference] now, in the first free worktree,
+  /// whatever the mode, and returns what was started. Fails with
+  /// `NotFoundException` without a dispatcher, `InvalidInputException` when
+  /// the item is not ready, `UnavailableException` when no worktree is free
+  /// and `ClaimConflictException` when someone else claimed it first.
+  Future<DispatchAssignment> start(String reference) => _serialized(() async {
+    final plan = await _evaluate(launchAuto: false);
+    if (plan == null) throw const NotFoundException('No dispatcher is configured in backlog.yaml.');
+    final assignment = plan.assignmentFor(reference);
+    await _launcher.launch(assignment);
+    _launched.add(assignment.key);
+    await _evaluate();
+    return assignment;
+  });
+
+  /// Stops the agent working on [reference]; false when none ran.
+  Future<bool> stop(String reference) => _serialized(() async {
+    final plan = _current ?? await _evaluate(launchAuto: false);
+    if (plan == null) throw const NotFoundException('No dispatcher is configured in backlog.yaml.');
+    final id = ItemReference.resolve(reference, plan.snapshot.ids);
+    final stopped = await _launcher.stop(id);
+    await _evaluate();
+    return stopped;
+  });
+
+  Future<T> _serialized<T>(Future<T> Function() action) {
+    final result = _queue.then((_) => action());
     _queue = result.then<void>((_) {}, onError: (Object _) {});
     return result;
   }
@@ -81,11 +114,19 @@ final class Dispatcher {
     await _plans.close();
   }
 
-  Future<DispatchPlan?> _evaluate() async {
+  Future<DispatchPlan?> _evaluate({bool launchAuto = true}) async {
     if (_closed) return _current;
     final DispatchPlan? plan;
     try {
-      plan = DispatchPlan.of(await _snapshot(), backlogRoot: backlogRoot);
+      final snapshot = await _snapshot();
+      final config = snapshot.workflow.dispatcher;
+      plan = DispatchPlan.of(
+        snapshot,
+        backlogRoot: backlogRoot,
+        conditions: config == null
+            ? DispatchConditions.none
+            : await _launcher.conditions(config, backlogRoot, snapshot),
+      );
     } catch (error, stackTrace) {
       _onError(error, stackTrace);
       return _current;
@@ -95,11 +136,16 @@ final class Dispatcher {
     final changed = plan == null ? _current != null : !plan.sameDecisionAs(_current);
     _current = plan;
     if (changed) _plans.add(plan);
-    _scheduleRecheck(plan?.recheckAt);
+    var recheckAt = plan?.recheckAt;
+    if (plan != null && plan.hasUnavailable) {
+      final soon = _clock.now().add(unavailableRecheck);
+      if (recheckAt == null || soon.isBefore(recheckAt)) recheckAt = soon;
+    }
+    _scheduleRecheck(recheckAt);
 
     final keys = {...?plan?.assignments.map((a) => a.key)};
     _launched.retainAll(keys);
-    if (plan != null && plan.mode == DispatchMode.auto) {
+    if (launchAuto && plan != null && plan.mode == DispatchMode.auto) {
       for (final assignment in plan.assignments) {
         if (!_launched.add(assignment.key)) continue;
         try {
@@ -127,7 +173,7 @@ final class Dispatcher {
 
 /// An [AgentLauncher] that starts nothing and only reports what it would
 /// run; the default until agents can really be started.
-final class LoggingLauncher implements AgentLauncher {
+final class LoggingLauncher extends AgentLauncher {
   LoggingLauncher(this._log);
 
   final void Function(String message) _log;

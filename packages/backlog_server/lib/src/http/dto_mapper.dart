@@ -145,6 +145,7 @@ abstract final class DtoMapper {
     InvalidInputException() => BacklogApiException(400, 'invalid_input', error.message),
     ClaimConflictException() => BacklogApiException(409, 'claim_conflict', error.message),
     ConfigurationException() => BacklogApiException(500, 'configuration', error.message),
+    UnavailableException() => BacklogApiException(409, 'unavailable', error.message),
   };
 
   static ItemLinkDto _link(ItemId id, BacklogSnapshot snapshot) {

@@ -230,6 +230,33 @@ dispatcher:
       expect(launcher.launched, ['T-0001@w1']);
     });
 
+    test('unavailable worktrees and held items are skipped; unavailable ones are checked again soon', () async {
+      final dispatcher = await start('auto');
+      await todo('A', priority: 'p0');
+      await todo('B');
+      launcher.given = DispatchConditions(
+        unavailable: {'w1': 'uncommitted changes (2 paths)'},
+        held: {ItemId('T-0001'): 'stopped'},
+      );
+      final plan = (await dispatcher.evaluate())!;
+      expect(launcher.launched, ['T-0002@w2']);
+      expect(plan.worktrees.first.isFree, isFalse);
+      expect(plan.held.single.item.id, ItemId('T-0001'));
+      expect(timers.pending.map((t) => t.delay), contains(dispatcher.unavailableRecheck));
+    });
+
+    test('a running agent occupies its worktree even without a claim', () async {
+      final dispatcher = await start('manual', worktrees: ['w1']);
+      await todo('A');
+      launcher.given = DispatchConditions(
+        runs: [AgentRun(item: ItemId('T-0009'), worktree: 'w1', pid: 1, startedAt: clock.now(), log: '/l', agent: 'x')],
+      );
+      final plan = (await dispatcher.evaluate())!;
+      expect(plan.running, 1);
+      expect(plan.assignments, isEmpty);
+      await expectLater(dispatcher.start('T-0001'), throwsA(isA<UnavailableException>()));
+    });
+
     test('a broken snapshot is reported and keeps the previous plan', () async {
       var fail = false;
       (backlog, clock) = await tempBacklog(config: 'dispatcher: {worktrees: [w1], command: agent}\n');
@@ -252,13 +279,18 @@ dispatcher:
 }
 
 /// Records launches; claims the item like a real launcher would, unless told not to.
-final class _RecordingLauncher implements AgentLauncher {
+final class _RecordingLauncher extends AgentLauncher {
   _RecordingLauncher(this.backlog);
 
   final Backlog backlog;
   final launched = <String>[];
   bool claims = true;
   bool failNext = false;
+  DispatchConditions given = DispatchConditions.none;
+
+  @override
+  Future<DispatchConditions> conditions(DispatcherConfig config, String backlogRoot, BacklogSnapshot snapshot) async =>
+      given;
 
   @override
   Future<void> launch(DispatchAssignment assignment) async {

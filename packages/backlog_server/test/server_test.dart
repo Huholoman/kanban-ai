@@ -216,7 +216,7 @@ void main() {
       port: 0,
       debounce: const Duration(milliseconds: 50),
       dispatchDebounce: const Duration(milliseconds: 20),
-      launcher: _StreamLauncher(launched),
+      launcher: (_, _, _) => _StreamLauncher(launched),
       log: logs.add,
     );
     addTearDown(server.close);
@@ -232,7 +232,7 @@ void main() {
   });
 }
 
-final class _StreamLauncher implements AgentLauncher {
+final class _StreamLauncher extends AgentLauncher {
   _StreamLauncher(this._sink);
 
   final StreamController<DispatchAssignment> _sink;

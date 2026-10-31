@@ -117,6 +117,12 @@ Future<void> main(List<String> arguments) async {
       allow: allow.isEmpty ? null : allow,
       webRoot: webRoot,
       log: options.flag('quiet') ? null : stdout.writeln,
+      launcher: (project, host, log) => ProcessAgentLauncher(
+        project: project,
+        backlog: () => host.backlog,
+        stateDir: ProcessAgentLauncher.defaultStateDir(environment),
+        log: log,
+      ),
     );
   } on BacklogException catch (error) {
     stderr.writeln(error.message);

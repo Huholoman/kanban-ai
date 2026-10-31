@@ -98,6 +98,7 @@ dispatcher:                            # optional; without it there is no dispat
     - name: monorepo-2                 # also the agent name of its claims
       path: ../monorepo-2              # absolute, or relative to the backlog folder
     - monorepo-3                       # bare name = {name: monorepo-3, path: ../monorepo-3}
+  base: main                           # new branches agent/<id> start from here (default main)
   agent: claude                        # agent profile (default claude): built-in or from agents
   agents:                              # optional own profiles (may replace a built-in one)
     my-claude:
@@ -118,7 +119,7 @@ Semantics:
 - **Types** are labels; the hierarchy comes from `parent`, not from the type. `epic` is special only in the UI (epic filter, the default Board view hides epics).
 - **Statuses are the board columns.** Add, rename or reorder them here; each view chooses which to show with `columns:` (§6), also editable from the app.
 - **Appearance** only affects the web board: the palette is generated from `seed` per brightness, `primary`/`secondary`/`background` override parts of it; status, priority, type and label colours replace the built-in ones (columns, card stripes, tags). Invalid colours or modes are configuration errors.
-- **Dispatcher** hands ready items to agents running in the listed worktrees. A worktree is *free* when no live claim is held under its name; at most `max_agents` of the listed worktrees are busy at once. **Agent profiles:** `agent` names the profile to start (default `claude`); built in are `claude` (`claude -p {prompt} --output-format stream-json --verbose --permission-mode acceptEdits --permission-prompts none --allowedTools "Bash(backlog *) Bash(git *) Bash(mise run *) Read Edit Write Grep Glob TodoWrite" --disallowedTools "Bash(git push *)"`, output `claude-stream-json`; verified with Claude Code 2.1, runs on the subscription login — never `--bare`, never `--dangerously-skip-permissions`) and the unverified presets `codex` (`codex exec --full-auto --json {prompt}`, `json-lines`), `gemini` (`gemini --approval-mode auto_edit -p {prompt}`) and `aider` (`aider --yes-always --message {prompt}`). `agents: {name: {command, env, output}}` defines more profiles or replaces built-in ones (`command` required; `env` a map of variable → value; `output` `text` | `claude-stream-json` | `json-lines`, default `text`). **Prompt:** `prompt` is one template shared by all profiles; the default tells the agent its name ({worktree}) and item, to run `backlog instructions` and `backlog show {id}` first, to work on its own branch in small commits containing the id, to finish with `backlog set {id} status=review`, never to push, and to write a question into the item and stop when something is unclear. The legacy `command` (instead of `agent`) is a plain profile with output `text`. Commands are split into arguments like a shell would (quotes, backslashes) but never run through one, so pipes or variables need an explicit `[sh, -c, "…"]`; `{id}`, `{title}`, `{worktree}`, `{path}` (absolute worktree path) and `{backlog}` (absolute backlog path) are replaced in the prompt, every command argument and `env` value, `{prompt}` (the rendered prompt) in commands and `env`; `{{`/`}}` are literal braces. The agent runs inside the worktree folder with `BACKLOG_AGENT=<worktree>`, `BACKLOG_DIR=<backlog>` and the profile's `env` added to the server's environment. Unknown keys and placeholders, both `agent` and `command`, an unknown `agent`, a profile without `command`, an unknown `output`, invalid variable names, missing `worktrees`, duplicate names or paths, names other than `[A-Za-z0-9._-]`, `max_agents` < 1 and a `mode` other than `auto`/`manual` are configuration errors; `lint` warns about worktree paths that are not folders (`dispatcher-worktree`), an agent program not on the `PATH` and unverified presets (`dispatcher-agent`). The running server plans with it (§8.2); agents are not started yet, it only logs what it would start.
+- **Dispatcher** hands ready items to agents running in the listed worktrees. A worktree is *free* when no live claim is held under its name; at most `max_agents` of the listed worktrees are busy at once. **Agent profiles:** `agent` names the profile to start (default `claude`); built in are `claude` (`claude -p {prompt} --output-format stream-json --verbose --permission-mode acceptEdits --permission-prompts none --allowedTools "Bash(backlog *) Bash(git *) Bash(mise run *) Read Edit Write Grep Glob TodoWrite" --disallowedTools "Bash(git push *)"`, output `claude-stream-json`; verified with Claude Code 2.1, runs on the subscription login — never `--bare`, never `--dangerously-skip-permissions`) and the unverified presets `codex` (`codex exec --full-auto --json {prompt}`, `json-lines`), `gemini` (`gemini --approval-mode auto_edit -p {prompt}`) and `aider` (`aider --yes-always --message {prompt}`). `agents: {name: {command, env, output}}` defines more profiles or replaces built-in ones (`command` required; `env` a map of variable → value; `output` `text` | `claude-stream-json` | `json-lines`, default `text`). **Prompt:** `prompt` is one template shared by all profiles; the default tells the agent its name ({worktree}) and item, to run `backlog instructions` and `backlog show {id}` first, to commit on the prepared branch `{branch}` in small commits containing the id, to finish with `backlog set {id} status=review`, never to push, and to write a question into the item and stop when something is unclear. The legacy `command` (instead of `agent`) is a plain profile with output `text`. Commands are split into arguments like a shell would (quotes, backslashes) but never run through one, so pipes or variables need an explicit `[sh, -c, "…"]`; `{id}`, `{title}`, `{worktree}`, `{path}` (absolute worktree path), `{backlog}` (absolute backlog path) and `{branch}` (the branch prepared for the agent, §8.2) are replaced in the prompt, every command argument and `env` value, `{prompt}` (the rendered prompt) in commands and `env`; `{{`/`}}` are literal braces. The agent runs inside the worktree folder with `BACKLOG_AGENT=<worktree>`, `BACKLOG_DIR=<backlog>` and the profile's `env` added to the server's environment. Unknown keys and placeholders, both `agent` and `command`, an unknown `agent`, a profile without `command`, an unknown `output`, invalid variable names, missing `worktrees`, duplicate names or paths, names other than `[A-Za-z0-9._-]`, a `base` starting with `-`, `max_agents` < 1 and a `mode` other than `auto`/`manual` are configuration errors; `lint` warns about worktree paths that are not folders (`dispatcher-worktree`), an agent program not on the `PATH` and unverified presets (`dispatcher-agent`). The running server plans with it and starts the agents (§8.2).
 - Changes to `backlog.yaml` are picked up by a running server (and the board's theme) without restart.
 
 ## 3. Items — `items/<id>-<slug>.md`
@@ -320,19 +321,45 @@ Every path below except `/api/health` and `/api/projects` exists per project und
 | `GET /api/lint` | | `[{severity, code, message, item?, location?}]` |
 | `WS /api/events` | `?token=` | `{"type": "changed", "paths": [...]}` |
 
-Errors: `{"error": {"type", "message", "candidates"?}}` with `not_found` 404, `ambiguous_reference` 409, `invalid_input` 400, `claim_conflict` 409, `configuration` 500, `unauthorized` 401, `forbidden` 403. CORS is open (`*`) so the app can run from another origin.
+Errors: `{"error": {"type", "message", "candidates"?}}` with `not_found` 404, `ambiguous_reference` 409, `invalid_input` 400, `claim_conflict` 409, `unavailable` 409 (e.g. no free worktree), `configuration` 500, `unauthorized` 401, `forbidden` 403. CORS is open (`*`) so the app can run from another origin.
 
 ### 8.2 Dispatcher
 
 Every project runs its own dispatcher. With a `dispatcher` section in its `backlog.yaml` (§2) the server keeps a dispatch plan for it: after every change event (debounced again by 500 ms) and whenever a live claim expires (that frees a worktree or an item without touching a file) it takes a snapshot and computes
 
-- **busy worktrees** — those with a live claim under their name; claims of other agents do not occupy worktrees and do not count against `max_agents`,
+- **busy worktrees** — those with a live claim under their name or with an agent process still running in them; claims of other agents do not occupy worktrees and do not count against `max_agents`,
+- **unavailable worktrees** — not busy, but no agent can start there: the folder is missing, it is not a git worktree, or `git status --porcelain` is not empty (uncommitted changes or untracked files). They are not free; the plan is evaluated again every 30 s while one is unavailable (worktrees are not watched),
 - **assignments** — ready items (§3.1) in the order of `backlog next` paired with free worktrees in the configured order, at most `max_agents` minus the busy ones,
+- **held** — ready items the dispatcher does not start by itself because their last agent ended without finishing or a person stopped it (a manual start lifts the hold),
 - **waiting** — ready items left over.
 
-The plan is logged whenever it changes (`Dispatcher (auto): 1/2 running; starts X-7f3a → monorepo-3.`). In `auto` mode every new assignment goes to the agent launcher once (again only after it dropped out of the plan or its launch failed); in `manual` mode nothing starts by itself. For now the launcher only logs the command it would run, in its worktree; claiming the item under the worktree name and starting the process come next, as does a Start button for `manual` mode. Without the section the dispatcher is idle; edits of the section apply live. `-q` also silences the dispatcher log. Served from a registry, log lines start with `[<project id>]`.
+The plan is logged whenever it changes (`Dispatcher (auto): 1/2 running; starts X-7f3a → monorepo-3; held: X-2c91; monorepo-2 unavailable: uncommitted changes (2 paths).`). In `auto` mode every new assignment goes to the agent launcher once (again only after it dropped out of the plan or its launch failed); in `manual` mode nothing starts by itself. Without the section the dispatcher is idle; edits of the section apply live. `-q` also silences the dispatcher log. Served from a registry, log lines start with `[<project id>]`.
 
-## 9. Web board
+**Starting an agent.** The launcher (the same for every profile):
+
+1. checks the worktree again (clean git worktree, see above; otherwise nothing starts and the reason is logged),
+2. claims the item under the worktree's name — a claim conflict means someone was faster and nothing starts,
+3. checks out the item's branch in the worktree: the item's `branch` field when set, else `agent/<id>`; an existing branch is switched to (a released item continues where its last agent stopped), a new one is created from `dispatcher.base` (default `main`) and recorded in the item's `branch` field. The agent does not have to manage branches; the prompt only tells it which one it is on (`{branch}`). When this fails, the claim is released and nothing starts,
+4. starts the profile's command in the worktree as a **detached process** in its own session (it outlives a restart of the server), with stdin from `/dev/null`, stdout and stderr appended to `$STATE/logs/<project>/<id>-<UTC time>.log` (headed by the command), and the environment of the server plus `BACKLOG_AGENT`, `BACKLOG_DIR` and the profile's `env`,
+5. records it in `$STATE/agents/<project>/<id>.json` (item, worktree, path, pid, process group, start, log, profile, output format, branch).
+
+`$STATE` is `$KANBAN_AI_STATE_DIR`, else `$XDG_STATE_HOME/kanban-ai`, else `~/.local/state/kanban-ai`; `<project>` is the project id (§1.2). A small `sh` wrapper writes the exit code to `<id>.exit` next to the record and a closing line into the log.
+
+**While it runs** the server checks every 5 s whether the process is alive (on Linux by `/proc/<pid>/cmdline`, which must still name the log) and renews its claim with a heartbeat every quarter of the lease (1–10 minutes). A restarted server picks the records up again, renews the claims at once and goes on watching.
+
+**When it has ended**, the outcome depends on the item:
+
+- still in the first active status (`in-progress`) and claimed by the worktree → **released** to the pickable status and **held** with the reason (`<id>.hold.json`), so that `auto` mode does not start it again in a loop (failures and rate limits are not retried; a person looks and starts it again),
+- in another status while claimed by the worktree (the agent ran `backlog set <id> status=review`) → only the **claim is dropped**; status and assignee stay,
+- done, released or claimed by someone else → left alone.
+
+The record is replaced by `<id>.last.json` (exit code, reason, outcome, end time and, for `claude-stream-json`, the `session_id` of the run, so that `claude --resume <id>` in the worktree continues it); the outcome is also appended to the log and logged by the server. Logs are kept.
+
+**Stopping** sends `SIGTERM` to the agent's process group (`SIGKILL` after 5 s); the item is then released and held as above ("stopped by a person").
+
+Two servers hosting the same project share `$STATE` and would both look after its agents; run one.
+
+## 9. Web board## 9. Web board
 
 URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from the UI, default `web`), `&server=http://…` (another API server).
 
@@ -397,7 +424,7 @@ Agents get the workflow from `backlog instructions` (paste into CLAUDE.md / AGEN
 
 Dart pub workspace (`backlog_core`, `backlog_cli`, `backlog_api`, `backlog_server`) plus the Flutter app outside it.
 
-- **backlog_core** — hexagonal modules `workflow`, `items`, `claims`, `planning`, `dispatch`, `views`, `validation`, `projects` (the registry: `ProjectRegistry`, port `ProjectRegistryStore`, `ProjectService`, YAML store); pure `domain/`, use cases in `application/`, file-system adapters in `infrastructure/`; `Backlog` is the composition root; derived state lives in `BacklogSnapshot`; `DispatchPlan` (pure) turns a snapshot into assignments, `Dispatcher` re-plans on changes and hands them to the `AgentLauncher` port.
+- **backlog_core** — hexagonal modules `workflow`, `items`, `claims`, `planning`, `dispatch`, `views`, `validation`, `projects` (the registry: `ProjectRegistry`, port `ProjectRegistryStore`, `ProjectService`, YAML store); pure `domain/`, use cases in `application/`, file-system adapters in `infrastructure/`; `Backlog` is the composition root; derived state lives in `BacklogSnapshot`; `DispatchPlan` (pure) turns a snapshot into assignments, `Dispatcher` re-plans on changes and hands them to the `AgentLauncher` port, implemented by `ProcessAgentLauncher` (detached processes, state under `$STATE`).
 - **backlog_cli** — thin adapter; text and JSON renderers.
 - **backlog_api** — DTOs, `BacklogApi` and `ProjectsApi` interfaces, `HttpBacklogApi`, `HttpProjectsApi` (pure Dart, compiles for the web).
 - **backlog_server** — shelf: `ProjectHub` (hosted projects, `/api/p/<id>` routing, `/api/projects`) with a `HostedProject` per backlog (`BacklogHost`, `ChangeFeed` → its WebSocket and dispatcher, `ApiHandler` + `DtoMapper`), `RegistryWatcher` (live registry), middleware (token, client allowlist, CORS), multi-address binding.
@@ -409,7 +436,8 @@ Development: `mise run check` (format check, analysis, all tests), `mise run pla
 
 - Prototype; formats may still change.
 - Overlapping `touches` are judged on one snapshot: two agents running `next` at the same moment can still take two overlapping open items (the lock is per item). `lint` then reports `touches-overlap`.
-- The dispatcher only plans and logs: it does not claim or start agents yet, the plan is not in the API and there is no Start button.
+- The dispatcher's plan is not in the API yet and there is no Start button.
+- Agent processes are watched by polling (`/proc` on Linux, `kill -0` elsewhere); the launcher needs `sh`, `git` and `kill`.
 - Claims coordinate agents sharing one filesystem; agents on different machines need a shared backlog folder (or the server).
 - The web app has no user accounts; protection is the token plus `--host`/`--allow`.
 - Filter state, folded columns and the detail's navigation history are not kept across page reloads.

@@ -4,11 +4,60 @@ import '../../claims/domain/claim.dart';
 import '../../items/domain/item_id.dart';
 import '../../planning/domain/backlog_snapshot.dart';
 import '../../planning/domain/planned_item.dart';
+import '../../shared/errors.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+
+/// An agent process started by the dispatcher that is still running.
+final class AgentRun {
+  const AgentRun({
+    required this.item,
+    required this.worktree,
+    required this.pid,
+    required this.startedAt,
+    required this.log,
+    required this.agent,
+    this.branch,
+  });
+
+  final ItemId item;
+
+  /// Name of the worktree it runs in (also the name of its claim).
+  final String worktree;
+  final int pid;
+  final DateTime startedAt;
+
+  /// Absolute path of the file its output goes to.
+  final String log;
+
+  /// Name of the agent profile.
+  final String agent;
+  final String? branch;
+}
+
+/// What the dispatcher knows beyond the backlog files, supplied by the
+/// [AgentLauncher]: worktrees that cannot take work now, items it should
+/// not start by itself, and the agents that are running.
+final class DispatchConditions {
+  const DispatchConditions({this.unavailable = const {}, this.held = const {}, this.runs = const []});
+
+  static const none = DispatchConditions();
+
+  /// Worktree name → why no agent can start there (uncommitted changes, not
+  /// a git worktree, missing folder…).
+  final Map<String, String> unavailable;
+
+  /// Items that are ready but must not be started automatically (their last
+  /// agent ended without finishing, or a person stopped it) → why. A manual
+  /// start still works.
+  final Map<ItemId, String> held;
+
+  /// Agents running now.
+  final List<AgentRun> runs;
+}
 
 /// A configured worktree at the moment of planning.
 final class WorktreeState {
-  const WorktreeState(this.worktree, this.path, this.claims);
+  const WorktreeState(this.worktree, this.path, this.claims, {this.unavailable, this.run});
 
   final WorktreeDefinition worktree;
 
@@ -18,14 +67,25 @@ final class WorktreeState {
   /// Live claims held under the worktree's name (usually zero or one).
   final List<Claim> claims;
 
+  /// Why no agent can start here now; null when nothing is wrong.
+  final String? unavailable;
+
+  /// The agent process running here, if any.
+  final AgentRun? run;
+
   String get name => worktree.name;
 
-  /// An agent works here: some live claim is held under its name.
-  bool get isBusy => claims.isNotEmpty;
+  /// An agent works here: some live claim is held under its name, or an
+  /// agent process still runs in it.
+  bool get isBusy => claims.isNotEmpty || run != null;
+
+  /// An agent may start here now.
+  bool get isFree => !isBusy && unavailable == null;
 }
 
 /// "Start [item] in [worktree]": the agent takes the claim under the
-/// worktree's name and runs [command] inside [path] with [environment].
+/// worktree's name and runs [command] inside [path] with [environment], on
+/// [branch].
 final class DispatchAssignment {
   const DispatchAssignment({
     required this.item,
@@ -35,6 +95,8 @@ final class DispatchAssignment {
     required this.prompt,
     required this.command,
     this.environment = const {},
+    this.branch,
+    this.base,
   });
 
   /// Fills the [config]'s prompt, command and environment for [item] in
@@ -46,12 +108,14 @@ final class DispatchAssignment {
     required String path,
     required String backlogRoot,
   }) {
+    final branch = branchFor(item);
     final values = {
       'id': item.id.value,
       'title': item.item.title,
       'worktree': worktree.name,
       'path': path,
       'backlog': backlogRoot,
+      'branch': branch,
     };
     final prompt = config.prompt.render(values);
     final full = {...values, 'prompt': prompt};
@@ -68,7 +132,16 @@ final class DispatchAssignment {
         'BACKLOG_DIR': backlogRoot,
         for (final MapEntry(:key, :value) in profile.environment.entries) key: value.render(full),
       },
+      branch: branch,
+      base: config.base,
     );
+  }
+
+  /// The branch an agent works on for [item]: its `branch` field, else
+  /// `agent/<id>`.
+  static String branchFor(PlannedItem item) {
+    final own = item.item.branch?.trim();
+    return own == null || own.isEmpty ? 'agent/${item.id}' : own;
   }
 
   final PlannedItem item;
@@ -91,6 +164,13 @@ final class DispatchAssignment {
   /// profile's `env`.
   final Map<String, String> environment;
 
+  /// The branch to check out in the worktree before the agent starts; null
+  /// leaves the worktree as it is.
+  final String? branch;
+
+  /// Where [branch] starts when it does not exist yet (`dispatcher.base`).
+  final String? base;
+
   ItemId get id => item.id;
 
   /// The name the claim is taken under.
@@ -108,16 +188,22 @@ final class DispatchAssignment {
 final class DispatchPlan {
   const DispatchPlan({
     required this.config,
-    required this.takenAt,
+    required this.snapshot,
+    required this.backlogRoot,
     required this.worktrees,
     required this.assignments,
     required this.waiting,
+    this.held = const [],
     this.recheckAt,
   });
 
   /// The plan for [snapshot], or null when its workflow has no dispatcher.
   /// Relative worktree paths are resolved against [backlogRoot].
-  static DispatchPlan? of(BacklogSnapshot snapshot, {required String backlogRoot}) {
+  static DispatchPlan? of(
+    BacklogSnapshot snapshot, {
+    required String backlogRoot,
+    DispatchConditions conditions = DispatchConditions.none,
+  }) {
     final config = snapshot.workflow.dispatcher;
     if (config == null) return null;
 
@@ -127,15 +213,21 @@ final class DispatchPlan {
     ];
     final worktrees = [
       for (final worktree in config.worktrees)
-        WorktreeState(worktree, worktree.resolvePath(backlogRoot), [
-          for (final claim in liveClaims)
-            if (claim.agent == worktree.name) claim,
-        ]),
+        WorktreeState(
+          worktree,
+          worktree.resolvePath(backlogRoot),
+          [
+            for (final claim in liveClaims)
+              if (claim.agent == worktree.name) claim,
+          ],
+          unavailable: conditions.unavailable[worktree.name],
+          run: conditions.runs.firstWhereOrNull((run) => run.worktree == worktree.name),
+        ),
     ];
     final running = worktrees.where((w) => w.isBusy).length;
-    final free = worktrees.where((w) => !w.isBusy).toList();
+    final free = worktrees.where((w) => w.isFree).toList();
     final slots = (config.maxAgents - running).clamp(0, free.length);
-    final ready = snapshot.ready;
+    final ready = snapshot.ready.where((item) => !conditions.held.containsKey(item.id)).toList();
 
     final assignments = <DispatchAssignment>[
       for (var i = 0; i < slots && i < ready.length; i++)
@@ -155,16 +247,22 @@ final class DispatchPlan {
 
     return DispatchPlan(
       config: config,
-      takenAt: snapshot.takenAt,
+      snapshot: snapshot,
+      backlogRoot: backlogRoot,
       worktrees: List.unmodifiable(worktrees),
       assignments: List.unmodifiable(assignments),
       waiting: List.unmodifiable(ready.skip(assignments.length)),
+      held: List.unmodifiable([
+        for (final item in snapshot.ready)
+          if (conditions.held[item.id] case final reason?) (item: item, reason: reason),
+      ]),
       recheckAt: recheckAt,
     );
   }
 
   final DispatcherConfig config;
-  final DateTime takenAt;
+  final BacklogSnapshot snapshot;
+  final String backlogRoot;
   final List<WorktreeState> worktrees;
 
   /// What should start now, most urgent first.
@@ -173,9 +271,14 @@ final class DispatchPlan {
   /// Ready items left over for lack of free worktrees or of the limit.
   final List<PlannedItem> waiting;
 
+  /// Ready items the dispatcher does not start by itself, with the reason.
+  final List<({PlannedItem item, String reason})> held;
+
   /// The earliest expiry of a live claim: the plan may change then without
   /// any file changing (a worktree frees up, an item becomes ready).
   final DateTime? recheckAt;
+
+  DateTime get takenAt => snapshot.takenAt;
 
   DispatchMode get mode => config.mode;
 
@@ -185,22 +288,92 @@ final class DispatchPlan {
   /// How many more agents may start (limit minus running, at least zero).
   int get capacity => (config.maxAgents - running).clamp(0, config.maxAgents);
 
-  /// Same mode, same busy worktrees, same assignments and waiting items.
+  /// Some worktree cannot take work for a reason no file change reports.
+  bool get hasUnavailable => worktrees.any((w) => w.unavailable != null);
+
+  /// The assignment for starting [reference] by hand, now: the item must be
+  /// ready (held items are fine) and a worktree free within `max_agents`.
+  /// The first free worktree is used even when the plan gives it to a more
+  /// urgent item.
+  DispatchAssignment assignmentFor(String reference) {
+    final planned = snapshot[ItemReference.resolve(reference, snapshot.ids)]!;
+    if (!planned.isReady) throw _notReady(planned);
+    final free = worktrees.where((w) => w.isFree).toList();
+    if (free.isEmpty || capacity == 0) {
+      final reasons = [
+        for (final worktree in worktrees)
+          '${worktree.name}: ${worktree.isBusy ? 'busy' : worktree.unavailable ?? 'free'}',
+      ];
+      throw UnavailableException(
+        'No free worktree for ${planned.id} ($running/${config.maxAgents} running; ${reasons.join('; ')}).',
+      );
+    }
+    return DispatchAssignment.render(
+      config,
+      item: planned,
+      worktree: free.first.worktree,
+      path: free.first.path,
+      backlogRoot: backlogRoot,
+    );
+  }
+
+  BacklogException _notReady(PlannedItem planned) {
+    final id = planned.id;
+    if (planned.isClaimed) return ClaimConflictException('$id is claimed by ${planned.claim!.agent}.');
+    final status = planned.item.status;
+    final String why;
+    if (planned.isDone) {
+      why = 'it is $status';
+    } else if (snapshot.workflow.status(status)?.pickable != true) {
+      why = 'its status $status is not ${snapshot.workflow.pickableStatus}';
+    } else if (planned.isBlocked) {
+      why = 'it is blocked by ${[...planned.openDependencies, ...planned.missingDependencies].join(', ')}';
+    } else if (planned.isConflicting) {
+      why = 'it waits for ${planned.conflictsWith.join(', ')} (overlapping touches)';
+    } else if (planned.openChildCount > 0) {
+      why = 'it has ${planned.openChildCount} open child item(s)';
+    } else {
+      why = 'it cannot be picked up';
+    }
+    return InvalidInputException('$id is not ready: $why.');
+  }
+
+  /// Same mode, same busy and unavailable worktrees and running agents,
+  /// same assignments, waiting and held items.
   bool sameDecisionAs(DispatchPlan? other) =>
       other != null &&
       other.mode == mode &&
       _sameList(other.assignments.map((a) => a.key), assignments.map((a) => a.key)) &&
       _sameList(other.waiting.map((i) => i.id), waiting.map((i) => i.id)) &&
-      _sameList(other.worktrees.map((w) => '${w.name}:${w.isBusy}'), worktrees.map((w) => '${w.name}:${w.isBusy}'));
+      _sameList(other.held.map((h) => '${h.item.id}:${h.reason}'), held.map((h) => '${h.item.id}:${h.reason}')) &&
+      _sameList(other.worktrees.map(_worktreeKey), worktrees.map(_worktreeKey));
+
+  static String _worktreeKey(WorktreeState w) => '${w.name}:${w.isBusy}:${w.unavailable}:${w.run?.item}:${w.run?.pid}';
 
   static bool _sameList(Iterable<Object> a, Iterable<Object> b) =>
       const ListEquality<Object>().equals(a.toList(), b.toList());
 }
 
-/// Port for whatever starts an agent: claims [DispatchAssignment.id] under
-/// [DispatchAssignment.agent] and runs the command in the worktree. It
-/// should claim before it returns, so that the next plan already sees the
-/// worktree busy; a `ClaimConflictException` just means someone was faster.
-abstract interface class AgentLauncher {
+/// Port for whatever starts agents. [launch] claims
+/// [DispatchAssignment.id] under [DispatchAssignment.agent] and runs the
+/// command in the worktree; it should claim before it returns, so that the
+/// next plan already sees the worktree busy (a `ClaimConflictException` just
+/// means someone was faster). The other members have neutral defaults for
+/// launchers that do not track processes.
+abstract class AgentLauncher {
   Future<void> launch(DispatchAssignment assignment);
+
+  /// Running agents, worktrees that cannot take work and held items for a
+  /// plan of [snapshot] (whose workflow has the dispatcher [config]).
+  Future<DispatchConditions> conditions(DispatcherConfig config, String backlogRoot, BacklogSnapshot snapshot) async =>
+      DispatchConditions.none;
+
+  /// Stops the agent working on [item]; false when none runs.
+  Future<bool> stop(ItemId item) async => false;
+
+  /// Starts background work (watching processes); [onChange] is called when
+  /// something the plan depends on changed outside the backlog files.
+  void attach(void Function() onChange) {}
+
+  Future<void> close() async {}
 }

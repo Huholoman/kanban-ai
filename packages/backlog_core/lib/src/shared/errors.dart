@@ -37,3 +37,9 @@ final class ClaimConflictException extends BacklogException {
 final class ConfigurationException extends BacklogException {
   const ConfigurationException(super.message);
 }
+
+/// Something needed right now is not available (e.g. no free worktree for
+/// an agent, or the worktree has uncommitted changes); trying later may work.
+final class UnavailableException extends BacklogException {
+  const UnavailableException(super.message);
+}
