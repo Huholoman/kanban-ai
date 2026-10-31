@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/app_scope.dart';
 import '../../../shared/tokens.dart';
+import '../../../shared/ui/ui.dart';
 import '../application/projects_controller.dart';
 
 /// The open project's name at the top of the navigation. With more than one
@@ -37,7 +38,10 @@ class ProjectSwitcher extends StatelessWidget {
     }
     return MenuAnchor(
       menuChildren: [
-        for (final project in controller.projects) _ProjectEntry(controller: controller, project: project),
+        for (final (title, projects) in _sections(controller)) ...[
+          if (title != null) SectionLabel(title, key: ValueKey('project-section-$title')),
+          for (final project in projects) _ProjectEntry(controller: controller, project: project),
+        ],
       ],
       builder: (context, menu, _) => Tooltip(
         message: 'Switch project',
@@ -63,6 +67,12 @@ class ProjectSwitcher extends StatelessWidget {
     );
   }
 }
+
+/// The menu's sections: a heading (null for none) and its projects. Today
+/// one unnamed section with every project; pinned projects can get their own
+/// section on top with the rest under "All" (folded, with a search box when
+/// long, like the sections of the filters popover).
+List<(String?, List<ProjectDto>)> _sections(ProjectsController controller) => [(null, controller.projects)];
 
 class _ProjectEntry extends StatelessWidget {
   const _ProjectEntry({required this.controller, required this.project});
