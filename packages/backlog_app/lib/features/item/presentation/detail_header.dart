@@ -9,7 +9,8 @@ import '../../dispatch/presentation/dispatch_scope.dart';
 import '../application/item_controller.dart';
 
 /// Top of the detail: back, the breadcrumb of parents and close; the item's
-/// place among its siblings with ‹ › arrows; its id and the claim actions.
+/// place among its siblings with ‹ › arrows; its id with claiming and
+/// finishing it; below, the agent and the status's actions ([ActionBar]).
 class DetailHeader extends StatelessWidget {
   const DetailHeader({
     super.key,
@@ -127,68 +128,78 @@ class DetailHeader extends StatelessWidget {
             const SizedBox(height: 6),
             Row(
               children: [
-                Flexible(child: CopyableId(item.id, style: small)),
-                const SizedBox(width: 12),
                 Expanded(
-                  child: Wrap(
-                    alignment: WrapAlignment.end,
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: _actions(context, item),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: CopyableId(item.id, style: small),
                   ),
                 ),
+                const SizedBox(width: 12),
+                Wrap(spacing: 6, runSpacing: 6, children: _claimButtons(item)),
               ],
             ),
+            if (_actions(context, item) case final actions when actions.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ActionBar(key: const ValueKey('detail-actions'), actions: actions),
+            ],
           ],
         ],
       ),
     );
   }
 
-  List<Widget> _actions(BuildContext context, ItemDto item) {
+  /// Claiming the item and finishing it, next to its id.
+  List<Widget> _claimButtons(ItemDto item) {
     final enabled = !controller.busy;
-    final dispatch = DispatchScope.maybeOf(context);
     return [
-      if (dispatch != null && dispatch.canStart(item)) ...[
-        if (dispatch.canResume(item.id))
-          Tooltip(
-            message: 'Continue the session of its last agent in ${dispatch.plan.sessionFor(item.id)!.worktree}',
-            child: PrimaryButton(
-              key: const ValueKey('start-agent'),
-              label: 'Continue agent',
-              icon: Icons.replay,
-              onPressed: enabled ? () => dispatch.startAgent(item.id) : null,
-            ),
-          ),
-        if (dispatch.plan.sessionFor(item.id) != null)
-          SecondaryButton(
-            key: const ValueKey('start-fresh'),
-            label: 'Start fresh',
-            icon: Icons.play_arrow,
-            onPressed: enabled ? () => dispatch.startAgent(item.id, fresh: true) : null,
-          )
-        else
-          PrimaryButton(
-            key: const ValueKey('start-agent'),
-            label: 'Start agent',
-            icon: Icons.play_arrow,
-            onPressed: enabled ? () => dispatch.startAgent(item.id) : null,
-          ),
-      ],
-      ...actionButtons(context, item, controller.detail?.actions ?? const [], enabled: enabled),
-      if (onScope case final onScope? when item.type == 'epic')
-        SecondaryButton(
-          key: const ValueKey('scope-board'),
-          label: 'Scope board',
-          icon: Icons.filter_alt_outlined,
-          onPressed: () => onScope(item.id),
-        ),
       if (item.claim != null) SecondaryButton(label: 'Release', onPressed: enabled ? controller.release : null),
       if (!item.isDone && !item.isClaimed) PrimaryButton(label: 'Claim', onPressed: enabled ? controller.claim : null),
       if (!item.isDone)
         item.isClaimed
             ? PrimaryButton(label: 'Done', onPressed: enabled ? controller.complete : null)
             : SecondaryButton(label: 'Done', onPressed: enabled ? controller.complete : null),
+    ];
+  }
+
+  /// The agent and the status's actions, in their own row under the header.
+  List<BarAction> _actions(BuildContext context, ItemDto item) {
+    final enabled = !controller.busy;
+    final dispatch = DispatchScope.maybeOf(context);
+    return [
+      if (dispatch != null && dispatch.canStart(item)) ...[
+        if (dispatch.canResume(item.id))
+          BarAction(
+            key: const ValueKey('start-agent'),
+            label: 'Continue agent',
+            icon: Icons.replay,
+            primary: true,
+            tooltip: 'Continue the session of its last agent in ${dispatch.plan.sessionFor(item.id)!.worktree}',
+            onPressed: enabled ? () => dispatch.startAgent(item.id) : null,
+          ),
+        if (dispatch.plan.sessionFor(item.id) != null)
+          BarAction(
+            key: const ValueKey('start-fresh'),
+            label: 'Start fresh',
+            icon: Icons.play_arrow,
+            onPressed: enabled ? () => dispatch.startAgent(item.id, fresh: true) : null,
+          )
+        else
+          BarAction(
+            key: const ValueKey('start-agent'),
+            label: 'Start agent',
+            icon: Icons.play_arrow,
+            primary: true,
+            onPressed: enabled ? () => dispatch.startAgent(item.id) : null,
+          ),
+      ],
+      ...itemActions(context, item, controller.detail?.actions ?? const [], enabled: enabled),
+      if (onScope case final onScope? when item.type == 'epic')
+        BarAction(
+          key: const ValueKey('scope-board'),
+          label: 'Scope board',
+          icon: Icons.filter_alt_outlined,
+          onPressed: () => onScope(item.id),
+        ),
     ];
   }
 

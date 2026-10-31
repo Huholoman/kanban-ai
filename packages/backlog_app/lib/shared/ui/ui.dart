@@ -1,6 +1,7 @@
 /// The shared component kit of the board.
 library;
 
+export 'action_bar.dart';
 export 'buttons.dart';
 export 'choice_menu.dart';
 export 'count_badge.dart';
