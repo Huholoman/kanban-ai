@@ -419,8 +419,9 @@ class _GroupHeader extends StatelessWidget {
   }
 }
 
-/// A parent shown above its children in a column it is not in itself: a
-/// muted line `↑ Title`, so that the children read as its part.
+/// A parent shown above its children in a column it is not in itself: its
+/// type icon and title in bold over a thin rule, so that the children read
+/// as its part.
 class ParentHeader extends StatelessWidget {
   const ParentHeader({super.key, required this.item, this.workflow, this.onTap, this.trailing});
 
@@ -433,26 +434,48 @@ class ParentHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = BoardTokens.of(context);
-    return Row(
+    final color = ItemStyle.typeColor(item.type, workflow) ?? tokens.muted;
+    return Container(
       key: ValueKey('parent-${item.id}'),
-      children: [
-        Expanded(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-              child: Text(
-                '↑ ${item.title}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(color: tokens.muted, fontSize: 11),
+      margin: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: tokens.borderStrong)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Tooltip(
+              message: '${item.id} · ${item.type}',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
+                onTap: onTap,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(2, 4, 2, 4),
+                  child: Row(
+                    children: [
+                      Icon(ItemStyle.type(item.type), size: 16, color: color),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          item.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: tokens.text,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-        ?trailing,
-      ],
+          ?trailing,
+        ],
+      ),
     );
   }
 }
