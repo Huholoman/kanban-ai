@@ -1,3 +1,5 @@
+// Real processes and git: slow when `mise run check` runs every suite at once.
+@Timeout(Duration(minutes: 2))
 @TestOn('linux || mac-os')
 library;
 
@@ -80,7 +82,8 @@ $extra''');
 
   /// Waits until the agent of [id] ended and the launcher dealt with it.
   Future<void> ended(String id) async {
-    for (var i = 0; i < 100; i++) {
+    final waited = Stopwatch()..start();
+    while (waited.elapsed < const Duration(seconds: 30)) {
       await agents.tick();
       if (!File(p.join(stateDir(), 'agents', 'demo', '$id.json')).existsSync()) return;
       await Future<void>.delayed(const Duration(milliseconds: 50));

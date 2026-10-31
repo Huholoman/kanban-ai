@@ -162,7 +162,7 @@ void main() {
       // The next event that touches a path matching [test], skipping others.
       Future<List<String>> nextWith(bool Function(String path) test) async {
         while (true) {
-          expect(await pending.timeout(const Duration(seconds: 5)), isTrue);
+          expect(await pending.timeout(const Duration(seconds: 30)), isTrue);
           final paths = events.current.paths;
           pending = events.moveNext();
           if (paths.any(test)) return paths;
@@ -195,7 +195,11 @@ void main() {
     test('picks up an edited workflow', () async {
       final config = File(p.join(dir.path, 'backlog.yaml'));
       config.writeAsStringSync(config.readAsStringSync().replaceFirst('milestones: []', 'milestones: [launch]'));
-      await Future<void>.delayed(const Duration(milliseconds: 500));
+      // The reload follows the watcher's event; wait for it, not a fixed time.
+      final waited = Stopwatch()..start();
+      while ((await api.workflow()).milestones.isEmpty && waited.elapsed < const Duration(seconds: 30)) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
       expect((await api.workflow()).milestones.map((m) => m.id), ['launch']);
     });
   });

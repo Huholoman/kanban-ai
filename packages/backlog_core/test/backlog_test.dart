@@ -14,7 +14,7 @@ void main() {
       expect(File(p.join(backlog.root, 'backlog.yaml')).existsSync(), isTrue);
       expect((await backlog.views.all()).map((v) => v.id), containsAll(['board', 'ready', 'hot']));
       expect(File(p.join(backlog.root, '.gitignore')).readAsStringSync(), contains('.locks/'));
-      expect(() => Backlog.init(backlog.root), throwsA(isA<InvalidInputException>()));
+      await expectLater(() => Backlog.init(backlog.root), throwsA(isA<InvalidInputException>()));
     });
 
     test('locate finds the backlog from inside it and from a sibling worktree', () async {
@@ -29,7 +29,7 @@ void main() {
     test('open fails clearly outside a backlog', () async {
       final dir = await Directory.systemTemp.createTemp('backlog_none_');
       addTearDown(() => dir.delete(recursive: true));
-      expect(() => Backlog.open(dir.path), throwsA(isA<NotFoundException>()));
+      await expectLater(() => Backlog.open(dir.path), throwsA(isA<NotFoundException>()));
     });
   });
 
@@ -57,15 +57,15 @@ void main() {
 
     test('create validates against the workflow and resolves references', () async {
       final (backlog, _) = await tempBacklog();
-      expect(
+      await expectLater(
         () => backlog.items.create(const NewItem(title: 'x', status: 'doing')),
         throwsA(isA<InvalidInputException>()),
       );
-      expect(
+      await expectLater(
         () => backlog.items.create(const NewItem(title: 'x', dependsOn: ['nope'])),
         throwsA(isA<NotFoundException>()),
       );
-      expect(() => backlog.items.create(const NewItem(title: '  ')), throwsA(isA<InvalidInputException>()));
+      await expectLater(() => backlog.items.create(const NewItem(title: '  ')), throwsA(isA<InvalidInputException>()));
     });
 
     test('update applies changes, bumps updated and keeps hand edits', () async {
@@ -88,12 +88,15 @@ void main() {
       expect(updated.updated, '2026-10-30');
       expect(File(path).readAsStringSync(), contains('Hand-written notes.'));
 
-      expect(
+      await expectLater(
         () => backlog.items.update('0002', [FieldChange.parse('depends_on+=0002')]),
         throwsA(isA<InvalidInputException>()),
       );
-      expect(() => backlog.items.update('0002', [FieldChange.parse('id=T-9')]), throwsA(isA<InvalidInputException>()));
-      expect(
+      await expectLater(
+        () => backlog.items.update('0002', [FieldChange.parse('id=T-9')]),
+        throwsA(isA<InvalidInputException>()),
+      );
+      await expectLater(
         () => backlog.items.update('0002', [FieldChange.parse('priority=p9')]),
         throwsA(isA<InvalidInputException>()),
       );
@@ -148,7 +151,7 @@ void main() {
       final (backlog, _) = await tempBacklog();
       await withTasks(backlog, 1);
       await backlog.claims.claim('0001', 'a');
-      expect(() => backlog.claims.claim('0001', 'b'), throwsA(isA<ClaimConflictException>()));
+      await expectLater(() => backlog.claims.claim('0001', 'b'), throwsA(isA<ClaimConflictException>()));
       final again = await backlog.claims.claim('0001', 'a');
       expect(again.claim.agent, 'a');
     });
@@ -170,8 +173,8 @@ void main() {
       clock.advance(const Duration(hours: 3));
       await backlog.claims.heartbeat('0001', 'a');
       clock.advance(const Duration(hours: 3));
-      expect(() => backlog.claims.claim('0001', 'b'), throwsA(isA<ClaimConflictException>()));
-      expect(() => backlog.claims.heartbeat('0001', 'b'), throwsA(isA<ClaimConflictException>()));
+      await expectLater(() => backlog.claims.claim('0001', 'b'), throwsA(isA<ClaimConflictException>()));
+      await expectLater(() => backlog.claims.heartbeat('0001', 'b'), throwsA(isA<ClaimConflictException>()));
     });
 
     test('blocked items and parents with open children need --force', () async {
@@ -181,8 +184,8 @@ void main() {
       final epic = await backlog.items.create(const NewItem(title: 'Epic', type: 'epic', status: 'todo'));
       await backlog.items.create(NewItem(title: 'Child', status: 'todo', parent: epic.id.value));
 
-      expect(() => backlog.claims.claim('0002', 'a'), throwsA(isA<InvalidInputException>()));
-      expect(() => backlog.claims.claim('0003', 'a'), throwsA(isA<InvalidInputException>()));
+      await expectLater(() => backlog.claims.claim('0002', 'a'), throwsA(isA<InvalidInputException>()));
+      await expectLater(() => backlog.claims.claim('0003', 'a'), throwsA(isA<InvalidInputException>()));
       expect((await backlog.claims.claim('0002', 'a', force: true)).item.status, 'in-progress');
     });
 
@@ -199,7 +202,7 @@ void main() {
       );
 
       await backlog.claims.claim('0001', 'a');
-      expect(
+      await expectLater(
         () => backlog.claims.claim('0002', 'b'),
         throwsA(isA<InvalidInputException>().having((e) => e.message, 'message', contains('T-0001'))),
       );
@@ -208,7 +211,7 @@ void main() {
       await backlog.claims.complete('0001', agent: 'a');
       expect((await backlog.planning.snapshot()).ready.map((i) => i.id.value), ['T-0002']);
       await backlog.items.create(const NewItem(title: 'Order export', status: 'todo', touches: ['lib/orders/x.dart']));
-      expect(() => backlog.claims.claim('0004', 'c'), throwsA(isA<InvalidInputException>()));
+      await expectLater(() => backlog.claims.claim('0004', 'c'), throwsA(isA<InvalidInputException>()));
       expect((await backlog.claims.claim('0004', 'c', force: true)).item.status, 'in-progress');
     });
 
@@ -218,7 +221,7 @@ void main() {
       await backlog.items.create(NewItem(title: 'Second', status: 'todo', dependsOn: [first.id.value]));
 
       await backlog.claims.claim('0001', 'a');
-      expect(() => backlog.claims.release('0001', agent: 'b'), throwsA(isA<ClaimConflictException>()));
+      await expectLater(() => backlog.claims.release('0001', agent: 'b'), throwsA(isA<ClaimConflictException>()));
       final released = await backlog.claims.release('0001', agent: 'a');
       expect(released.status, 'todo');
       expect(released.assignee, isNull);
@@ -229,7 +232,7 @@ void main() {
       expect(done.status, 'done');
       expect(done.assignee, 'a');
       expect((await backlog.planning.snapshot()).ready.map((i) => i.id.value), ['T-0002']);
-      expect(() => backlog.claims.complete('0002', status: 'todo'), throwsA(isA<InvalidInputException>()));
+      await expectLater(() => backlog.claims.complete('0002', status: 'todo'), throwsA(isA<InvalidInputException>()));
     });
 
     test('claimNext takes the most urgent ready item', () async {
@@ -468,7 +471,10 @@ void main() {
       expect(file.readAsStringSync(), isNot(contains('columns:')));
       expect(file.readAsStringSync().replaceAll(RegExp(r'\s'), ''), isNot(isEmpty));
       expect(before, contains('name: Board'));
-      expect(() => backlog.views.setColumns('board', ['todo', 'todo']), throwsA(isA<InvalidInputException>()));
+      await expectLater(
+        () => backlog.views.setColumns('board', ['todo', 'todo']),
+        throwsA(isA<InvalidInputException>()),
+      );
     });
 
     test('a filter is saved as a new view derived from another', () async {
@@ -513,7 +519,7 @@ void main() {
       final again = await backlog.views.saveAs(name: 'Web payments');
       expect(again.id, 'web-payments-2');
       expect(again.layout, ViewLayout.list);
-      expect(() => backlog.views.saveAs(name: ' '), throwsA(isA<InvalidInputException>()));
+      await expectLater(() => backlog.views.saveAs(name: ' '), throwsA(isA<InvalidInputException>()));
       expect(
         () => backlog.views.saveAs(
           name: 'Bad',
@@ -529,8 +535,8 @@ void main() {
 
     test('only existing views can get a section', () async {
       final (backlog, _) = await tempBacklog();
-      expect(() => backlog.views.setSection('../backlog', 'X'), throwsA(isA<NotFoundException>()));
-      expect(() => backlog.views.setSection('nope', 'X'), throwsA(isA<NotFoundException>()));
+      await expectLater(() => backlog.views.setSection('../backlog', 'X'), throwsA(isA<NotFoundException>()));
+      await expectLater(() => backlog.views.setSection('nope', 'X'), throwsA(isA<NotFoundException>()));
     });
   });
 

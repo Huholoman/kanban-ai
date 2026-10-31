@@ -1,3 +1,5 @@
+// Real processes and git: slow when `mise run check` runs every suite at once.
+@Timeout(Duration(minutes: 2))
 @TestOn('linux || mac-os')
 library;
 
@@ -29,6 +31,18 @@ echo "done with $code"
 kill %1 2>/dev/null
 exit "$code"
 ''';
+
+/// How long the tests wait for the fake agent (a shell script and git) to
+/// get somewhere; generous, since `mise run check` runs suites in parallel.
+const _patience = Duration(seconds: 30);
+
+/// Lets the fake agent waiting for [file] exit with [code]. Written aside and
+/// renamed: the agent must never read a created but still empty file (an
+/// empty code made it exit with 2 instead).
+void _signalGo(String file, int code) {
+  File('$file.tmp').writeAsStringSync('$code');
+  File('$file.tmp').renameSync(file);
+}
 
 Future<String> _git(String dir, List<String> arguments) async {
   final result = await Process.run('git', arguments, workingDirectory: dir);
@@ -65,10 +79,19 @@ void main() {
         if (pid != null) Process.killPid(pid, ProcessSignal.sigkill);
       }
       for (final id in ['T-0001', 'T-0002']) {
-        File(path('go-$id')).writeAsStringSync('1');
+        _signalGo(path('go-$id'), 1);
       }
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-      await root.delete(recursive: true);
+      // An agent may still be writing its last lines; try until it is done.
+      final waited = Stopwatch()..start();
+      while (true) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        try {
+          await root.delete(recursive: true);
+          break;
+        } on FileSystemException {
+          if (waited.elapsed > _patience) rethrow;
+        }
+      }
     });
     final repo = path('repo');
     await Directory(repo).create();
@@ -132,9 +155,10 @@ dispatcher:
   /// Lets the fake agent of [id] finish with [code] and waits until the
   /// launcher has dealt with its end.
   Future<void> finish(String id, int code, {ProcessAgentLauncher? by}) async {
-    File(path('go-$id')).writeAsStringSync('$code');
+    _signalGo(path('go-$id'), code);
     final agents = by ?? launcher;
-    for (var i = 0; i < 100; i++) {
+    final waited = Stopwatch()..start();
+    while (waited.elapsed < _patience) {
       await agents.tick();
       if (!File(p.join(stateDir, 'agents', 'demo', '$id.json')).existsSync()) return;
       await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -145,7 +169,8 @@ dispatcher:
   Future<String> logOf(String id) async => (await launcher.agentLog(ItemId(id)))!.lines.join('\n');
 
   Future<void> waitForLog(String id, String text) async {
-    for (var i = 0; i < 100; i++) {
+    final waited = Stopwatch()..start();
+    while (waited.elapsed < _patience) {
       if ((await launcher.agentLog(ItemId(id)))?.lines.any((l) => l.contains(text)) ?? false) return;
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
@@ -415,7 +440,8 @@ dispatcher:
     await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
     await launcher.launch((await plan()).assignmentFor('T-0001'));
     await waitForLog('T-0001', 'agent wt-1');
-    for (var i = 0; i < 100 && !File(path('child-T-0001')).existsSync(); i++) {
+    final waited = Stopwatch()..start();
+    while (!File(path('child-T-0001')).existsSync() && waited.elapsed < _patience) {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
     final child = int.parse(File(path('child-T-0001')).readAsStringSync().split(' ').last.trim());

@@ -28,12 +28,13 @@ void main() {
   /// Polls [check] until it stops throwing (registry and file changes are
   /// picked up asynchronously).
   Future<void> eventually(FutureOr<void> Function() check) async {
-    for (var attempt = 0; ; attempt++) {
+    final waited = Stopwatch()..start();
+    while (true) {
       try {
         await check();
         return;
       } catch (_) {
-        if (attempt >= 100) rethrow;
+        if (waited.elapsed > const Duration(seconds: 30)) rethrow;
         await Future<void>.delayed(const Duration(milliseconds: 100));
       }
     }
@@ -130,39 +131,54 @@ projects:
   });
 
   test('unknown projects are not_found; broken ones answer with their error; the token applies', () async {
-    expect(() => api.project('nope').items(), throwsA(apiError(404, 'not_found')));
-    expect(() => api.project('broken').items(), throwsA(apiError(500, 'configuration')));
-    expect(() => api.project('gone').items(), throwsA(apiError(404, 'not_found')));
-    expect(() => HttpProjectsApi(server.uri).projects(), throwsA(apiError(401, 'unauthorized')));
-    expect(() => HttpProjectsApi(server.uri).project('b').items(), throwsA(apiError(401, 'unauthorized')));
+    await expectLater(() => api.project('nope').items(), throwsA(apiError(404, 'not_found')));
+    await expectLater(() => api.project('broken').items(), throwsA(apiError(500, 'configuration')));
+    await expectLater(() => api.project('gone').items(), throwsA(apiError(404, 'not_found')));
+    await expectLater(() => HttpProjectsApi(server.uri).projects(), throwsA(apiError(401, 'unauthorized')));
+    await expectLater(() => HttpProjectsApi(server.uri).project('b').items(), throwsA(apiError(401, 'unauthorized')));
     final health = await http.get(server.uri.replace(path: ApiPaths.health));
     expect(jsonDecode(health.body), {'ok': true});
     expect((await http.get(server.uri.replace(path: '/api/p/b/health'))).statusCode, 401);
   });
 
   test('change events arrive on the socket of their project only', () async {
-    final alphaEvents = <BacklogChangeEvent>[];
-    final alpha = api.project('alpha').changes().listen(alphaEvents.add);
+    final alpha = StreamIterator(api.project('alpha').changes());
     addTearDown(alpha.cancel);
     final beta = StreamIterator(api.project('b').changes());
     addTearDown(beta.cancel);
+    final alphaPaths = <String>[];
 
-    // Touch a doc in beta until its change arrives (the socket connects
-    // asynchronously).
-    final probe = File(p.join(dir.path, 'beta', 'backlog', 'docs', 'probe.md'));
-    final pending = beta.moveNext();
-    for (var attempt = 0; ; attempt++) {
-      probe.writeAsStringSync('$attempt');
-      final arrived = await Future.any([
-        pending.then((_) => true),
-        Future<bool>.delayed(const Duration(milliseconds: 200), () => false),
-      ]);
-      if (arrived) break;
-      expect(attempt, lessThan(50), reason: 'no change event within 10 s');
+    /// Touches [name] in the docs of [project] until a change event naming
+    /// it arrives on [socket] (the socket connects asynchronously); returns
+    /// the paths of every event seen on the way.
+    Future<List<String>> probe(String project, StreamIterator<BacklogChangeEvent> socket, String name) async {
+      final file = File(p.join(dir.path, project, 'backlog', 'docs', name));
+      final seen = <String>[];
+      final waited = Stopwatch()..start();
+      var pending = socket.moveNext();
+      for (var attempt = 0; ; attempt++) {
+        file.writeAsStringSync('$attempt');
+        final arrived = await Future.any([
+          pending.then((_) => true),
+          Future<bool>.delayed(const Duration(milliseconds: 200), () => false),
+        ]);
+        if (!arrived) {
+          expect(waited.elapsed, lessThan(const Duration(seconds: 30)), reason: 'no change event of $project');
+          continue;
+        }
+        seen.addAll(socket.current.paths);
+        if (socket.current.paths.contains('docs/$name')) return seen;
+        pending = socket.moveNext();
+      }
     }
-    expect(beta.current.paths, ['docs/probe.md']);
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    expect(alphaEvents, isEmpty);
+
+    alphaPaths.addAll(await probe('alpha', alpha, 'alpha-before.md'));
+    expect(await probe('beta', beta, 'beta.md'), contains('docs/beta.md'));
+    // Events of one project arrive in order: once this one is in, a leaked
+    // event of beta would be too.
+    alphaPaths.addAll(await probe('alpha', alpha, 'alpha-after.md'));
+    expect(alphaPaths, containsAll(['docs/alpha-before.md', 'docs/alpha-after.md']));
+    expect(alphaPaths, isNot(contains('docs/beta.md')));
   });
 
   test('projects added to or removed from the registry start and stop without a restart', () async {
@@ -178,7 +194,7 @@ projects:
     await eventually(() async => expect((await api.projects()).map((project) => project.id), ['b', 'gamma']));
     await api.project('gamma').createItem(const NewItemRequest(title: 'In gamma'));
     expect((await api.project('gamma').items()).single.title, 'In gamma');
-    expect(() => api.project('alpha').items(), throwsA(apiError(404, 'not_found')));
+    await expectLater(() => api.project('alpha').items(), throwsA(apiError(404, 'not_found')));
     final fallback = HttpBacklogApi(server.uri, token: 'secret');
     addTearDown(fallback.close);
     expect((await fallback.workflow()).statuses, isNotEmpty);

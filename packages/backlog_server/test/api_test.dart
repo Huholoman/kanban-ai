@@ -182,7 +182,7 @@ void main() {
     expect(board.layout, ViewLayoutDto.kanban);
     expect(board.groupBy, 'status');
     expect(board.groups.firstWhere((g) => g.key == 'in-progress').items.single.title, 'Doing');
-    expect(() => api.view('nope'), throwsA(apiError(404, 'not_found')));
+    await expectLater(() => api.view('nope'), throwsA(apiError(404, 'not_found')));
   });
 
   test('a view moves between sections', () async {
@@ -190,7 +190,10 @@ void main() {
     expect(moved.section, 'Planning');
     expect((await api.views()).firstWhere((v) => v.id == 'board').section, 'Planning');
     expect((await api.updateView('board', const ViewUpdateRequest.section(null))).section, isNull);
-    expect(() => api.updateView('nope', const ViewUpdateRequest.section('X')), throwsA(apiError(404, 'not_found')));
+    await expectLater(
+      () => api.updateView('nope', const ViewUpdateRequest.section('X')),
+      throwsA(apiError(404, 'not_found')),
+    );
   });
 
   test('a view gets its columns from the app and back to the default', () async {
@@ -201,7 +204,10 @@ void main() {
     final restored = await api.view('board');
     expect(restored.columns, isNull);
     expect(restored.groups.map((g) => g.key), containsAll(['backlog', 'todo', 'done']));
-    expect(() => api.updateView('board', const ViewUpdateRequest()), throwsA(apiError(400, 'invalid_input')));
+    await expectLater(
+      () => api.updateView('board', const ViewUpdateRequest()),
+      throwsA(apiError(400, 'invalid_input')),
+    );
   });
 
   test('a filter from the app is saved as a new view', () async {
@@ -274,21 +280,21 @@ void main() {
   test('errors carry type and status', () async {
     await api.createItem(const NewItemRequest(title: 'A'));
     await api.createItem(const NewItemRequest(title: 'B'));
-    expect(() => api.item('zzzz'), throwsA(apiError(404, 'not_found')));
-    expect(() => api.item('S'), throwsA(apiError(409, 'ambiguous_reference')));
-    expect(
+    await expectLater(() => api.item('zzzz'), throwsA(apiError(404, 'not_found')));
+    await expectLater(() => api.item('S'), throwsA(apiError(409, 'ambiguous_reference')));
+    await expectLater(
       () => api.createItem(const NewItemRequest(title: 'Bad', priority: 'p9')),
       throwsA(apiError(400, 'invalid_input')),
     );
     final a = (await api.items()).first.id;
-    expect(
+    await expectLater(
       () => api.updateItem(a, const ItemUpdateRequest(changes: ['not an edit'])),
       throwsA(apiError(400, 'invalid_input')),
     );
   });
 
   test('a token protects the api but not the health check', () async {
-    expect(() => client(serverToken: 'secret').items(), throwsA(apiError(401, 'unauthorized')));
+    await expectLater(() => client(serverToken: 'secret').items(), throwsA(apiError(401, 'unauthorized')));
     expect(await client(token: 'secret', serverToken: 'secret').items(), isEmpty);
     final health = await inMemory(
       BacklogServer.buildHandler(projects: ProjectHub.single(BacklogHost(dir.path)), token: 'secret'),
@@ -317,7 +323,7 @@ void main() {
       expect((await api.item('S-1')).item.path, 'items/S-1-renamed.md');
       itemFile('S-2.md').deleteSync();
       expect(await titles(), ['Cc']);
-      expect(() => api.item('S-2'), throwsA(apiError(404, 'not_found')));
+      await expectLater(() => api.item('S-2'), throwsA(apiError(404, 'not_found')));
     });
 
     test('own writes and writes of an agent through the CLI are seen at once', () async {

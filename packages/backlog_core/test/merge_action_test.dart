@@ -1,3 +1,5 @@
+// Real processes and git: slow when `mise run check` runs every suite at once.
+@Timeout(Duration(minutes: 2))
 @TestOn('linux || mac-os')
 library;
 
@@ -400,7 +402,9 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
     final job = (await plan()).actionStart('T-0001', 'Merge', trigger: ActionTrigger.onEnter, from: 'review').job!;
     expect(job.worktree, 'wt-2');
     await launcher.runJob(job);
-    for (var i = 0; i < 100 && File(p.join(stateDir, 'agents', 'demo', 'T-0001.json')).existsSync(); i++) {
+    final waited = Stopwatch()..start();
+    while (File(p.join(stateDir, 'agents', 'demo', 'T-0001.json')).existsSync() &&
+        waited.elapsed < const Duration(seconds: 30)) {
       await Future<void>.delayed(const Duration(milliseconds: 50));
       await launcher.tick();
     }
