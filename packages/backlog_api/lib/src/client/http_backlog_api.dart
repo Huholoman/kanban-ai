@@ -7,6 +7,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../model/agent_log_update_dto.dart';
 import '../model/discussion_dto.dart';
 import '../model/dispatch_dto.dart';
+import '../model/epic_dto.dart';
 import '../model/item_dto.dart';
 import '../model/json.dart';
 import '../model/misc_dto.dart';
@@ -99,6 +100,14 @@ final class HttpBacklogApi implements BacklogApi {
   @override
   Future<DispatchDto> startAgent(String reference, {bool fresh = false}) async => DispatchDto.fromJson(
     asJson(await _send('POST', ApiPaths.dispatchStart, DispatchRequest(reference, fresh: fresh).toJson())),
+  );
+
+  @override
+  Future<EpicDto> epic(String reference) async => EpicDto.fromJson(asJson(await _get(ApiPaths.epic(reference))));
+
+  @override
+  Future<DispatchDto> startEpic(String reference, {bool fresh = false}) async => DispatchDto.fromJson(
+    asJson(await _send('POST', ApiPaths.dispatchEpic, DispatchRequest(reference, fresh: fresh).toJson())),
   );
 
   @override

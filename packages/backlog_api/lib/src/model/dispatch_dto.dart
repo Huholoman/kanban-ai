@@ -13,6 +13,7 @@ final class AgentRunDto {
     this.branch,
     this.action,
     this.kind = 'agent',
+    this.epic = false,
   });
 
   factory AgentRunDto.fromJson(Json json) => AgentRunDto(
@@ -25,6 +26,7 @@ final class AgentRunDto {
     branch: json.optionalString('branch'),
     action: json.optionalString('action'),
     kind: json.optionalString('kind') ?? 'agent',
+    epic: json.boolean('epic'),
   );
 
   final String item;
@@ -45,6 +47,9 @@ final class AgentRunDto {
   /// `agent` (also for prompt actions), `command` or `builtin`.
   final String kind;
 
+  /// The item's agent implements it as an epic: all items under it.
+  final bool epic;
+
   Json toJson() => {
     'item': item,
     'worktree': worktree,
@@ -55,6 +60,7 @@ final class AgentRunDto {
     'branch': branch,
     'action': action,
     'kind': kind,
+    'epic': epic,
   };
 }
 
@@ -222,6 +228,7 @@ final class DispatchDto {
     this.spareWorktrees = 0,
     this.runs = const [],
     this.pendingActions = const [],
+    this.epics = const [],
   });
 
   /// No `dispatcher` section in `backlog.yaml`.
@@ -244,6 +251,7 @@ final class DispatchDto {
     spareWorktrees: json.integer('spare_worktrees'),
     runs: json.objects('runs').map(AgentRunDto.fromJson).toList(),
     pendingActions: json.objects('pending_actions').map(PendingActionDto.fromJson).toList(),
+    epics: json.strings('epics'),
   );
 
   final bool configured;
@@ -286,6 +294,9 @@ final class DispatchDto {
 
   /// `on_enter` actions waiting to run.
   final List<PendingActionDto> pendingActions;
+
+  /// Unfinished epics one agent implements (running or last run), ids.
+  final List<String> epics;
 
   /// The `on_enter` actions waiting to run for [item].
   List<PendingActionDto> pendingFor(String item) => [
@@ -351,6 +362,7 @@ final class DispatchDto {
     'spare_worktrees': spareWorktrees,
     'runs': [for (final run in runs) run.toJson()],
     'pending_actions': [for (final pending in pendingActions) pending.toJson()],
+    'epics': epics,
   };
 }
 

@@ -106,6 +106,7 @@ abstract final class DtoMapper {
     branch: run.branch,
     action: run.action,
     kind: run.kind.id,
+    epic: run.epic,
   );
 
   static ItemDetailDto detail(
@@ -268,6 +269,29 @@ abstract final class DtoMapper {
           action: pending.action,
           status: pending.status,
           since: pending.since,
+        ),
+    ],
+    epics: [for (final id in plan.epics) id.value]..sort(),
+  );
+
+  static EpicDto epic(EpicPlan plan) => EpicDto(
+    epic: plan.id.value,
+    title: plan.epic.item.title,
+    branch: plan.branch,
+    verdict: plan.verdict.name,
+    problems: plan.problems,
+    warnings: plan.warnings,
+    finished: plan.finished,
+    next: plan.next?.id.value,
+    members: [
+      for (final member in plan.members)
+        EpicMemberDto(
+          id: member.id.value,
+          title: member.item.item.title,
+          status: member.item.item.status,
+          state: member.state.id,
+          after: [for (final id in member.after) id.value],
+          waits: member.waits,
         ),
     ],
   );

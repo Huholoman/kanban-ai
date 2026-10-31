@@ -509,6 +509,30 @@ void main() {
       expect((await api.item(a.item.id)).item.status, 'review', reason: 'claiming keeps an active status');
     });
 
+    test('an epic: checked, started as one agent, its items are not offered on their own', () async {
+      final api = dispatching();
+      final epic = await api.createItem(const NewItemRequest(title: 'Payments', type: 'epic'));
+      final empty = await api.createItem(const NewItemRequest(title: 'Empty', type: 'epic'));
+      final task = await api.createItem(NewItemRequest(title: 'Model', status: 'todo', parent: epic.item.id));
+
+      final check = await api.epic(epic.item.id);
+      expect(check.verdict, 'ok');
+      expect(check.branch, 'agent/${epic.item.id}');
+      expect(check.next, task.item.id);
+      expect(check.members.single.state, 'to-do');
+      expect((await api.epic(empty.item.id)).isForbidden, isTrue);
+      expect((await api.dispatch()).assignments.single.item, task.item.id);
+
+      await expectLater(api.startEpic(empty.item.id), throwsA(apiError(400, 'invalid_input')));
+      final started = await api.startEpic(epic.item.id);
+      expect(launcher.started, ['${epic.item.id}@w1+epic']);
+      expect(started.runFor(epic.item.id)!.epic, isTrue);
+      expect(started.epics, [epic.item.id]);
+      expect(started.assignments, isEmpty);
+      expect((await api.item(epic.item.id)).item.claim!.agent, 'w1');
+      await expectLater(api.startEpic(epic.item.id), throwsA(apiError(409, 'unavailable')));
+    });
+
     test('items that are not ready cannot be started', () async {
       final api = dispatching();
       final item = await api.createItem(const NewItemRequest(title: 'Later', status: 'backlog'));
@@ -640,7 +664,7 @@ final class _FakeLauncher extends AgentLauncher {
     await (await host.backlog).claims.claim(
       assignment.id.value,
       assignment.agent,
-      force: action != null,
+      force: action != null || assignment.epic,
       mirror: action == null,
     );
     started.add(assignment.key);
@@ -652,12 +676,20 @@ final class _FakeLauncher extends AgentLauncher {
       log: '/logs/${assignment.id}.log',
       agent: assignment.agentProfile.name,
       action: action?.name,
+      epic: assignment.epic,
     );
   }
 
   @override
   Future<DispatchConditions> conditions(DispatcherConfig config, String backlogRoot, BacklogSnapshot snapshot) async =>
-      DispatchConditions(runs: _runs.values.toList(), sessions: sessions);
+      DispatchConditions(
+        runs: _runs.values.toList(),
+        sessions: sessions,
+        epics: {
+          for (final run in _runs.values)
+            if (run.epic) run.item,
+        },
+      );
 
   @override
   Future<bool> stop(ItemId item) async {

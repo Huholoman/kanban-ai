@@ -31,6 +31,7 @@ ItemDto item(
   bool needsHuman = false,
   String review = 'none',
   int reviewFindings = 0,
+  Progress children = Progress.none,
 }) => ItemDto(
   id: id,
   title: 'Item $id',
@@ -48,6 +49,7 @@ ItemDto item(
   needsHuman: needsHuman,
   review: review,
   reviewFindings: reviewFindings,
+  children: children,
   body: body,
 );
 
@@ -363,6 +365,22 @@ final class FakeBacklogApi implements BacklogApi {
     if (failAction case final error?) throw error;
     actionsRun.add('$reference $name');
     return plan = afterAction ?? plan;
+  }
+
+  /// What [epic] answers per item (404 without one); [startEpic] records its
+  /// calls and answers with [afterStart].
+  final epics = <String, EpicDto>{};
+  final startedEpics = <String>[];
+
+  @override
+  Future<EpicDto> epic(String reference) async =>
+      epics[reference] ?? (throw BacklogApiException(404, 'not_found', 'No item $reference.'));
+
+  @override
+  Future<DispatchDto> startEpic(String reference, {bool fresh = false}) async {
+    if (failStart case final error?) throw error;
+    startedEpics.add(reference);
+    return plan = afterStart ?? plan;
   }
 
   @override

@@ -59,6 +59,7 @@ final class ApiHandler {
           ..post('$items/<ref>/done', _complete)
           ..post('$items/<ref>/comments', _comment)
           ..post('$items/<ref>/actions/<name>', _runAction)
+          ..get('$items/<ref>/epic', _epic)
           ..get(views, _views)
           ..post(views, _createView)
           ..get('$views/<id>', _view)
@@ -67,6 +68,7 @@ final class ApiHandler {
           ..get(local(ApiPaths.dispatch), _dispatch)
           ..post(local(ApiPaths.dispatchStart), _startAgent)
           ..post(local(ApiPaths.dispatchStop), _stopAgent)
+          ..post(local(ApiPaths.dispatchEpic), _startEpic)
           ..get('${local(ApiPaths.dispatch)}/log/<ref>', _agentLog)
           ..get('${local(ApiPaths.dispatch)}/log/<ref>/live', _agentLogLive);
     return _guard(router.call);
@@ -208,6 +210,15 @@ final class ApiHandler {
   Future<Response> _startAgent(Request request) async {
     final payload = DispatchRequest.fromJson(await _body(request));
     await _running().start(payload.item, fresh: payload.fresh);
+    return _json((await _plan()).toJson());
+  }
+
+  Future<Response> _epic(Request request, String ref) async =>
+      _json(DtoMapper.epic(await (await _host.backlog).claims.epic(ref)).toJson());
+
+  Future<Response> _startEpic(Request request) async {
+    final payload = DispatchRequest.fromJson(await _body(request));
+    await _running().startEpic(payload.item, fresh: payload.fresh);
     return _json((await _plan()).toJson());
   }
 

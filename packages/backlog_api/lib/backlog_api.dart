@@ -8,6 +8,7 @@ export 'src/model/action_dto.dart';
 export 'src/model/agent_log_update_dto.dart';
 export 'src/model/discussion_dto.dart';
 export 'src/model/dispatch_dto.dart';
+export 'src/model/epic_dto.dart';
 export 'src/model/item_dto.dart';
 export 'src/model/json.dart' show Json, MalformedPayloadException;
 export 'src/model/misc_dto.dart';

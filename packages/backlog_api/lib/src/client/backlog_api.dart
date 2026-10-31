@@ -1,6 +1,7 @@
 import '../model/agent_log_update_dto.dart';
 import '../model/discussion_dto.dart';
 import '../model/dispatch_dto.dart';
+import '../model/epic_dto.dart';
 import '../model/item_dto.dart';
 import '../model/misc_dto.dart';
 import '../model/project_dto.dart';
@@ -54,6 +55,16 @@ abstract interface class BacklogApi {
   /// worktree gets a new session.
   Future<DispatchDto> startAgent(String reference, {bool fresh = false});
 
+  /// Whether one agent can implement the epic [reference] (any item with
+  /// children) on one branch, and how far its items are.
+  Future<EpicDto> epic(String reference);
+
+  /// Starts one agent that implements the epic [reference] — all items under
+  /// it, on its branch, in one session — and returns the new plan; refused
+  /// when [epic] says it cannot start. It continues the epic's last session
+  /// when it can, unless [fresh].
+  Future<DispatchDto> startEpic(String reference, {bool fresh = false});
+
   /// Starts the action [name] (`dispatcher.actions`) on [reference] now and
   /// returns the new plan.
   Future<DispatchDto> runAction(String reference, String name);
@@ -101,6 +112,7 @@ abstract final class ApiPaths {
   static const dispatch = '/api/dispatch';
   static const dispatchStart = '/api/dispatch/start';
   static const dispatchStop = '/api/dispatch/stop';
+  static const dispatchEpic = '/api/dispatch/epic';
   static const events = '/api/events';
   static const health = '/api/health';
   static const projects = '/api/projects';
@@ -114,6 +126,9 @@ abstract final class ApiPaths {
   static String item(String reference) => '$items/${Uri.encodeComponent(reference)}';
 
   static String itemAction(String reference, String action) => '${item(reference)}/$action';
+
+  /// The implementation of [reference] as an epic.
+  static String epic(String reference) => '${item(reference)}/epic';
 
   /// Runs the configured action [name] on [reference].
   static String runAction(String reference, String name) => '${item(reference)}/actions/${Uri.encodeComponent(name)}';
