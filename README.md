@@ -269,7 +269,7 @@ The open project is in the URL after `#`: `http://host:8640/?token=…#/p/kanban
 - **Columns:** for a view grouped by a field, the columns button in the header picks which groups are shown and in what order (drag to reorder); it is saved as `columns:` in the view's YAML, *Default* removes it.
 - **Theme:** light / dark / system switch in the header (for the session; the default comes from `appearance.mode`).
 - **Lint:** a summary at the bottom of the left panel ("Lint: 2 warnings"); clicking it lists the problems with links to the items.
-- **Live updates:** the server watches the folder and pushes changes over a WebSocket. The board shows straight away what an agent did in the CLI, what came from `git pull` and what changed in an editor. Edits of `backlog.yaml` apply without a restart. Each screen reloads only what a change concerns (an edited view does not reload the items, a new plan does not reload lint).
+- **Live updates:** the server watches the folder and pushes changes over a WebSocket. The board shows straight away what an agent did in the CLI, what came from `git pull` and what changed in an editor. Edits of `backlog.yaml` apply without a restart. Each screen reloads only what a change concerns (an edited view does not reload the items, a new plan does not reload lint), and the current view comes as item ids filled in from the items the board already has.
 
 ## Backlog format
 

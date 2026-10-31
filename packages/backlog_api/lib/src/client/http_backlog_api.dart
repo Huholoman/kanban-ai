@@ -81,8 +81,9 @@ final class HttpBacklogApi implements BacklogApi {
   Future<List<ViewSummaryDto>> views() async => _list(await _get(ApiPaths.views)).map(ViewSummaryDto.fromJson).toList();
 
   @override
-  Future<ViewResultDto> view(String id, {String? groupBy}) async =>
-      ViewResultDto.fromJson(asJson(await _get(ApiPaths.view(id), query: {'group_by': ?groupBy})));
+  Future<ViewResultDto> view(String id, {String? groupBy, bool idsOnly = false}) async => ViewResultDto.fromJson(
+    asJson(await _get(ApiPaths.view(id), query: {'group_by': ?groupBy, if (idsOnly) 'ids': 'true'})),
+  );
 
   @override
   Future<ViewSummaryDto> updateView(String id, ViewUpdateRequest request) async =>

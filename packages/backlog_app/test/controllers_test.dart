@@ -149,6 +149,14 @@ void main() {
       expect(board.workflow, isNotNull);
     });
 
+    test('fills the view from the items by id', () async {
+      final full = await api.view('board');
+      final named = await api.view('board', idsOnly: true);
+      expect(named.groups.first.items, isEmpty);
+      expect(named.groups.first.ids, full.groups.first.ids);
+      expect(board.result!.toJson(), full.toJson(), reason: 'the board asks for ids and fills them in');
+    });
+
     test('an unreachable server is an error, not a crash', () async {
       final broken = BoardController(_UnreachableApi(api));
       addTearDown(broken.dispose);
@@ -351,8 +359,8 @@ final class _GatedApi implements BacklogApi {
       _held('items', () => _inner.items(includeDone: includeDone));
 
   @override
-  Future<ViewResultDto> view(String id, {String? groupBy}) =>
-      _held('view $id', () => _inner.view(id, groupBy: groupBy));
+  Future<ViewResultDto> view(String id, {String? groupBy, bool idsOnly = false}) =>
+      _held('view $id', () => _inner.view(id, groupBy: groupBy, idsOnly: idsOnly));
 
   @override
   Stream<BacklogChangeEvent> changes() => _inner.changes();

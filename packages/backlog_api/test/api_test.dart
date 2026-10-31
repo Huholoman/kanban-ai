@@ -212,6 +212,15 @@ void main() {
         ],
       );
       expect(roundTrip(view.toJson(), ViewResultDto.fromJson).toJson(), view.toJson());
+      final named = roundTrip({
+        ...view.toJson(),
+        'groups': [
+          for (final group in view.groups) ViewGroupDto.ids(group.key, [...group.ids, 'X-gone']).toJson(),
+        ],
+      }, ViewResultDto.fromJson);
+      expect(named.groups.first.items, isEmpty);
+      expect(named.groups.first.ids, [item.id, 'X-gone']);
+      expect(named.resolve({item.id: item}).toJson(), view.toJson(), reason: 'unknown ids are left out');
 
       const workflow = WorkflowDto(
         statuses: [StatusDto(id: 'todo', category: StatusCategoryDto.open, pickable: true)],

@@ -159,6 +159,7 @@ final class ApiHandler {
     DtoMapper.view(
       await (await _host.backlog).views.run(id, groupBy: request.url.queryParameters['group_by']),
       reviewing: _reviewing,
+      idsOnly: request.url.queryParameters['ids'] == 'true',
     ).toJson(),
   );
 

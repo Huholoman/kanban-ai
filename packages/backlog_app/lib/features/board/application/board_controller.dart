@@ -280,7 +280,8 @@ class BoardController extends ChangeNotifier {
       // it is still the view to show (it may have been deleted meanwhile).
       final groupBy = groupByOverride;
       final guessed = selectedViewId;
-      final early = guessed == null ? null : _api.view(guessed, groupBy: groupBy);
+      // The view names its items only; they come from the index.
+      final early = guessed == null ? null : _api.view(guessed, groupBy: groupBy, idsOnly: true);
       unawaited(early?.then<void>((_) {}, onError: (Object _) {})); // an unused answer may fail silently
       final workflowRequest = any(const {BacklogPart.workflow}) ? _api.workflow() : null;
       final viewsRequest = any(const {BacklogPart.workflow, BacklogPart.items, BacklogPart.views})
@@ -299,14 +300,14 @@ class BoardController extends ChangeNotifier {
       final id = _pickView(loadedViews);
       final loadedResult = id == null
           ? null
-          : await (id == guessed && early != null ? early : _api.view(id, groupBy: groupBy));
+          : await (id == guessed && early != null ? early : _api.view(id, groupBy: groupBy, idsOnly: true));
       if (generation != _generation) return; // a newer refresh won
       workflow = loadedWorkflow;
       views = loadedViews;
       lint = loadedLint;
       index = {for (final item in loadedItems) item.id: item};
       selectedViewId = id;
-      result = loadedResult;
+      result = loadedResult?.resolve(index);
       error = null;
       _stale.removeAll(wanted);
     } catch (e) {

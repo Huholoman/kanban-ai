@@ -184,6 +184,9 @@ void main() {
     expect(board.layout, ViewLayoutDto.kanban);
     expect(board.groupBy, 'status');
     expect(board.groups.firstWhere((g) => g.key == 'in-progress').items.single.title, 'Doing');
+    final named = await api.view('board', idsOnly: true);
+    expect([for (final group in named.groups) ...group.items], isEmpty);
+    expect([for (final group in named.groups) group.ids], [for (final group in board.groups) group.ids]);
     await expectLater(() => api.view('nope'), throwsA(apiError(404, 'not_found')));
   });
 
