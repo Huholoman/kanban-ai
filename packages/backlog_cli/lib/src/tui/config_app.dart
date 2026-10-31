@@ -154,6 +154,7 @@ final class ConfigFileScreen extends MenuScreen {
     return [
       editor.location,
       if (problem != null) Style.red(draft.changed ? 'Not valid: $problem' : 'The file is not valid: $problem'),
+      if (!draft.isYaml) Style.red('It is not even YAML, so nothing can be edited here: fix it in a text editor.'),
       if (draft.changed) Style.yellow('Unsaved changes ($_changedLines changed lines).'),
     ];
   }
