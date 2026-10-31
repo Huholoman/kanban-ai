@@ -91,8 +91,9 @@ final class HttpBacklogApi implements BacklogApi {
   Future<DispatchDto> dispatch() async => DispatchDto.fromJson(asJson(await _get(ApiPaths.dispatch)));
 
   @override
-  Future<DispatchDto> startAgent(String reference) async =>
-      DispatchDto.fromJson(asJson(await _send('POST', ApiPaths.dispatchStart, DispatchRequest(reference).toJson())));
+  Future<DispatchDto> startAgent(String reference, {bool fresh = false}) async => DispatchDto.fromJson(
+    asJson(await _send('POST', ApiPaths.dispatchStart, DispatchRequest(reference, fresh: fresh).toJson())),
+  );
 
   @override
   Future<DispatchDto> stopAgent(String reference) async =>

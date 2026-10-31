@@ -416,6 +416,40 @@ void main() {
       await expectLater(api.stopAgent(b.item.id), throwsA(apiError(404, 'not_found')));
     });
 
+    test('a start continues the last session of the item unless fresh', () async {
+      final config = File(p.join(dir.path, 'backlog.yaml'));
+      config.writeAsStringSync(
+        config.readAsStringSync().replaceFirst(
+          '  command: agent {id}\n',
+          '  agent: bot\n  agents:\n    bot:\n      command: bot {prompt}\n      output: claude-stream-json\n'
+              '      resume: --resume {session}\n',
+        ),
+      );
+      host.reload();
+      final api = dispatching();
+      final a = await api.createItem(const NewItemRequest(title: 'A', status: 'todo'));
+      launcher.sessions = {
+        ItemId(a.item.id): AgentSession(
+          item: ItemId(a.item.id),
+          id: 'sess-a',
+          worktree: 'w2',
+          agent: 'bot',
+          startedAt: DateTime.utc(2026, 10, 29, 10),
+          reason: 'was stopped by a person',
+        ),
+      };
+      final plan = await api.dispatch();
+      expect(plan.assignments.single.resume, 'sess-a');
+      expect(plan.assignments.single.worktree, 'w2');
+      expect(plan.sessionFor(a.item.id)!.worktree, 'w2');
+
+      await api.startAgent(a.item.id, fresh: true);
+      expect(launcher.started, ['${a.item.id}@w1']);
+      await api.stopAgent(a.item.id);
+      await api.startAgent(a.item.id);
+      expect(launcher.started.last, '${a.item.id}@w2+resume');
+    });
+
     test('items that are not ready cannot be started', () async {
       final api = dispatching();
       final item = await api.createItem(const NewItemRequest(title: 'Later', status: 'backlog'));
@@ -443,6 +477,7 @@ final class _FakeLauncher extends AgentLauncher {
   final started = <String>[];
   final stopped = <String>[];
   final _runs = <ItemId, AgentRun>{};
+  Map<ItemId, AgentSession> sessions = const {};
 
   @override
   Future<void> launch(DispatchAssignment assignment) async {
@@ -460,7 +495,7 @@ final class _FakeLauncher extends AgentLauncher {
 
   @override
   Future<DispatchConditions> conditions(DispatcherConfig config, String backlogRoot, BacklogSnapshot snapshot) async =>
-      DispatchConditions(runs: _runs.values.toList());
+      DispatchConditions(runs: _runs.values.toList(), sessions: sessions);
 
   @override
   Future<bool> stop(ItemId item) async {

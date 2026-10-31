@@ -75,15 +75,17 @@ final class Dispatcher {
   /// plan; errors go to `onError` and leave the previous plan in place.
   Future<DispatchPlan?> evaluate() => _serialized(_evaluate);
 
-  /// Starts the ready item [reference] now, in the first free worktree,
-  /// whatever the mode, and returns what was started. Fails with
+  /// Starts the ready item [reference] now, whatever the mode, and returns
+  /// what was started: the agent continues the item's last session in its
+  /// worktree when it can, unless [fresh]; else it starts in the first free
+  /// worktree. Fails with
   /// `NotFoundException` without a dispatcher, `InvalidInputException` when
   /// the item is not ready, `UnavailableException` when no worktree is free
   /// and `ClaimConflictException` when someone else claimed it first.
-  Future<DispatchAssignment> start(String reference) => _serialized(() async {
+  Future<DispatchAssignment> start(String reference, {bool fresh = false}) => _serialized(() async {
     final plan = await _evaluate(launchAuto: false);
     if (plan == null) throw const NotFoundException('No dispatcher is configured in backlog.yaml.');
-    final assignment = plan.assignmentFor(reference);
+    final assignment = plan.assignmentFor(reference, fresh: fresh);
     await _launcher.launch(assignment);
     _launched.add(assignment.key);
     await _evaluate();

@@ -52,11 +52,21 @@ class DispatchController extends ChangeNotifier {
   bool canStart(ItemDto item) =>
       plan.canStart && item.ready && !item.isDone && runFor(item.id) == null && !pending.contains(item.id);
 
-  /// Starts an agent for [item] in the first free worktree.
-  Future<void> startAgent(String item) => _act(item, () async {
-    plan = await _api.startAgent(item);
+  /// Whether a start of [item] would continue the session of its last
+  /// agent: there is one and its worktree is free.
+  bool canResume(String item) {
+    final session = plan.sessionFor(item);
+    return session != null && plan.worktrees.any((w) => w.name == session.worktree && w.isFree);
+  }
+
+  /// Starts an agent for [item]: it continues the item's last session when
+  /// it can, unless [fresh]; otherwise a new one in the first free worktree.
+  Future<void> startAgent(String item, {bool fresh = false}) => _act(item, () async {
+    final resuming = !fresh && canResume(item);
+    plan = await _api.startAgent(item, fresh: fresh);
     final run = plan.runFor(item);
-    _notices.add(run == null ? 'Started an agent for $item.' : 'Started ${run.agent} for $item in ${run.worktree}.');
+    final verb = resuming ? 'Continued' : 'Started';
+    _notices.add(run == null ? '$verb an agent for $item.' : '$verb ${run.agent} for $item in ${run.worktree}.');
   });
 
   /// Stops the agent of [item]; the item goes back to the queue, held.

@@ -268,6 +268,9 @@ final class FakeBacklogApi implements BacklogApi {
   DispatchDto? afterStop;
   Object? failStart;
   final started = <String>[];
+
+  /// Items started with `fresh: true`.
+  final startedFresh = <String>[];
   final stopped = <String>[];
   AgentLogDto? log;
 
@@ -281,9 +284,10 @@ final class FakeBacklogApi implements BacklogApi {
   Future<DispatchDto> dispatch() async => plan;
 
   @override
-  Future<DispatchDto> startAgent(String reference) async {
+  Future<DispatchDto> startAgent(String reference, {bool fresh = false}) async {
     if (failStart case final error?) throw error;
     started.add(reference);
+    if (fresh) startedFresh.add(reference);
     return plan = afterStart ?? plan;
   }
 

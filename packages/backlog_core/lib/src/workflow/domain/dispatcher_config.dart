@@ -61,26 +61,37 @@ final class TextTemplate {
 /// `{placeholder}`s are filled in per item. `{{` and `}}` stand for literal
 /// braces.
 final class CommandTemplate {
-  CommandTemplate(List<String> arguments, {String label = 'dispatcher.command'})
+  CommandTemplate(List<String> arguments, {String label = 'dispatcher.command', List<String> known = placeholders})
     : arguments = List.unmodifiable(arguments) {
     if (arguments.isEmpty || arguments.first.trim().isEmpty) {
       throw ConfigurationException('$label must not be empty.');
     }
     for (final argument in arguments) {
-      _validate(argument, placeholders, label);
+      _validate(argument, known, label);
     }
   }
 
   /// Splits [command] into arguments like a POSIX shell would (whitespace,
   /// '…' and "…" quotes, backslash escapes) without running one: there are
   /// no pipes, variables or globs, so filled-in values can never inject.
-  factory CommandTemplate.parse(String command, {String label = 'dispatcher.command'}) =>
-      CommandTemplate(splitWords(command, label: label), label: label);
+  factory CommandTemplate.parse(
+    String command, {
+    String label = 'dispatcher.command',
+    List<String> known = placeholders,
+  }) => CommandTemplate(
+    splitWords(command, label: label),
+    label: label,
+    known: known,
+  );
 
   /// What a command may refer to: the item id and title, the worktree name,
   /// its absolute path, the absolute path of the backlog folder and the
   /// rendered prompt (`dispatcher.prompt`).
   static const placeholders = [...DispatcherConfig.promptPlaceholders, 'prompt'];
+
+  /// What the arguments that resume a session may refer to: the command's
+  /// placeholders and the `{session}` id.
+  static const resumePlaceholders = [...placeholders, 'session'];
 
   final List<String> arguments;
 
@@ -201,6 +212,7 @@ final class AgentProfile {
     required this.command,
     Map<String, TextTemplate> environment = const {},
     this.output = AgentOutput.text,
+    this.resume,
     this.builtIn = false,
     this.verified = true,
   }) : environment = Map.unmodifiable(environment) {
@@ -220,6 +232,15 @@ final class AgentProfile {
   /// `BACKLOG_AGENT`, `BACKLOG_DIR`); values may use the command's placeholders.
   final Map<String, TextTemplate> environment;
   final AgentOutput output;
+
+  /// Arguments appended to [command] to continue an earlier session of the
+  /// agent (`{session}` is its id), e.g. `--resume {session}`; null when the
+  /// agent cannot resume. Sessions are only known from output the
+  /// launcher can read a session id from ([AgentOutput.claudeStreamJson]).
+  final CommandTemplate? resume;
+
+  /// Whether a session of this profile can be continued.
+  bool get canResume => resume != null && output == AgentOutput.claudeStreamJson;
 
   /// Shipped with kanban-ai rather than defined in `backlog.yaml`.
   final bool builtIn;
@@ -256,6 +277,11 @@ final class AgentProfile {
         'Bash(git push *)',
       ], label: 'agent claude'),
       output: AgentOutput.claudeStreamJson,
+      resume: CommandTemplate(
+        ['--resume', '{session}'],
+        label: 'agent claude resume',
+        known: CommandTemplate.resumePlaceholders,
+      ),
       builtIn: true,
     ),
     'codex': AgentProfile(
@@ -289,6 +315,7 @@ final class DispatcherConfig {
     required List<WorktreeDefinition> worktrees,
     required AgentProfile agent,
     TextTemplate? prompt,
+    TextTemplate? resumePrompt,
     DispatchMode mode = DispatchMode.manual,
     int? maxAgents,
     String base = 'main',
@@ -307,18 +334,24 @@ final class DispatcherConfig {
       List.unmodifiable(worktrees),
       agent,
       prompt ?? TextTemplate(defaultPrompt, known: promptPlaceholders, label: 'dispatcher.prompt'),
+      resumePrompt ??
+          TextTemplate(defaultResumePrompt, known: resumePromptPlaceholders, label: 'dispatcher.resume_prompt'),
       mode,
       limit,
       base,
     );
   }
 
-  DispatcherConfig._(this.worktrees, this.agent, this.prompt, this.mode, this.maxAgents, this.base);
+  DispatcherConfig._(this.worktrees, this.agent, this.prompt, this.resumePrompt, this.mode, this.maxAgents, this.base);
 
   /// What the prompt may refer to: the item id and title, the worktree name,
   /// its absolute path, the absolute path of the backlog folder and the
   /// branch prepared for the agent.
   static const promptPlaceholders = ['id', 'title', 'worktree', 'path', 'backlog', 'branch'];
+
+  /// What the prompt of a resumed session may refer to: [promptPlaceholders]
+  /// and `{news}`, what happened since the agent's last run.
+  static const resumePromptPlaceholders = [...promptPlaceholders, 'news'];
 
   /// The prompt every agent gets unless `dispatcher.prompt` replaces it.
   static const defaultPrompt =
@@ -332,6 +365,17 @@ final class DispatcherConfig {
       '5. If something is unclear or blocks you, write your question into the body of the item (its file is shown '
       'by `backlog show {id}`), leave its status as it is and stop.';
 
+  /// The prompt for continuing an agent's earlier session on the same item
+  /// (unless `dispatcher.resume_prompt` replaces it).
+  static const defaultResumePrompt =
+      'You are the coding agent {worktree} again, continuing your earlier session on backlog item {id} ("{title}"). '
+      'The item is claimed for you again and the worktree is on branch {branch}.\n'
+      'Since your last run: {news}\n'
+      'Run `backlog show {id}` to see the item as it is now, then continue the work under the same rules as before: '
+      'small commits containing {id} on {branch}, `backlog set {id} status=review` when finished, never push. '
+      'If something is unclear or blocks you, write your question into the body of the item, leave its status as '
+      'it is and stop.';
+
   /// In order of preference: free work goes to the first free worktree.
   final List<WorktreeDefinition> worktrees;
 
@@ -340,6 +384,9 @@ final class DispatcherConfig {
 
   /// The prompt, shared by all agents; fills `{prompt}` in the command.
   final TextTemplate prompt;
+
+  /// The prompt when an agent continues its earlier session on an item.
+  final TextTemplate resumePrompt;
   final DispatchMode mode;
 
   /// At most this many agents run at once (defaults to one per worktree;

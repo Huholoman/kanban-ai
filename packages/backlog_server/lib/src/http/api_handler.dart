@@ -174,7 +174,7 @@ final class ApiHandler {
 
   Future<Response> _startAgent(Request request) async {
     final payload = DispatchRequest.fromJson(await _body(request));
-    await _running().start(payload.item);
+    await _running().start(payload.item, fresh: payload.fresh);
     return _json((await _plan()).toJson());
   }
 

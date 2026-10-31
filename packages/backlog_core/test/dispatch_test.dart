@@ -16,16 +16,46 @@ dispatcher:
   command: agent --item {id} --title "{title}" --in {path} --as {worktree} --backlog {backlog}
 ''');
 
-DispatchPlan _plan(List<Item> items, {Workflow? workflow, List<Claim> claims = const [], DateTime? now}) =>
-    DispatchPlan.of(
-      BacklogSnapshot.build(
-        items: items,
-        workflow: workflow ?? _workflow(),
-        claims: claims,
-        now: now ?? DateTime.utc(2026, 10, 29, 12),
-      ),
-      backlogRoot: _root,
-    )!;
+/// A dispatcher whose agent can resume sessions (`--resume {session}`).
+Workflow _resumingWorkflow({List<String> worktrees = const ['w1', 'w2', 'w3']}) => parseWorkflowYaml('''
+dispatcher:
+  worktrees: [${worktrees.join(', ')}]
+  agent: bot
+  agents:
+    bot:
+      command: bot -p {prompt}
+      output: claude-stream-json
+      resume: --resume {session}
+  resume_prompt: "Again {id} in {worktree}: {news}"
+''');
+
+AgentSession _session(String id, String worktree, {String agent = 'bot'}) => AgentSession(
+  item: ItemId(id),
+  id: 'sess-$id',
+  worktree: worktree,
+  agent: agent,
+  startedAt: DateTime.utc(2026, 10, 29, 10),
+  endedAt: DateTime.utc(2026, 10, 29, 11),
+  reason: 'exited with code 1',
+  outcome: 'it left in-progress, released and held',
+);
+
+DispatchPlan _plan(
+  List<Item> items, {
+  Workflow? workflow,
+  List<Claim> claims = const [],
+  DateTime? now,
+  DispatchConditions conditions = DispatchConditions.none,
+}) => DispatchPlan.of(
+  BacklogSnapshot.build(
+    items: items,
+    workflow: workflow ?? _workflow(),
+    claims: claims,
+    now: now ?? DateTime.utc(2026, 10, 29, 12),
+  ),
+  backlogRoot: _root,
+  conditions: conditions,
+)!;
 
 Claim _claim(String id, String agent, {DateTime? at, Duration lease = const Duration(hours: 2)}) {
   final time = at ?? DateTime.utc(2026, 10, 29, 11);
@@ -103,6 +133,58 @@ void main() {
       expect(plan.assignments, isEmpty);
       expect(plan.capacity, 0);
       expect(plan.waiting.map((i) => '${i.id}'), ['T-2']);
+    });
+
+    test('an item with a session of the agent continues it in its worktree, others keep that worktree free', () {
+      final plan = _plan(
+        [item('T-1', priority: 'p0'), item('T-2', priority: 'p1')],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+      );
+      expect(plan.assignments.map((a) => a.key), ['T-1@w2', 'T-2@w1+resume']);
+      final resumed = plan.assignments.last;
+      expect(resumed.resume!.id, 'sess-T-2');
+      expect(resumed.command, [
+        'bot',
+        '-p',
+        'Again T-2 in w1: your last run exited with code 1; it left in-progress, released and held.',
+        '--resume',
+        'sess-T-2',
+      ]);
+      expect(plan.assignments.first.command, hasLength(3), reason: 'a new session without --resume');
+      expect(plan.resumableSession(ItemId('T-2'))!.worktree, 'w1');
+    });
+
+    test('a new session when the agent cannot resume or the session worktree is busy', () {
+      final busy = _plan(
+        [item('T-1', status: 'in-progress'), item('T-2')],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        claims: [_claim('T-1', 'w1')],
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+      );
+      expect(busy.assignments.map((a) => a.key), ['T-2@w2']);
+
+      final otherAgent = _plan(
+        [item('T-2')],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1', agent: 'claude')}),
+      );
+      expect(otherAgent.assignments.single.resume, isNull);
+
+      final noResume = _plan([
+        item('T-2'),
+      ], conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1', agent: 'command')}));
+      expect(noResume.assignments.single.resume, isNull, reason: 'a plain command cannot resume');
+    });
+
+    test('a manual start continues the session unless fresh', () {
+      final plan = _plan(
+        [item('T-1')],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(sessions: {ItemId('T-1'): _session('T-1', 'w2')}),
+      );
+      expect(plan.assignmentFor('T-1').key, 'T-1@w2+resume');
+      expect(plan.assignmentFor('T-1', fresh: true).key, 'T-1@w1');
     });
 
     test('sameDecisionAs compares assignments, waiting items and busy worktrees', () {

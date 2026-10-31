@@ -16,6 +16,10 @@ import 'support.dart';
 /// with the code written there.
 const _agentScript = r'''
 id=$1
+if [ "$2" = "--resume" ]; then session=$3; else session="sess-$id"; fi
+echo "{\"type\":\"system\",\"session_id\":\"$session\"}"
+echo "args $*"
+echo "prompt $PROMPT"
 echo "agent $BACKLOG_AGENT on $id in $(pwd) branch $(git symbolic-ref --short HEAD) backlog $BACKLOG_DIR extra $EXTRA"
 sleep 30 &
 echo "child $!" > "../child-$id"
@@ -88,7 +92,10 @@ dispatcher:
   agents:
     fake:
       command: [sh, ${path('agent.sh')}, "{id}"]
-      env: {EXTRA: "{worktree}/{branch}"}
+      env: {EXTRA: "{worktree}/{branch}", PROMPT: "{prompt}"}
+      output: claude-stream-json
+      resume: [--resume, "{session}"]
+  resume_prompt: "Continue {id}: {news}"
 ''');
     clock = FixedClock(DateTime.utc(2026, 10, 31, 12));
     backlog = await Backlog.open(path('backlog'), clock: clock, ids: SequentialIds());
@@ -193,6 +200,37 @@ dispatcher:
     // A person starts it again: that lifts the hold.
     await launcher.launch(again.assignmentFor('T-0001'));
     expect((await plan()).held, isEmpty);
+    await finish('T-0001', 0);
+  });
+
+  test('starting the item again continues its last session in the same worktree, or fresh', () async {
+    await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
+    await launcher.launch((await plan()).assignmentFor('T-0001'));
+    await finish('T-0001', 3);
+    final last = (await launcher.agentLog(ItemId('T-0001')))!.last!;
+    expect(last['session_id'], 'sess-T-0001');
+
+    // The other worktree is preferred by nothing; still the session's own one is taken.
+    final again = await plan();
+    expect(again.sessions[ItemId('T-0001')]!.worktree, 'wt-1');
+    final resumed = again.assignmentFor('T-0001');
+    expect(resumed.key, 'T-0001@wt-1+resume');
+    clock.advance(const Duration(minutes: 1)); // a log of its own
+    await launcher.launch(resumed);
+    await waitForLog('T-0001', 'agent wt-1');
+    final log = await logOf('T-0001');
+    expect(log, contains('resuming session sess-T-0001'));
+    expect(log, contains('args T-0001 --resume sess-T-0001'));
+    expect(log, contains('prompt Continue T-0001: your last run exited with code 3; it left in-progress'));
+    await finish('T-0001', 3);
+    expect((await launcher.agentLog(ItemId('T-0001')))!.last!['session_id'], 'sess-T-0001');
+
+    final fresh = (await plan()).assignmentFor('T-0001', fresh: true);
+    expect(fresh.resume, isNull);
+    clock.advance(const Duration(minutes: 1));
+    await launcher.launch(fresh);
+    await waitForLog('T-0001', 'agent wt-1');
+    expect(await logOf('T-0001'), contains('args T-0001\n'));
     await finish('T-0001', 0);
   });
 

@@ -6,6 +6,7 @@ import '../../planning/domain/backlog_snapshot.dart';
 import '../../planning/domain/planned_item.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+import 'agent_session.dart';
 
 /// An agent process started by the dispatcher that is still running.
 final class AgentRun {
@@ -55,7 +56,12 @@ final class AgentLog {
 /// [AgentLauncher]: worktrees that cannot take work now, items it should
 /// not start by itself, and the agents that are running.
 final class DispatchConditions {
-  const DispatchConditions({this.unavailable = const {}, this.held = const {}, this.runs = const []});
+  const DispatchConditions({
+    this.unavailable = const {},
+    this.held = const {},
+    this.runs = const [],
+    this.sessions = const {},
+  });
 
   static const none = DispatchConditions();
 
@@ -70,6 +76,9 @@ final class DispatchConditions {
 
   /// Agents running now.
   final List<AgentRun> runs;
+
+  /// The session of the last run per item, where the agent reported one.
+  final Map<ItemId, AgentSession> sessions;
 }
 
 /// A configured worktree at the moment of planning.
@@ -114,16 +123,21 @@ final class DispatchAssignment {
     this.environment = const {},
     this.branch,
     this.base,
+    this.resume,
   });
 
   /// Fills the [config]'s prompt, command and environment for [item] in
-  /// [worktree] (absolute [path]); [backlogRoot] is the backlog folder.
+  /// [worktree] (absolute [path]); [backlogRoot] is the backlog folder. With
+  /// [resume] (a session the profile can continue there, see
+  /// [AgentSession.resumableBy]) the agent continues it with the resume
+  /// prompt instead of starting a new session.
   factory DispatchAssignment.render(
     DispatcherConfig config, {
     required PlannedItem item,
     required WorktreeDefinition worktree,
     required String path,
     required String backlogRoot,
+    AgentSession? resume,
   }) {
     final branch = branchFor(item);
     final values = {
@@ -134,16 +148,19 @@ final class DispatchAssignment {
       'backlog': backlogRoot,
       'branch': branch,
     };
-    final prompt = config.prompt.render(values);
-    final full = {...values, 'prompt': prompt};
     final profile = config.agent;
+    final session = resume != null && resume.resumableBy(profile, worktree.name) ? resume : null;
+    final prompt = session == null
+        ? config.prompt.render(values)
+        : config.resumePrompt.render({...values, 'news': session.news()});
+    final full = {...values, 'prompt': prompt, 'session': ?session?.id};
     return DispatchAssignment(
       item: item,
       worktree: worktree,
       path: path,
       agentProfile: profile,
       prompt: prompt,
-      command: profile.command.render(full),
+      command: [...profile.command.render(full), if (session != null) ...profile.resume!.render(full)],
       environment: {
         'BACKLOG_AGENT': worktree.name,
         'BACKLOG_DIR': backlogRoot,
@@ -151,6 +168,7 @@ final class DispatchAssignment {
       },
       branch: branch,
       base: config.base,
+      resume: session,
     );
   }
 
@@ -188,13 +206,17 @@ final class DispatchAssignment {
   /// Where [branch] starts when it does not exist yet (`dispatcher.base`).
   final String? base;
 
+  /// The earlier session the agent continues; null for a new session.
+  final AgentSession? resume;
+
   ItemId get id => item.id;
 
   /// The name the claim is taken under.
   String get agent => worktree.name;
 
-  /// `<id>@<worktree>`; equal keys mean the same decision.
-  String get key => '$id@${worktree.name}';
+  /// `<id>@<worktree>` (with `+resume` when continuing a session); equal
+  /// keys mean the same decision.
+  String get key => '$id@${worktree.name}${resume == null ? '' : '+resume'}';
 }
 
 /// What the dispatcher would do with one [BacklogSnapshot]: which ready items
@@ -212,7 +234,12 @@ final class DispatchPlan {
     required this.waiting,
     this.held = const [],
     this.recheckAt,
+    this.sessions = const {},
   });
+
+  /// The free worktree in [free] where [config]'s agent can continue [session].
+  static WorktreeState? _resumableIn(AgentSession? session, DispatcherConfig config, List<WorktreeState> free) =>
+      session == null ? null : free.firstWhereOrNull((w) => session.resumableBy(config.agent, w.name));
 
   /// The plan for [snapshot], or null when its workflow has no dispatcher.
   /// Relative worktree paths are resolved against [backlogRoot].
@@ -246,16 +273,33 @@ final class DispatchPlan {
     final slots = (config.maxAgents - running).clamp(0, free.length);
     final ready = snapshot.ready.where((item) => !conditions.held.containsKey(item.id)).toList();
 
-    final assignments = <DispatchAssignment>[
-      for (var i = 0; i < slots && i < ready.length; i++)
+    final assignments = <DispatchAssignment>[];
+    final left = <PlannedItem>[];
+    for (final (index, candidate) in ready.indexed) {
+      if (assignments.length >= slots || free.isEmpty) {
+        left.add(candidate);
+        continue;
+      }
+      final session = conditions.sessions[candidate.id];
+      final own = _resumableIn(session, config, free);
+      // Leave the worktrees that later items could continue their sessions in to them.
+      final reserved = {
+        for (final later in ready.skip(index + 1))
+          if (_resumableIn(conditions.sessions[later.id], config, free) case final w?) w.name,
+      };
+      final target = own ?? free.firstWhere((w) => !reserved.contains(w.name), orElse: () => free.first);
+      free.remove(target);
+      assignments.add(
         DispatchAssignment.render(
           config,
-          item: ready[i],
-          worktree: free[i].worktree,
-          path: free[i].path,
+          item: candidate,
+          worktree: target.worktree,
+          path: target.path,
           backlogRoot: backlogRoot,
+          resume: own == null ? null : session,
         ),
-    ];
+      );
+    }
 
     DateTime? recheckAt;
     for (final claim in liveClaims) {
@@ -268,7 +312,8 @@ final class DispatchPlan {
       backlogRoot: backlogRoot,
       worktrees: List.unmodifiable(worktrees),
       assignments: List.unmodifiable(assignments),
-      waiting: List.unmodifiable(ready.skip(assignments.length)),
+      waiting: List.unmodifiable(left),
+      sessions: conditions.sessions,
       held: List.unmodifiable([
         for (final item in snapshot.ready)
           if (conditions.held[item.id] case final reason?) (item: item, reason: reason),
@@ -295,6 +340,16 @@ final class DispatchPlan {
   /// any file changing (a worktree frees up, an item becomes ready).
   final DateTime? recheckAt;
 
+  /// The session of each item's last agent run, where one is known.
+  final Map<ItemId, AgentSession> sessions;
+
+  /// The session a start of [id] would continue with the configured agent
+  /// (in its own worktree); null when it would start a new one.
+  AgentSession? resumableSession(ItemId id) {
+    final session = sessions[id];
+    return session != null && session.resumableBy(config.agent, session.worktree) ? session : null;
+  }
+
   DateTime get takenAt => snapshot.takenAt;
 
   DispatchMode get mode => config.mode;
@@ -310,9 +365,10 @@ final class DispatchPlan {
 
   /// The assignment for starting [reference] by hand, now: the item must be
   /// ready (held items are fine) and a worktree free within `max_agents`.
-  /// The first free worktree is used even when the plan gives it to a more
-  /// urgent item.
-  DispatchAssignment assignmentFor(String reference) {
+  /// The agent continues the item's last session when it can (in the
+  /// worktree of that session, if free), unless [fresh]; otherwise the first
+  /// free worktree is used even when the plan gives it to a more urgent item.
+  DispatchAssignment assignmentFor(String reference, {bool fresh = false}) {
     final planned = snapshot[ItemReference.resolve(reference, snapshot.ids)]!;
     if (!planned.isReady) throw _notReady(planned);
     final free = worktrees.where((w) => w.isFree).toList();
@@ -325,12 +381,16 @@ final class DispatchPlan {
         'No free worktree for ${planned.id} ($running/${config.maxAgents} running; ${reasons.join('; ')}).',
       );
     }
+    final session = fresh ? null : sessions[planned.id];
+    final own = _resumableIn(session, config, free);
+    final target = own ?? free.first;
     return DispatchAssignment.render(
       config,
       item: planned,
-      worktree: free.first.worktree,
-      path: free.first.path,
+      worktree: target.worktree,
+      path: target.path,
       backlogRoot: backlogRoot,
+      resume: own == null ? null : session,
     );
   }
 

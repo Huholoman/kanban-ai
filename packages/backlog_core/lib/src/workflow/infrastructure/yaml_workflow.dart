@@ -79,7 +79,7 @@ Workflow parseWorkflowYaml(String source, {String origin = 'backlog.yaml'}) {
 DispatcherConfig? _dispatcher(Object? node, String origin) {
   if (node == null) return null;
   final yaml = _map(node, 'dispatcher', origin);
-  const known = {'mode', 'max_agents', 'worktrees', 'base', 'agent', 'agents', 'prompt', 'command'};
+  const known = {'mode', 'max_agents', 'worktrees', 'base', 'agent', 'agents', 'prompt', 'resume_prompt', 'command'};
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
       throw ConfigurationException('$origin: unknown key "dispatcher.$key" (expected ${known.join(', ')}).');
@@ -93,6 +93,7 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     final worktrees = yaml['worktrees'];
     if (worktrees == null) throw const ConfigurationException('dispatcher.worktrees is required.');
     final prompt = yaml['prompt'];
+    final resumePrompt = yaml['resume_prompt'];
     return DispatcherConfig(
       mode: DispatchMode.parse('${yaml['mode'] ?? 'manual'}'.trim()),
       maxAgents: maxAgents as int?,
@@ -104,6 +105,13 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
               _string(prompt, 'dispatcher.prompt', origin),
               known: DispatcherConfig.promptPlaceholders,
               label: 'dispatcher.prompt',
+            ),
+      resumePrompt: resumePrompt == null
+          ? null
+          : TextTemplate(
+              _string(resumePrompt, 'dispatcher.resume_prompt', origin),
+              known: DispatcherConfig.resumePromptPlaceholders,
+              label: 'dispatcher.resume_prompt',
             ),
       worktrees: [
         for (final entry in _list(worktrees, 'dispatcher.worktrees', origin))
@@ -158,7 +166,7 @@ AgentProfile _agent(YamlMap yaml, String origin) {
 AgentProfile _profile(String name, Object? node, String origin) {
   final path = 'dispatcher.agents.$name';
   final yaml = _map(node, path, origin);
-  const known = {'command', 'env', 'output'};
+  const known = {'command', 'env', 'output', 'resume'};
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
       throw ConfigurationException('unknown key "$path.$key" (expected ${known.join(', ')}).');
@@ -180,6 +188,19 @@ AgentProfile _profile(String name, Object? node, String origin) {
     output: yaml['output'] == null
         ? AgentOutput.text
         : AgentOutput.parse(_string(yaml['output'], '$path.output', origin), label: '$path.output'),
+    resume: switch (yaml['resume']) {
+      null => null,
+      final List<Object?> list => CommandTemplate(
+        _strings(list, '$path.resume', origin),
+        label: '$path.resume',
+        known: CommandTemplate.resumePlaceholders,
+      ),
+      final Object text => CommandTemplate.parse(
+        _string(text, '$path.resume', origin),
+        label: '$path.resume',
+        known: CommandTemplate.resumePlaceholders,
+      ),
+    },
   );
 }
 
@@ -333,8 +354,12 @@ claims:
 #       command: 'claude -p {prompt} --model sonnet --output-format stream-json --verbose --permission-mode acceptEdits --allowedTools "Bash(backlog *) Bash(git *) Read Edit Write Grep Glob"'
 #       env: {MY_SETTING: "{worktree}"}   # BACKLOG_AGENT and BACKLOG_DIR are always set
 #       output: claude-stream-json        # text | claude-stream-json | json-lines
+#       resume: --resume {session}        # appended to continue the item's last session
 #   # The prompt every agent gets (default: claim is yours, read backlog
 #   # instructions and backlog show {id}, small commits with the id, then
 #   # status=review, never push, ask in the item when unclear):
 #   prompt: "You are {worktree}. Work on backlog item {id}: run backlog show {id} first."
+#   # The prompt when an agent continues its last session on the item; {news}
+#   # tells what happened since (how the run ended, new comments):
+#   resume_prompt: "Continue on {id}. Since your last run: {news}"
 ''';

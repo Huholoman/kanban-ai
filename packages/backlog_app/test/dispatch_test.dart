@@ -14,7 +14,12 @@ import 'fake_api.dart';
 
 final _started = DateTime.utc(2026, 10, 31, 12);
 
-DispatchDto _plan({bool running = false, bool free = true, List<HeldItemDto> held = const []}) => DispatchDto(
+DispatchDto _plan({
+  bool running = false,
+  bool free = true,
+  List<HeldItemDto> held = const [],
+  List<AgentSessionDto> sessions = const [],
+}) => DispatchDto(
   configured: true,
   mode: 'manual',
   agent: 'claude',
@@ -41,8 +46,18 @@ DispatchDto _plan({bool running = false, bool free = true, List<HeldItemDto> hel
     ),
     DispatchWorktreeDto(name: 'w2', path: '/w/w2', busy: false, unavailable: free ? null : 'uncommitted changes'),
   ],
-  assignments: free ? const [DispatchAssignmentDto(item: 'R-2', title: 'Item R-2', worktree: 'w2')] : const [],
+  assignments: free
+      ? [
+          DispatchAssignmentDto(
+            item: 'R-2',
+            title: 'Item R-2',
+            worktree: 'w2',
+            resume: sessions.any((s) => s.item == 'R-2') ? 'sess-R-2' : null,
+          ),
+        ]
+      : const [],
   held: held,
+  sessions: sessions,
 );
 
 List<ItemDto> _items() => [
@@ -152,6 +167,25 @@ void main() {
     await tester.tap(_key('start-R-2'));
     await tester.pumpAndSettle();
     expect(api.started, ['R-2', 'R-2']);
+  });
+
+  testWidgets('an item with a session continues it, or starts fresh', (tester) async {
+    final (api, _) = await _pumpDetail(
+      tester,
+      'R-2',
+      _plan(
+        sessions: const [AgentSessionDto(item: 'R-2', session: 'sess-R-2', worktree: 'w2')],
+      ),
+    );
+    expect(find.text('Continue agent'), findsOneWidget);
+    expect(find.text('R-2 → w2 ↻'), findsOneWidget);
+    await tester.tap(_key('start-fresh'));
+    await tester.pumpAndSettle();
+    expect(api.startedFresh, ['R-2']);
+    await tester.tap(_key('start-agent'));
+    await tester.pumpAndSettle();
+    expect(api.started, ['R-2', 'R-2']);
+    expect(api.startedFresh, ['R-2']);
   });
 
   testWidgets('no Start without a free worktree or for items that are not ready', (tester) async {

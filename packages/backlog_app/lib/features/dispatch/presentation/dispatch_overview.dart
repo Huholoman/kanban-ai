@@ -33,8 +33,10 @@ class DispatchOverview extends StatelessWidget {
             key: ValueKey('proposal-${assignment.item}'),
             icon: Icons.play_circle_outline,
             color: tokens.accent,
-            text: '${assignment.item} → ${assignment.worktree}',
-            tooltip: '${plan.isManual ? 'Proposed' : 'Starting'}: ${assignment.title}',
+            text: '${assignment.item} → ${assignment.worktree}${assignment.resume == null ? '' : ' ↻'}',
+            tooltip:
+                '${plan.isManual ? 'Proposed' : 'Starting'}: ${assignment.title}'
+                '${assignment.resume == null ? '' : ' (continues its last session)'}',
             onTap: () => onOpenItem(assignment.item),
             trailing: plan.isManual
                 ? IconActionButton(

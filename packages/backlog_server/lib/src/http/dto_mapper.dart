@@ -179,12 +179,28 @@ abstract final class DtoMapper {
     ],
     assignments: [
       for (final assignment in plan.assignments)
-        DispatchAssignmentDto(item: assignment.id.value, title: assignment.item.item.title, worktree: assignment.agent),
+        DispatchAssignmentDto(
+          item: assignment.id.value,
+          title: assignment.item.item.title,
+          worktree: assignment.agent,
+          resume: assignment.resume?.id,
+        ),
     ],
     waiting: [for (final item in plan.waiting) item.id.value],
     held: [
       for (final (:item, :reason) in plan.held)
         HeldItemDto(item: item.id.value, title: item.item.title, reason: reason),
+    ],
+    sessions: [
+      for (final id in plan.sessions.keys)
+        if (plan.resumableSession(id) case final session?)
+          AgentSessionDto(
+            item: id.value,
+            session: session.id,
+            worktree: session.worktree,
+            endedAt: session.endedAt,
+            reason: session.reason,
+          ),
     ],
   );
 

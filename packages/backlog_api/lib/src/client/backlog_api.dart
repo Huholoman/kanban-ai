@@ -43,9 +43,11 @@ abstract interface class BacklogApi {
   /// The dispatcher's plan; [DispatchDto.off] without a dispatcher.
   Future<DispatchDto> dispatch();
 
-  /// Starts an agent for the ready item [reference] in the first free
-  /// worktree (also in manual mode) and returns the new plan.
-  Future<DispatchDto> startAgent(String reference);
+  /// Starts an agent for the ready item [reference] (also in manual mode)
+  /// and returns the new plan: it continues the item's last session in that
+  /// session's worktree when possible, unless [fresh]; else the first free
+  /// worktree gets a new session.
+  Future<DispatchDto> startAgent(String reference, {bool fresh = false});
 
   /// Stops the agent working on [reference] and returns the new plan.
   Future<DispatchDto> stopAgent(String reference);

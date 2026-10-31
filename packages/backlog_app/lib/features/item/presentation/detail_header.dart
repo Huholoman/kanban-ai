@@ -148,13 +148,32 @@ class DetailHeader extends StatelessWidget {
     final enabled = !controller.busy;
     final dispatch = DispatchScope.maybeOf(context);
     return [
-      if (dispatch != null && dispatch.canStart(item))
-        PrimaryButton(
-          key: const ValueKey('start-agent'),
-          label: 'Start agent',
-          icon: Icons.play_arrow,
-          onPressed: enabled ? () => dispatch.startAgent(item.id) : null,
-        ),
+      if (dispatch != null && dispatch.canStart(item)) ...[
+        if (dispatch.canResume(item.id))
+          Tooltip(
+            message: 'Continue the session of its last agent in ${dispatch.plan.sessionFor(item.id)!.worktree}',
+            child: PrimaryButton(
+              key: const ValueKey('start-agent'),
+              label: 'Continue agent',
+              icon: Icons.replay,
+              onPressed: enabled ? () => dispatch.startAgent(item.id) : null,
+            ),
+          ),
+        if (dispatch.plan.sessionFor(item.id) != null)
+          SecondaryButton(
+            key: const ValueKey('start-fresh'),
+            label: 'Start fresh',
+            icon: Icons.play_arrow,
+            onPressed: enabled ? () => dispatch.startAgent(item.id, fresh: true) : null,
+          )
+        else
+          PrimaryButton(
+            key: const ValueKey('start-agent'),
+            label: 'Start agent',
+            icon: Icons.play_arrow,
+            onPressed: enabled ? () => dispatch.startAgent(item.id) : null,
+          ),
+      ],
       if (onScope case final onScope? when item.type == 'epic')
         SecondaryButton(
           key: const ValueKey('scope-board'),

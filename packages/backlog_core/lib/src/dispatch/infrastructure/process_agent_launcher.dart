@@ -11,6 +11,7 @@ import '../../planning/domain/backlog_snapshot.dart';
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+import '../domain/agent_session.dart';
 import '../domain/dispatch_plan.dart';
 
 /// Starts agents as detached processes that outlive the server, and looks
@@ -34,7 +35,8 @@ import '../domain/dispatch_plan.dart';
 /// that the dispatcher does not start it again by itself; an item the agent
 /// handed over (e.g. `review`) keeps its status and loses only the claim.
 /// The outcome is logged, appended to the log and kept in
-/// `agents/<project>/<id>.last.json`.
+/// `agents/<project>/<id>.last.json`, with the agent's session id, which a
+/// later start of the item continues ([DispatchConditions.sessions]).
 final class ProcessAgentLauncher extends AgentLauncher {
   ProcessAgentLauncher({
     required this.project,
@@ -121,7 +123,46 @@ final class ProcessAgentLauncher extends AgentLauncher {
       if (planned == null || planned.isDone) continue;
       if (await _holdOf(id) case final reason?) held[id] = reason;
     }
-    return DispatchConditions(unavailable: unavailable, held: held, runs: [for (final record in runs) record.run]);
+    return DispatchConditions(
+      unavailable: unavailable,
+      held: held,
+      runs: [for (final record in runs) record.run],
+      sessions: await _sessions(snapshot),
+    );
+  }
+
+  /// The sessions of the last runs (`<id>.last.json`) of items that are
+  /// still open or in progress.
+  Future<Map<ItemId, AgentSession>> _sessions(BacklogSnapshot snapshot) async {
+    final dir = Directory(agentsDir);
+    if (!await dir.exists()) return const {};
+    const suffix = '.last.json';
+    final sessions = <ItemId, AgentSession>{};
+    await for (final entry in dir.list()) {
+      final name = p.basename(entry.path);
+      if (entry is! File || !name.endsWith(suffix)) continue;
+      final id = ItemId(name.substring(0, name.length - suffix.length));
+      final planned = snapshot[id];
+      if (planned == null || planned.isDone) continue;
+      try {
+        final json = (jsonDecode(await entry.readAsString()) as Map).cast<String, Object?>();
+        if (json['session_id'] case final String session when session.isNotEmpty) {
+          sessions[id] = AgentSession(
+            item: id,
+            id: session,
+            worktree: json['worktree']! as String,
+            agent: json['agent'] as String? ?? '?',
+            startedAt: DateTime.parse(json['started_at']! as String),
+            endedAt: DateTime.tryParse(json['ended_at'] as String? ?? ''),
+            reason: json['reason'] as String?,
+            outcome: json['outcome'] as String?,
+          );
+        }
+      } on Object catch (error) {
+        _log('Dispatcher: ignoring unreadable ${entry.path}: $error');
+      }
+    }
+    return sessions;
   }
 
   /// Why an agent cannot start in the worktree at [path]; null when it is a
@@ -168,7 +209,8 @@ final class ProcessAgentLauncher extends AgentLauncher {
     _lastHeartbeat[id] = _clock.now();
     _log(
       'Dispatcher: started ${assignment.agentProfile.name} for $id in ${assignment.agent} '
-      '(pid ${record.run.pid}, branch ${assignment.branch ?? '-'}, log ${record.run.log}).',
+      '(pid ${record.run.pid}, branch ${assignment.branch ?? '-'}'
+      '${assignment.resume == null ? '' : ', resuming session ${assignment.resume!.id}'}, log ${record.run.log}).',
     );
     _onChange?.call();
   });
@@ -257,7 +299,8 @@ final class ProcessAgentLauncher extends AgentLauncher {
     await _delete(_stopFile(id));
     await File(log).writeAsString(
       '# kanban-ai: ${assignment.agentProfile.name} for $id in ${assignment.agent} (${assignment.path}), '
-      'branch ${assignment.branch ?? '-'}, started ${now.toUtc().toIso8601String()}\n'
+      'branch ${assignment.branch ?? '-'}, started ${now.toUtc().toIso8601String()}'
+      '${assignment.resume == null ? '' : ', resuming session ${assignment.resume!.id}'}\n'
       '# command: ${CommandTemplate.join(assignment.command)}\n',
       mode: FileMode.append,
     );
@@ -282,6 +325,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
       path: assignment.path,
       pgid: await _processGroup(process.pid),
       output: assignment.agentProfile.output,
+      resumed: assignment.resume?.id,
     );
     await _write(_recordFile(id), record.toJson());
     return record;
@@ -338,7 +382,9 @@ final class ProcessAgentLauncher extends AgentLauncher {
       outcome =
           'the item is ${planned.item.status}${planned.claim == null ? '' : ', claimed by ${planned.claim!.agent}'}';
     }
-    final session = record.output == AgentOutput.claudeStreamJson ? await _claudeSession(run.log) : null;
+    final session = record.output == AgentOutput.claudeStreamJson
+        ? await _claudeSession(run.log) ?? record.resumed
+        : record.resumed;
     final ended = _clock.now();
     await _write(_lastFile(id), {
       ...record.toJson(),
@@ -518,7 +564,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
 
 /// What `agents/<project>/<id>.json` holds about a running agent.
 final class _Record {
-  _Record(this.run, {required this.path, required this.pgid, required this.output});
+  _Record(this.run, {required this.path, required this.pgid, required this.output, this.resumed});
 
   factory _Record.fromJson(Map<String, Object?> json) => _Record(
     AgentRun(
@@ -533,6 +579,7 @@ final class _Record {
     path: json['path']! as String,
     pgid: json['pgid'] as int?,
     output: AgentOutput.values.firstWhere((o) => o.id == json['output'], orElse: () => AgentOutput.text),
+    resumed: json['resumed'] as String?,
   );
 
   final AgentRun run;
@@ -543,6 +590,9 @@ final class _Record {
   /// Process group of the agent (its own session); signalled by `stop`.
   final int? pgid;
   final AgentOutput output;
+
+  /// The session this run continues; null for a new one.
+  final String? resumed;
 
   Map<String, Object?> toJson() => {
     'item': run.item.value,
@@ -555,5 +605,6 @@ final class _Record {
     'agent': run.agent,
     'output': output.id,
     'branch': run.branch,
+    'resumed': resumed,
   };
 }

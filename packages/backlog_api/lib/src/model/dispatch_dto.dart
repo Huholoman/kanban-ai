@@ -113,16 +113,59 @@ final class HeldItemDto {
 
 /// A ready item proposed for (or, in auto mode, about to start in) a worktree.
 final class DispatchAssignmentDto {
-  const DispatchAssignmentDto({required this.item, required this.title, required this.worktree});
+  const DispatchAssignmentDto({required this.item, required this.title, required this.worktree, this.resume});
 
-  factory DispatchAssignmentDto.fromJson(Json json) =>
-      DispatchAssignmentDto(item: json.string('item'), title: json.string('title'), worktree: json.string('worktree'));
+  factory DispatchAssignmentDto.fromJson(Json json) => DispatchAssignmentDto(
+    item: json.string('item'),
+    title: json.string('title'),
+    worktree: json.string('worktree'),
+    resume: json.optionalString('resume'),
+  );
 
   final String item;
   final String title;
   final String worktree;
 
-  Json toJson() => {'item': item, 'title': title, 'worktree': worktree};
+  /// The session the agent continues; null for a new session.
+  final String? resume;
+
+  Json toJson() => {'item': item, 'title': title, 'worktree': worktree, 'resume': resume};
+}
+
+/// The session of an item's last agent run that a new start continues.
+final class AgentSessionDto {
+  const AgentSessionDto({required this.item, required this.session, required this.worktree, this.endedAt, this.reason});
+
+  factory AgentSessionDto.fromJson(Json json) => AgentSessionDto(
+    item: json.string('item'),
+    session: json.string('session_id'),
+    worktree: json.string('worktree'),
+    endedAt: switch (json.optionalString('ended_at')) {
+      final at? => DateTime.tryParse(at),
+      null => null,
+    },
+    reason: json.optionalString('reason'),
+  );
+
+  final String item;
+
+  /// The agent's session id.
+  final String session;
+
+  /// Where it ran; it can only be continued there.
+  final String worktree;
+  final DateTime? endedAt;
+
+  /// How the run ended.
+  final String? reason;
+
+  Json toJson() => {
+    'item': item,
+    'session_id': session,
+    'worktree': worktree,
+    'ended_at': endedAt?.toUtc().toIso8601String(),
+    'reason': reason,
+  };
 }
 
 /// The dispatcher's current plan (`GET /api/dispatch`).
@@ -138,6 +181,7 @@ final class DispatchDto {
     this.assignments = const [],
     this.waiting = const [],
     this.held = const [],
+    this.sessions = const [],
   });
 
   /// No `dispatcher` section in `backlog.yaml`.
@@ -154,6 +198,7 @@ final class DispatchDto {
     assignments: json.objects('assignments').map(DispatchAssignmentDto.fromJson).toList(),
     waiting: json.strings('waiting'),
     held: json.objects('held').map(HeldItemDto.fromJson).toList(),
+    sessions: json.objects('sessions').map(AgentSessionDto.fromJson).toList(),
   );
 
   final bool configured;
@@ -174,6 +219,10 @@ final class DispatchDto {
   /// Ready items left over (ids, most urgent first).
   final List<String> waiting;
   final List<HeldItemDto> held;
+
+  /// Unfinished items whose last agent session the configured agent can
+  /// continue.
+  final List<AgentSessionDto> sessions;
 
   bool get isManual => mode == 'manual';
 
@@ -196,6 +245,14 @@ final class DispatchDto {
     return null;
   }
 
+  /// The session a start of [item] continues, if any.
+  AgentSessionDto? sessionFor(String item) {
+    for (final session in sessions) {
+      if (session.item == item) return session;
+    }
+    return null;
+  }
+
   Json toJson() => {
     'configured': configured,
     'mode': mode,
@@ -207,6 +264,7 @@ final class DispatchDto {
     'assignments': [for (final assignment in assignments) assignment.toJson()],
     'waiting': waiting,
     'held': [for (final item in held) item.toJson()],
+    'sessions': [for (final session in sessions) session.toJson()],
   };
 }
 
@@ -271,12 +329,15 @@ final class AgentLogDto {
 
 /// `POST /api/dispatch/start` and `/stop`.
 final class DispatchRequest {
-  const DispatchRequest(this.item);
+  const DispatchRequest(this.item, {this.fresh = false});
 
-  factory DispatchRequest.fromJson(Json json) => DispatchRequest(json.string('item'));
+  factory DispatchRequest.fromJson(Json json) => DispatchRequest(json.string('item'), fresh: json.boolean('fresh'));
 
   /// The item (a shortened id works too).
   final String item;
 
-  Json toJson() => {'item': item};
+  /// Start: a new agent session even when the last one could be continued.
+  final bool fresh;
+
+  Json toJson() => {'item': item, if (fresh) 'fresh': fresh};
 }
