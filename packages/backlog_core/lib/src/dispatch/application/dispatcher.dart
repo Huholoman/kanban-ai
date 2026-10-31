@@ -5,6 +5,7 @@ import 'package:collection/collection.dart';
 import '../../items/domain/discussion.dart';
 import '../../items/domain/item_id.dart';
 import '../../planning/domain/backlog_snapshot.dart';
+import '../../planning/domain/epic_plan.dart';
 import '../../planning/domain/review_state.dart';
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
@@ -108,6 +109,21 @@ final class Dispatcher {
     final plan = await _evaluate(launchAuto: false);
     if (plan == null) throw const NotFoundException('No dispatcher is configured in backlog.yaml.');
     final assignment = plan.assignmentFor(reference, fresh: fresh);
+    await _launcher.launch(assignment);
+    _launched.add(assignment.key);
+    await _evaluate();
+    return assignment;
+  });
+
+  /// Starts one agent that implements the epic [reference] — all items under
+  /// it, on its branch — now, whatever the mode ([DispatchPlan.epicStart]);
+  /// returns what was started. Fails like [start], and with
+  /// `InvalidInputException` when the epic cannot be implemented
+  /// ([EpicVerdict.forbidden]).
+  Future<DispatchAssignment> startEpic(String reference, {bool fresh = false}) => _serialized(() async {
+    final plan = await _evaluate(launchAuto: false);
+    if (plan == null) throw const NotFoundException('No dispatcher is configured in backlog.yaml.');
+    final assignment = plan.epicStart(reference, fresh: fresh);
     await _launcher.launch(assignment);
     _launched.add(assignment.key);
     await _evaluate();
@@ -266,6 +282,14 @@ final class Dispatcher {
               : action == null
               ? 'no such action any more'
               : 'it left ${pending.status}'}.',
+        );
+        await forget(pending);
+        continue;
+      }
+      if (current.epicOf(pending.item) case final epic?) {
+        _log(
+          'Dispatcher: dropped the action "${pending.action}" for ${pending.item}: it belongs to the epic $epic, '
+          'which is reviewed and merged as a whole.',
         );
         await forget(pending);
         continue;

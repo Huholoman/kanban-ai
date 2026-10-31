@@ -4,6 +4,7 @@ import '../../claims/domain/claim.dart';
 import '../../items/domain/discussion.dart';
 import '../../items/domain/item_id.dart';
 import '../../planning/domain/backlog_snapshot.dart';
+import '../../planning/domain/epic_plan.dart';
 import '../../planning/domain/planned_item.dart';
 import '../../planning/domain/review_state.dart';
 import '../../shared/errors.dart';
@@ -26,9 +27,14 @@ final class AgentRun {
     this.branch,
     this.action,
     this.kind = RunKind.agent,
+    this.epic = false,
   });
 
   final ItemId item;
+
+  /// The item's own agent implements it as an epic: all items under it on
+  /// its branch ([DispatchAssignment.epic]).
+  final bool epic;
 
   /// Name of the worktree it runs in (also the name of its claim); for an
   /// action's command outside the worktrees, the folder name of the primary
@@ -84,9 +90,15 @@ final class DispatchConditions {
     this.spare = const [],
     this.branches = const {},
     this.pending = const [],
+    this.epics = const {},
   });
 
   static const none = DispatchConditions();
+
+  /// Unfinished items whose own agent runs, or last ran, as the
+  /// implementation of the whole epic ([DispatchAssignment.epic]): the items
+  /// under them belong to that agent.
+  final Set<ItemId> epics;
 
   /// Worktree name → why no agent can start there (uncommitted changes, not
   /// a git worktree, missing folder…).
@@ -140,6 +152,7 @@ final class DispatchConditions {
     spare: spare,
     branches: branches,
     pending: pending,
+    epics: epics,
   );
 }
 
@@ -207,6 +220,7 @@ final class DispatchAssignment {
     this.trigger = ActionTrigger.request,
     this.fix,
     this.newSession = false,
+    this.epic = false,
   });
 
   /// Fills the [config]'s prompt, command and environment for [item] in
@@ -220,6 +234,10 @@ final class DispatchAssignment {
   /// With a prompt [action] the agent is the action's profile and its prompt
   /// is the action's text inside [actionFrame]; it continues [resume] the
   /// same way.
+  ///
+  /// With [epic] the item's own agent implements all items under it, one
+  /// after another, on the item's branch; its prompt is [epicFrame] (also
+  /// when it continues a session or takes up replies).
   factory DispatchAssignment.render(
     DispatcherConfig config, {
     required PlannedItem item,
@@ -232,7 +250,9 @@ final class DispatchAssignment {
     ActionTrigger trigger = ActionTrigger.request,
     ReviewFix? fix,
     String? replies,
+    bool epic = false,
   }) {
+    epic = epic && action == null && fix == null;
     final branch = branchFor(item);
     final values = {
       'id': item.id.value,
@@ -262,6 +282,29 @@ final class DispatchAssignment {
         'reviewer': fix.review.author,
         'reviewed': fix.review.commit == null ? 'no commit named' : 'of commit ${fix.review.commit}',
         'review': fix.review.text,
+      });
+    } else if (epic) {
+      prompt = epicFrame.render({
+        ...values,
+        'context': session != null
+            ? 'You continue your earlier session on this epic. Since your last run: $news\n'
+                  'Run `backlog show ${item.id}` to see it as it is now. If the new comments only ask you '
+                  'something, answer with `backlog comment ${item.id} "…"` and stop; otherwise go on as below.'
+            : replies != null
+            ? 'Since the last agent on this epic: $replies'
+            : 'First run `backlog instructions`, `backlog show ${item.id}` and `backlog epic ${item.id}`.',
+        'finish': config.pr == null
+            ? 'run `backlog set ${item.id} status=review` and stop.'
+            : 'write the description of one pull request for the whole epic (what changed and why, the items it '
+                  'implements with their ids, how you verified it) and run '
+                  '`backlog pr ${item.id} --description "<description>"`: it pushes $branch and opens the pull '
+                  'request (when one exists already, it only pushes). Then run '
+                  '`backlog set ${item.id} status=review` and stop.',
+        'publish': config.pr == null
+            ? 'Never push and never open pull requests.'
+            : 'Never run `git push` yourself, never push other branches and never merge: `backlog pr ${item.id}` '
+                  'is the only way your work leaves this worktree. If it fails, say why with '
+                  '`backlog comment ${item.id} "…"` and still set the epic to review.',
       });
     } else if (action == null) {
       prompt = session != null
@@ -322,8 +365,39 @@ final class DispatchAssignment {
       trigger: trigger,
       fix: fix,
       newSession: session == null && replies != null && action == null && fix == null,
+      epic: epic,
     );
   }
+
+  /// What the agent implementing an epic is told: work through the items
+  /// with `backlog epic {id} --next`, one after another on {branch}, each
+  /// handed over to review; ask on the epic and stop when the rest waits
+  /// for something outside it; finish the epic (`{finish}`: review, with
+  /// `dispatcher.pr` after one pull request); `{publish}`: how its work may
+  /// leave the worktree.
+  static final epicFrame = TextTemplate(
+    'You are the coding agent {worktree}, implementing the epic {id} ("{title}") in this git worktree: all of its '
+    'items, one after another, in this one session and on the one branch {branch} (commit there and do not switch '
+    'branches). The epic is claimed for you (BACKLOG_AGENT={worktree}); take no items outside it.\n'
+    '{context}\n\n'
+    '1. Run `backlog epic {id} --next`. It claims the next item of the epic for you (the one you have in progress, '
+    'else the first that can start), puts it on {branch} and shows it. `backlog epic {id}` shows the whole plan.\n'
+    '2. Implement that item in small commits whose messages contain its id, tick off its checklist with '
+    '`backlog check <item id> <number or text>` (never edit item files), then run '
+    '`backlog set <item id> status=review` and go back to step 1. Items unblocked meanwhile come up by themselves.\n'
+    '3. When `backlog epic {id} --next` says nothing is left (every item handed over or done): {finish}\n'
+    '4. When it says nothing can start although items are left (they wait for something outside the epic: a '
+    'dependency, an answer, overlapping work), ask on the epic with `backlog ask {id} "<what blocks which items, '
+    'what is done>"`, leave every status as it is and stop; you will be resumed in this session with the answer.\n'
+    '5. If something about one item is unclear, ask on the epic too (`backlog ask {id} "…"`, naming the item) and '
+    'stop.\n'
+    '6. If a discussion changes what an item asks for, update its description or acceptance criteria in the body '
+    'above the `## Discussion` section (never edit the comments).\n'
+    '{publish}\n'
+    '${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}',
+    known: const [...DispatcherConfig.promptPlaceholders, 'context', 'finish', 'publish'],
+    label: 'epic prompt',
+  );
 
   /// What the item's agent is told when an AI review with `auto_fix` asks
   /// for changes: fix the findings of the review (`{review}`), comment only
@@ -434,6 +508,10 @@ final class DispatchAssignment {
   /// continued ([DispatchPlan.hasRepliesWithoutSession]).
   final bool newSession;
 
+  /// The agent implements the item as an epic ([epicFrame]): it claims the
+  /// item even with open children and the items under it on its branch.
+  final bool epic;
+
   ItemId get id => item.id;
 
   /// The name the claim is taken under.
@@ -442,7 +520,7 @@ final class DispatchAssignment {
   /// `<id>@<worktree>` (with `+resume` when continuing a session); equal
   /// keys mean the same decision.
   String get key =>
-      '$id@${worktree.name}${resume == null ? '' : '+resume'}${newSession ? '+reply' : ''}'
+      '$id@${worktree.name}${resume == null ? '' : '+resume'}${newSession ? '+reply' : ''}${epic ? '+epic' : ''}'
       '${action == null ? '' : ':${action!.name}'}'
       '${fix == null ? '' : '+fix'}';
 }
@@ -483,6 +561,7 @@ final class DispatchPlan {
     this.pending = const [],
     this.branches = const {},
     this.waitingReasons = const {},
+    this.epics = const {},
   });
 
   /// Whether a person (anyone but the agent) commented on unfinished,
@@ -601,12 +680,22 @@ final class DispatchPlan {
     final free = [...worktrees.where((w) => w.isFree), ...spare];
     final slots = (config.maxAgents - running).clamp(0, free.length);
     final runningItems = {for (final run in conditions.runs) run.item};
+    // The items under an epic one agent implements are that agent's work.
+    final epics = {
+      for (final id in conditions.epics)
+        if (snapshot[id] case final planned? when !planned.isDone) id,
+    };
+    final members = {
+      for (final planned in snapshot.items)
+        if (planned.ancestors.any(epics.contains)) planned.id,
+    };
     // A person wrote to an agent: first, even when held (unless its branch is
     // stuck in another worktree). Its session goes on, or without one a new
     // session takes the comments up.
     final fresh = {
       for (final planned in snapshot.items)
-        if (!runningItems.contains(planned.id) &&
+        if (!members.contains(planned.id) &&
+            !runningItems.contains(planned.id) &&
             !conditions.blocked.contains(planned.id) &&
             hasRepliesWithoutSession(planned, sessions[planned.id], conditions.starts[planned.id], snapshot, config))
           planned.id,
@@ -614,7 +703,8 @@ final class DispatchPlan {
     final replied = [
       for (final planned in snapshot.items)
         if (fresh.contains(planned.id) ||
-            (!runningItems.contains(planned.id) &&
+            (!members.contains(planned.id) &&
+                !runningItems.contains(planned.id) &&
                 !conditions.blocked.contains(planned.id) &&
                 hasReplies(planned, sessions[planned.id], config)))
           planned,
@@ -622,7 +712,11 @@ final class DispatchPlan {
     final ready = [
       ...replied,
       for (final item in snapshot.ready)
-        if (!conditions.held.containsKey(item.id) && !replied.contains(item) && !runningItems.contains(item.id)) item,
+        if (!conditions.held.containsKey(item.id) &&
+            !replied.contains(item) &&
+            !runningItems.contains(item.id) &&
+            !members.contains(item.id))
+          item,
     ];
 
     final waitingForAnswer = [
@@ -688,6 +782,7 @@ final class DispatchPlan {
                   ),
                 )
               : null,
+          epic: epics.contains(candidate.id),
         ),
       );
     }
@@ -711,13 +806,15 @@ final class DispatchPlan {
       starts: Map.unmodifiable(conditions.starts),
       held: List.unmodifiable([
         for (final item in snapshot.ready)
-          if (conditions.held[item.id] case final reason? when !replied.contains(item)) (item: item, reason: reason),
+          if (conditions.held[item.id] case final reason? when !replied.contains(item) && !members.contains(item.id))
+            (item: item, reason: reason),
       ]),
       spare: List.unmodifiable(spare),
       recheckAt: recheckAt,
       runs: List.unmodifiable(conditions.runs),
       pending: List.unmodifiable(conditions.pending),
       branches: Map.unmodifiable(conditions.branches),
+      epics: Set.unmodifiable(epics),
     );
   }
 
@@ -767,6 +864,13 @@ final class DispatchPlan {
 
   /// Worktree name → its checked-out branch (worktrees that are not busy).
   final Map<String, String> branches;
+
+  /// Unfinished epics one agent implements ([DispatchConditions.epics]).
+  final Set<ItemId> epics;
+
+  /// The epic one agent implements that [id] belongs to (lies under), if any;
+  /// such items are never assigned on their own.
+  ItemId? epicOf(ItemId id) => snapshot[id]?.ancestors.firstWhereOrNull(epics.contains);
 
   /// What runs for [id] now, if anything.
   AgentRun? runFor(ItemId id) => runs.firstWhereOrNull((run) => run.item == id);
@@ -968,8 +1072,17 @@ final class DispatchPlan {
   /// used even when the plan gives it to a more urgent item.
   DispatchAssignment assignmentFor(String reference, {bool fresh = false}) {
     final planned = snapshot[ItemReference.resolve(reference, snapshot.ids)]!;
+    if (epicOf(planned.id) case final epic?) {
+      throw InvalidInputException(
+        '${planned.id} belongs to the epic $epic, which one agent implements on its branch; start $epic instead.',
+      );
+    }
     final replied = !fresh && hasReplies(planned, sessions[planned.id], config);
     final news = fresh ? null : _newSessionNews(planned);
+    // An epic one agent implements goes on as an epic.
+    if (epics.contains(planned.id) && !planned.isReady && !replied && news == null) {
+      return epicStart(reference, fresh: fresh);
+    }
     if (!planned.isReady && !replied && news == null) throw _notReady(planned);
     final free = available;
     if (free.isEmpty || capacity == 0) {
@@ -1003,6 +1116,52 @@ final class DispatchPlan {
       resume: own == null ? null : session,
       create: target.isNew,
       replies: own == null ? news : null,
+      epic: epics.contains(planned.id),
+    );
+  }
+
+  /// The assignment for implementing the epic [reference] by hand, now: one
+  /// agent works through all items under it on the epic's branch
+  /// ([DispatchAssignment.epic]). The epic must pass [EpicPlan] (not
+  /// [EpicVerdict.forbidden]; warnings are the caller's to confirm) and must
+  /// not be claimed; its last session goes on in its worktree when it can,
+  /// unless [fresh], else the agent starts where the epic's branch is
+  /// checked out or in the first free (or new) worktree. Fails with
+  /// `InvalidInputException` when it cannot start, `ClaimConflictException`
+  /// when it is claimed, `UnavailableException` while something runs for it
+  /// or no worktree is free.
+  DispatchAssignment epicStart(String reference, {bool fresh = false}) {
+    final planned = snapshot[ItemReference.resolve(reference, snapshot.ids)]!;
+    final id = planned.id;
+    if (runFor(id) case final run?) {
+      throw UnavailableException(
+        '${run.action == null ? 'An agent' : 'The action "${run.action}"'} already runs for $id (in ${run.worktree}).',
+      );
+    }
+    if (planned.isClaimed) throw ClaimConflictException('$id is claimed by ${planned.claim!.agent}.');
+    if (epicOf(id) case final epic?) {
+      throw InvalidInputException('$id belongs to the epic $epic, which one agent implements already.');
+    }
+    final plan = EpicPlan.of(snapshot, id);
+    if (plan.verdict == EpicVerdict.forbidden) {
+      throw InvalidInputException('$id cannot be implemented as an epic: ${plan.problems.join(' ')}');
+    }
+    final free = available;
+    if (free.isEmpty || capacity == 0) {
+      throw UnavailableException('No free worktree for the epic $id ($running/${config.maxAgents} running).');
+    }
+    final session = fresh ? null : sessions[id];
+    final own = _resumableIn(session, config.agent, free);
+    final target = own ?? free.firstWhereOrNull((w) => !w.isNew && branches[w.name] == plan.branch) ?? free.first;
+    return DispatchAssignment.render(
+      config,
+      item: planned,
+      worktree: target.worktree,
+      path: target.path,
+      backlogRoot: backlogRoot,
+      resume: own == null ? null : session,
+      create: target.isNew,
+      epic: true,
     );
   }
 

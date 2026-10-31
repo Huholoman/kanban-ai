@@ -520,6 +520,75 @@ dispatcher:
       expect(() => full.assignmentFor('T-3'), throwsA(isA<UnavailableException>()));
     });
 
+    test('an epic starts one agent with the epic prompt; its items are never assigned on their own', () {
+      final items = [
+        item('E-1', type: 'epic'),
+        item('T-1', parent: 'E-1'),
+        item('T-2', parent: 'E-1', dependsOn: ['T-1']),
+        item('T-3'),
+      ];
+      final before = _plan(items, workflow: _resumingWorkflow());
+      expect(before.assignments.map((a) => a.key), ['T-1@w1', 'T-3@w2']);
+
+      final start = before.epicStart('E-1');
+      expect(start.key, 'E-1@w1+epic');
+      expect(start.epic, isTrue);
+      expect(start.branch, 'agent/E-1');
+      expect(start.prompt, contains('implementing the epic E-1 ("Item E-1")'));
+      expect(start.prompt, contains('`backlog epic E-1 --next`'));
+      expect(start.prompt, contains('Never push and never open pull requests.'));
+
+      final during = _plan(
+        items,
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(epics: {ItemId('E-1')}),
+      );
+      expect(during.assignments.map((a) => a.key), ['T-3@w1']);
+      expect(during.epicOf(ItemId('T-2')), ItemId('E-1'));
+      expect(
+        () => during.assignmentFor('T-1'),
+        throwsA(isA<InvalidInputException>().having((e) => e.message, 'message', contains('belongs to the epic E-1'))),
+      );
+      expect(() => during.epicStart('T-1'), throwsA(isA<InvalidInputException>()));
+      // A start of the epic itself goes on as the epic.
+      expect(during.assignmentFor('E-1').epic, isTrue);
+    });
+
+    test('an epic that cannot be implemented, is claimed or has no free worktree does not start', () {
+      expect(
+        () => _plan([item('E-1', type: 'epic')]).epicStart('E-1'),
+        throwsA(isA<InvalidInputException>().having((e) => e.message, 'message', contains('no child items'))),
+      );
+      expect(
+        () => _plan(
+          [item('E-1', type: 'epic', status: 'in-progress'), item('T-1', parent: 'E-1')],
+          claims: [_claim('E-1', 'w1')],
+        ).epicStart('E-1'),
+        throwsA(isA<ClaimConflictException>()),
+      );
+      expect(
+        () => _plan(
+          [item('E-1', type: 'epic'), item('T-1', parent: 'E-1'), item('X-1', status: 'in-progress')],
+          workflow: _workflow(worktrees: ['w1']),
+          claims: [_claim('X-1', 'w1')],
+        ).epicStart('E-1'),
+        throwsA(isA<UnavailableException>()),
+      );
+    });
+
+    test('a reply to an epic resumes its agent with the epic prompt', () {
+      const reply = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nUse CSV.\n';
+      final plan = _plan(
+        [item('E-1', type: 'epic', body: reply), item('T-1', parent: 'E-1')],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(sessions: {ItemId('E-1'): _session('E-1', 'w2')}, epics: {ItemId('E-1')}),
+      );
+      final resumed = plan.assignments.single;
+      expect(resumed.key, 'E-1@w2+resume+epic');
+      expect(resumed.prompt, contains('You continue your earlier session on this epic.'));
+      expect(resumed.prompt, contains('Use CSV.'));
+    });
+
     test('sameDecisionAs compares assignments, waiting items and busy worktrees', () {
       final a = _plan([item('T-1')]);
       expect(a.sameDecisionAs(_plan([item('T-1')])), isTrue);

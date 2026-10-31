@@ -228,6 +228,35 @@ dispatcher:
     expect((await plan()).worktrees.first.isFree, isTrue, reason: 'committed work leaves the worktree clean');
   });
 
+  test('an epic agent takes the epic with its open children and leaves no claims on its items', () async {
+    await backlog.items.create(const NewItem(title: 'Epic', type: 'epic', status: 'todo'));
+    await backlog.items.create(const NewItem(title: 'One', parent: 'T-0001', status: 'todo'));
+    await backlog.items.create(const NewItem(title: 'Two', parent: 'T-0001', status: 'todo'));
+    await launcher.launch((await plan()).epicStart('T-0001'));
+    final epic = await planned('T-0001');
+    expect((epic.claim!.agent, epic.item.status, epic.item.branch), ('wt-1', 'in-progress', 'agent/T-0001'));
+
+    // The agent works through the epic: one item handed over, one begun.
+    await backlog.claims.claimInEpic('T-0001', 'wt-1');
+    await backlog.items.update('T-0002', [FieldChange.parse('status=review')]);
+    expect((await backlog.claims.claimInEpic('T-0001', 'wt-1')).outcome!.item.id, ItemId('T-0003'));
+    final during = await plan();
+    expect(during.epics, {ItemId('T-0001')});
+    expect(during.worktrees.first.run!.epic, isTrue);
+    expect(during.assignments, isEmpty);
+
+    await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+    await finish('T-0001', 0);
+    final handedOver = await planned('T-0002');
+    expect((handedOver.item.status, handedOver.claim), ('review', null));
+    final unfinished = await planned('T-0003');
+    expect((unfinished.item.status, unfinished.claim), ('todo', null));
+    expect(logs.last, contains('released the unfinished T-0003; dropped the claims on T-0002'));
+    final after = await plan();
+    expect(after.epics, {ItemId('T-0001')}, reason: 'the epic in review is still implemented as a whole');
+    expect(after.assignments, isEmpty, reason: 'T-0003 stays with the epic');
+  });
+
   group('pull requests (dispatcher.pr)', () {
     late String remote;
 

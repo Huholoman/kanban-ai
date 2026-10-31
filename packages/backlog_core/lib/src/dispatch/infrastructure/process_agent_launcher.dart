@@ -222,6 +222,11 @@ final class ProcessAgentLauncher extends AgentLauncher {
       sessions: last.sessions,
       starts: last.starts,
       branches: branches,
+      epics: {
+        ...last.epics,
+        for (final record in runs)
+          if (record.run.epic) record.run.item,
+      },
     );
   }
 
@@ -238,15 +243,18 @@ final class ProcessAgentLauncher extends AgentLauncher {
   }
 
   /// The sessions and starts of the last runs (`<id>.last.json`) of items
-  /// that are still open or in progress.
-  Future<({Map<ItemId, AgentSession> sessions, Map<ItemId, AgentStart> starts})> _sessions(
+  /// that are still open or in progress, and which of them ran as epics.
+  Future<({Map<ItemId, AgentSession> sessions, Map<ItemId, AgentStart> starts, Set<ItemId> epics})> _sessions(
     BacklogSnapshot snapshot,
   ) async {
     final dir = Directory(agentsDir);
-    if (!await dir.exists()) return (sessions: const <ItemId, AgentSession>{}, starts: const <ItemId, AgentStart>{});
+    if (!await dir.exists()) {
+      return (sessions: const <ItemId, AgentSession>{}, starts: const <ItemId, AgentStart>{}, epics: const <ItemId>{});
+    }
     const suffix = '.last.json';
     final sessions = <ItemId, AgentSession>{};
     final starts = <ItemId, AgentStart>{};
+    final epics = <ItemId>{};
     await for (final entry in dir.list()) {
       final name = p.basename(entry.path);
       if (entry is! File || !name.endsWith(suffix)) continue;
@@ -256,6 +264,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
       try {
         final json = (jsonDecode(await entry.readAsString()) as Map).cast<String, Object?>();
         starts[id] = (at: DateTime.parse(json['started_at']! as String), worktree: json['worktree']! as String);
+        if (json['epic'] == true) epics.add(id);
         if (json['session_id'] case final String session when session.isNotEmpty) {
           sessions[id] = AgentSession(
             item: id,
@@ -272,7 +281,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
         _log('Dispatcher: ignoring unreadable ${entry.path}: $error');
       }
     }
-    return (sessions: sessions, starts: starts);
+    return (sessions: sessions, starts: starts, epics: epics);
   }
 
   /// Why an agent cannot start in the worktree at [path]; null when it is a
@@ -301,8 +310,14 @@ final class ProcessAgentLauncher extends AgentLauncher {
       throw UnavailableException('Worktree ${assignment.agent}: $problem.');
     }
     final backlog = await _backlog();
-    // An action's agent works on the item without taking it over.
-    await backlog.claims.claim(id.value, assignment.agent, force: action != null, mirror: action == null);
+    // An action's agent works on the item without taking it over; an epic's
+    // agent takes it with its open children.
+    await backlog.claims.claim(
+      id.value,
+      assignment.agent,
+      force: action != null || assignment.epic,
+      mirror: action == null,
+    );
     final _Record record;
     try {
       final branch = assignment.branch;
@@ -722,8 +737,10 @@ final class ProcessAgentLauncher extends AgentLauncher {
     await _delete(_exitFile(id));
     await _delete(_stopFile(id));
     final action = assignment.action;
+    // Once an epic, the item's own runs stay the epic's (replies, fixes).
+    final epic = action == null && (assignment.epic || await _lastWasEpic(id));
     await File(log).writeAsString(
-      '# kanban-ai: ${assignment.agentProfile.name} for $id'
+      '# kanban-ai: ${assignment.agentProfile.name} for ${epic ? 'the epic ' : ''}$id'
       '${action == null ? '' : ' (action "${action.name}", ${assignment.trigger.id})'} in ${assignment.agent} (${assignment.path}), '
       'branch ${assignment.branch ?? '-'}, started ${now.toUtc().toIso8601String()}'
       '${assignment.resume == null ? '' : ', resuming session ${assignment.resume!.id}'}\n'
@@ -748,6 +765,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
         agent: assignment.agentProfile.name,
         branch: assignment.branch,
         action: action?.name,
+        epic: epic,
       ),
       path: assignment.path,
       pgid: await _processGroup(process.pid),
@@ -776,6 +794,16 @@ final class ProcessAgentLauncher extends AgentLauncher {
     } on ClaimConflictException {
       // The agent finished or released it already; nothing to keep alive.
     }
+    if (!record.run.epic) return;
+    // An epic's agent also holds the item of the epic it works on.
+    for (final claim in await backlog.claims.all()) {
+      if (claim.agent != record.run.worktree || claim.itemId == id || claim.isExpiredAt(now)) continue;
+      try {
+        await backlog.claims.heartbeat(claim.itemId.value, claim.agent);
+      } on BacklogException {
+        // Released meanwhile.
+      }
+    }
   }
 
   Future<void> _finish(_Record record) async {
@@ -797,6 +825,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final planned = snapshot[id];
     var outcome = '';
     var handedOver = false;
+    final members = run.epic ? await _releaseMembers(backlog, snapshot, record) : '';
     if (planned == null) {
       outcome = 'the item is gone';
     } else if (planned.claim?.agent == run.worktree) {
@@ -826,6 +855,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
     if (handedOver && planned != null) {
       if (await _pullRequestFallback(backlog, record, planned.item) case final done?) outcome = '$outcome; $done';
     }
+    if (members.isNotEmpty) outcome = '$outcome; $members';
     final ended = _clock.now();
     await _write(_lastFile(id), {
       ...record.toJson(),
@@ -852,6 +882,31 @@ final class ProcessAgentLauncher extends AgentLauncher {
       'Dispatcher: the agent for $id in ${run.worktree} $reason; $outcome'
       '${session == null ? '' : '; resume: cd ${record.path} && claude --resume $session'}.',
     );
+  }
+
+  /// After an epic's agent ended: the claims it still holds on items under
+  /// the epic are dropped — an item still in the first active status goes
+  /// back to the pickable status (its next run takes it up again), one
+  /// handed over keeps its status. Returns what happened for the outcome
+  /// (empty when nothing).
+  Future<String> _releaseMembers(Backlog backlog, BacklogSnapshot snapshot, _Record record) async {
+    final worktree = record.run.worktree;
+    final released = <ItemId>[];
+    final dropped = <ItemId>[];
+    for (final planned in snapshot.items) {
+      if (!planned.ancestors.contains(record.run.item) || planned.claim?.agent != worktree) continue;
+      if (planned.item.status == backlog.workflow.activeStatus) {
+        await backlog.claims.release(planned.id.value, agent: worktree, force: true);
+        released.add(planned.id);
+      } else {
+        await backlog.claims.drop(planned.id.value, worktree);
+        dropped.add(planned.id);
+      }
+    }
+    return [
+      if (released.isNotEmpty) 'released the unfinished ${released.join(', ')}',
+      if (dropped.isNotEmpty) 'dropped the claims on ${dropped.join(', ')}',
+    ].join('; ');
   }
 
   /// The safety net for `dispatcher.pr`: an agent handed its item over
@@ -1014,6 +1069,17 @@ final class ProcessAgentLauncher extends AgentLauncher {
     return latest;
   }
 
+  /// The last run of [id]'s own agent implemented it as an epic.
+  Future<bool> _lastWasEpic(ItemId id) async {
+    final text = await _read(_lastFile(id));
+    if (text == null) return false;
+    try {
+      return (jsonDecode(text) as Map)['epic'] == true;
+    } on FormatException {
+      return false;
+    }
+  }
+
   Future<_Record?> _record(ItemId id) async {
     final text = await _read(_recordFile(id));
     return text == null ? null : _Record.fromJson(jsonDecode(text) as Map<String, Object?>);
@@ -1138,6 +1204,7 @@ final class _Record {
       branch: json['branch'] as String?,
       action: json['action'] as String?,
       kind: RunKind.parse(json['kind']),
+      epic: json['epic'] == true,
     ),
     path: json['path']! as String,
     pgid: json['pgid'] as int?,
@@ -1180,6 +1247,7 @@ final class _Record {
     'output': output.id,
     'branch': run.branch,
     'resumed': resumed,
+    if (run.epic) 'epic': true,
     if (run.action != null) ...{'action': run.action, 'kind': run.kind.id, 'side': side, 'trigger': trigger},
   };
 }
