@@ -25,11 +25,11 @@ Everything derived (ready, blocked, progress, …) is computed from the files on
 
 ### 1.1 Locating the backlog
 
-In this order: `-C/--dir`, `$BACKLOG_DIR`, then from the current folder upwards the first folder that contains `backlog.yaml` or has a `backlog/` subfolder containing it. The second rule lets every sibling worktree find a shared `../backlog`.
+In this order: `-C/--dir`, `$BACKLOG_DIR`, then from the current folder upwards the first folder that contains `backlog.yaml` or has a `backlog/` subfolder containing it. The second rule lets every sibling worktree find a shared `../backlog`. `backlog-server` prefers the project registry (§1.2) to the last rule, see §8.
 
 ### 1.2 Project registry
 
-One machine usually has several backlogs (one per project). The registry lists them for `backlog-server` (§8), which hosts all of them at once. It is a YAML file, by default `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` (`~/.config/kanban-ai/projects.yaml` without `XDG_CONFIG_HOME`), elsewhere with `$BACKLOG_PROJECTS` or `--projects <file>`:
+One machine usually has several backlogs (one per project). The registry lists them for `backlog-server` (§8), which hosts all of them at once and picks up edits of the file live. It is a YAML file, by default `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` (`~/.config/kanban-ai/projects.yaml` without `XDG_CONFIG_HOME`), elsewhere with `$BACKLOG_PROJECTS` or `--projects <file>`:
 
 ```yaml
 projects:
@@ -268,9 +268,12 @@ A broken `backlog.yaml` (including the `dispatcher` section) is not a lint issue
 
 ## 8. Server — `backlog-server`
 
+One server hosts several backlogs (*projects*): either every project of the registry (§1.2), or a single backlog folder.
+
 | Option | Env | Default | |
 |---|---|---|---|
-| `-C`, `--dir` | `BACKLOG_DIR` | located as in §1.1 | backlog folder |
+| `-C`, `--dir` | `BACKLOG_DIR` | | serve only this backlog folder |
+| `--projects` | `BACKLOG_PROJECTS` | `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` if it exists | serve the projects of this registry |
 | `--host` | | `0.0.0.0` | addresses to bind, repeatable or comma-separated (e.g. `127.0.0.1,10.77.1.2`) |
 | `-p`, `--port` | | `8640` | |
 | `--allow` | `BACKLOG_ALLOW` | everyone | client IPs / CIDR ranges allowed; others get 403 |
@@ -279,13 +282,21 @@ A broken `backlog.yaml` (including the `dispatcher` section) is not a lint issue
 | `--web` | `BACKLOG_WEB` | built app next to the sources / bundled in Nix | static web app |
 | `-q` | | | no request log |
 
-At start it prints the board URLs (with the token). The web app is served with `Cache-Control: no-cache` and an ETag per file (derived from the build's location, size and time — files in the Nix store all share one date), so browsers revalidate and never keep files of an older build. It watches the folder (debounced, ignoring `.git`, temp and editor files) and pushes change events; edits from agents, `git pull` or an editor appear on the board immediately. `backlog.yaml` changes reload the workflow.
+**What is served**, first match wins: `--dir` (one folder; given together with `--projects` it wins and a note is printed), `--projects`, `$BACKLOG_DIR`, `$BACKLOG_PROJECTS`, the default registry file when it exists, the backlog found from the current folder (§1.1) as one folder. An explicitly given registry (`--projects`, `$BACKLOG_PROJECTS`) must exist; with nothing found the server exits with 4.
+
+- **One folder** behaves as before the registry: the backlog must open or the server does not start; it is the default project and the only entry of `/api/projects` (id derived as in §1.2).
+- **Registry**: only a malformed registry stops the start. A project whose folder is missing or whose `backlog.yaml` is broken is still listed, with its `error` in `/api/projects`; its requests fail with that error (`not_found` 404 without `backlog.yaml` or folder, `configuration` 500 for a broken one) and it recovers by itself once fixed (a missing folder is retried on every request). The registry file is watched: projects added, removed, renamed or reordered apply without a restart (a removed project stops its watcher and dispatcher and closes its event sockets); a malformed edit is logged and ignored, the previous projects keep running.
+
+At start it prints the projects (id, path, the default one, errors), the web app and the board URLs (with the token). The web app is served with `Cache-Control: no-cache` and an ETag per file (derived from the build's location, size and time — files in the Nix store all share one date), so browsers revalidate and never keep files of an older build. Each project's folder is watched (debounced, ignoring `.git`, temp and editor files) and its change events go to its own WebSocket; edits from agents, `git pull` or an editor appear on the board immediately. `backlog.yaml` changes reload that project's workflow.
 
 ### 8.1 REST API
+
+Every path below except `/api/health` and `/api/projects` exists per project under `/api/p/<id>` (`/api/p/hobbyo/items`, `WS /api/p/hobbyo/events`, …); the unprefixed paths address the **default project**, the first one of the registry. An unknown `<id>` is `not_found` 404, and with no project at all so are the unprefixed paths. The token, `--allow` and CORS apply to all paths alike.
 
 | Method & path | Body / query | Returns |
 |---|---|---|
 | `GET /api/health` | — (no token needed) | `{"ok": true}` |
+| `GET /api/projects` | | `[{id, name, path, error}]` in registry order; `error` (why the backlog cannot be opened) is null for working projects |
 | `GET /api/workflow` | | statuses, priorities, types, milestones, defaults, appearance |
 | `GET /api/items` | `?all=true` includes done | items (same shape as `backlog --json list`) |
 | `POST /api/items` | `{title, type?, status?, priority?, milestone?, parent?, depends_on[], labels[], touches[], body}` | detail (201) |
@@ -303,13 +314,13 @@ Errors: `{"error": {"type", "message", "candidates"?}}` with `not_found` 404, `a
 
 ### 8.2 Dispatcher
 
-With a `dispatcher` section in `backlog.yaml` (§2) the server keeps a dispatch plan: after every change event (debounced again by 500 ms) and whenever a live claim expires (that frees a worktree or an item without touching a file) it takes a snapshot and computes
+Every project runs its own dispatcher. With a `dispatcher` section in its `backlog.yaml` (§2) the server keeps a dispatch plan for it: after every change event (debounced again by 500 ms) and whenever a live claim expires (that frees a worktree or an item without touching a file) it takes a snapshot and computes
 
 - **busy worktrees** — those with a live claim under their name; claims of other agents do not occupy worktrees and do not count against `max_agents`,
 - **assignments** — ready items (§3.1) in the order of `backlog next` paired with free worktrees in the configured order, at most `max_agents` minus the busy ones,
 - **waiting** — ready items left over.
 
-The plan is logged whenever it changes (`Dispatcher (auto): 1/2 running; starts X-7f3a → monorepo-3.`). In `auto` mode every new assignment goes to the agent launcher once (again only after it dropped out of the plan or its launch failed); in `manual` mode nothing starts by itself. For now the launcher only logs the command it would run, in its worktree; claiming the item under the worktree name and starting the process come next, as does a Start button for `manual` mode. Without the section the dispatcher is idle; edits of the section apply live. `-q` also silences the dispatcher log.
+The plan is logged whenever it changes (`Dispatcher (auto): 1/2 running; starts X-7f3a → monorepo-3.`). In `auto` mode every new assignment goes to the agent launcher once (again only after it dropped out of the plan or its launch failed); in `manual` mode nothing starts by itself. For now the launcher only logs the command it would run, in its worktree; claiming the item under the worktree name and starting the process come next, as does a Start button for `manual` mode. Without the section the dispatcher is idle; edits of the section apply live. `-q` also silences the dispatcher log. Served from a registry, log lines start with `[<project id>]`.
 
 ## 9. Web board
 
@@ -372,10 +383,10 @@ Agents get the workflow from `backlog instructions` (paste into CLAUDE.md / AGEN
 
 Dart pub workspace (`backlog_core`, `backlog_cli`, `backlog_api`, `backlog_server`) plus the Flutter app outside it.
 
-- **backlog_core** — hexagonal modules `workflow`, `items`, `claims`, `planning`, `dispatch`, `views`, `validation`; pure `domain/`, use cases in `application/`, file-system adapters in `infrastructure/`; `Backlog` is the composition root; derived state lives in `BacklogSnapshot`; `DispatchPlan` (pure) turns a snapshot into assignments, `Dispatcher` re-plans on changes and hands them to the `AgentLauncher` port.
+- **backlog_core** — hexagonal modules `workflow`, `items`, `claims`, `planning`, `dispatch`, `views`, `validation`, `projects` (the registry: `ProjectRegistry`, port `ProjectRegistryStore`, `ProjectService`, YAML store); pure `domain/`, use cases in `application/`, file-system adapters in `infrastructure/`; `Backlog` is the composition root; derived state lives in `BacklogSnapshot`; `DispatchPlan` (pure) turns a snapshot into assignments, `Dispatcher` re-plans on changes and hands them to the `AgentLauncher` port.
 - **backlog_cli** — thin adapter; text and JSON renderers.
 - **backlog_api** — DTOs, `BacklogApi` interface, `HttpBacklogApi` (pure Dart, compiles for the web).
-- **backlog_server** — shelf: `ApiHandler` + `DtoMapper`, `ChangeFeed` (watcher → WebSocket and the dispatcher), middleware (token, client allowlist, CORS), multi-address binding.
+- **backlog_server** — shelf: `ProjectHub` (hosted projects, `/api/p/<id>` routing, `/api/projects`) with a `HostedProject` per backlog (`BacklogHost`, `ChangeFeed` → its WebSocket and dispatcher, `ApiHandler` + `DtoMapper`), `RegistryWatcher` (live registry), middleware (token, client allowlist, CORS), multi-address binding.
 - **backlog_app** — features `board` and `item`, each with `application/` (ChangeNotifier controllers and pure logic: `BoardFilter`, `ColumnArrangement`, `DetailNavigation`; shared design tokens in `shared/tokens.dart`) and `presentation/`; depends only on `BacklogApi`.
 
 Development: `mise run check` (format check, analysis, all tests), `mise run playground` (demo backlog), `mise run serve`.

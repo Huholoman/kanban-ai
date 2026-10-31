@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:backlog_api/backlog_api.dart';
@@ -34,8 +33,7 @@ void main() {
     token: token,
     client: inMemory(
       BacklogServer.buildHandler(
-        host: BacklogHost(dir.path, clock: clock),
-        events: const Stream.empty(),
+        projects: ProjectHub.single(BacklogHost(dir.path, clock: clock)),
         token: serverToken,
       ),
     ),
@@ -269,7 +267,7 @@ void main() {
     expect(() => client(serverToken: 'secret').items(), throwsA(apiError(401, 'unauthorized')));
     expect(await client(token: 'secret', serverToken: 'secret').items(), isEmpty);
     final health = await inMemory(
-      BacklogServer.buildHandler(host: BacklogHost(dir.path), events: const Stream.empty(), token: 'secret'),
+      BacklogServer.buildHandler(projects: ProjectHub.single(BacklogHost(dir.path)), token: 'secret'),
     ).get(Uri.parse('http://backlog.test/api/health'));
     expect(health.statusCode, 200);
   });

@@ -227,7 +227,7 @@ void main() {
     expect(assignment.id, item.id);
     expect(assignment.agent, 'repo-2');
     expect(assignment.command, ['agent', '${item.id}']);
-    expect(assignment.path, p.join(p.dirname(server.host.root), 'repo-2'));
+    expect(assignment.path, p.join(p.dirname(server.projects.defaultProject!.host.root), 'repo-2'));
     expect(logs, contains('Dispatcher (auto): 0/1 running; starts ${item.id} → repo-2.'));
   });
 }

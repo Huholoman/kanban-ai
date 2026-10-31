@@ -7,7 +7,18 @@ import 'package:path/path.dart' as p;
 
 Future<void> main(List<String> arguments) async {
   final parser = ArgParser()
-    ..addOption('dir', abbr: 'C', help: 'Backlog folder (default: found from the current folder, or BACKLOG_DIR).')
+    ..addOption(
+      'dir',
+      abbr: 'C',
+      help: 'Serve only this backlog folder (or BACKLOG_DIR), ignoring the project registry.',
+    )
+    ..addOption(
+      'projects',
+      valueHelp: 'file',
+      help:
+          'Project registry to serve (or BACKLOG_PROJECTS; default: \$XDG_CONFIG_HOME/kanban-ai/projects.yaml '
+          'when it exists, else the backlog found from the current folder).',
+    )
     ..addMultiOption(
       'host',
       defaultsTo: ['0.0.0.0'],
@@ -42,10 +53,36 @@ Future<void> main(List<String> arguments) async {
   }
 
   final environment = Platform.environment;
-  final root = options.option('dir') ?? environment['BACKLOG_DIR'] ?? Backlog.locate(Directory.current.path);
-  if (root == null) {
-    stderr.writeln('No backlog found from ${Directory.current.path}; pass --dir.');
-    exit(4);
+  final dirOption = options.option('dir');
+  final projectsOption = options.option('projects');
+  if (dirOption != null && projectsOption != null) {
+    stderr.writeln('Both --dir and --projects given; serving only $dirOption.');
+  }
+  // --dir beats --projects, options beat the environment, and the registry
+  // beats the backlog found from the current folder.
+  final explicitDir = dirOption ?? (projectsOption == null ? environment['BACKLOG_DIR'] : null);
+  final explicitRegistry = explicitDir != null ? null : projectsOption ?? environment['BACKLOG_PROJECTS'];
+  String? root;
+  String? projectsFile;
+  if (explicitDir != null) {
+    root = explicitDir;
+  } else if (explicitRegistry != null) {
+    projectsFile = p.absolute(explicitRegistry);
+    if (!File(projectsFile).existsSync()) {
+      stderr.writeln('No project registry at $projectsFile; create it with `backlog projects add --projects <file>`.');
+      exit(4);
+    }
+  } else if (projectRegistryFile(environment) case final file? when File(file).existsSync()) {
+    projectsFile = file;
+  } else {
+    root = Backlog.locate(Directory.current.path);
+    if (root == null) {
+      stderr.writeln(
+        'No backlog found from ${Directory.current.path} and no project registry; '
+        'pass --dir or register backlogs with `backlog projects add`.',
+      );
+      exit(4);
+    }
   }
   final port = int.tryParse(options.option('port')!);
   if (port == null) {
@@ -72,6 +109,8 @@ Future<void> main(List<String> arguments) async {
   try {
     server = await BacklogServer.start(
       root: root,
+      projectsFile: projectsFile,
+      home: environment['HOME'],
       addresses: hosts,
       port: port,
       token: token,
@@ -87,13 +126,24 @@ Future<void> main(List<String> arguments) async {
     exit(1);
   }
 
-  stdout
-    ..writeln('Backlog: ${server.host.root}')
-    ..writeln(
-      Directory(webRoot).existsSync() ? 'Web app: $webRoot' : 'Web app not built ($webRoot); serving the API only.',
+  if (projectsFile != null) {
+    stdout.writeln('Projects from $projectsFile (watched; the first one is the default):');
+  }
+  final projects = server.projects.projects;
+  if (projects.isEmpty) stdout.writeln('  (none yet; add some with `backlog projects add`)');
+  for (final project in projects) {
+    final dto = await project.describe();
+    stdout.writeln(
+      '  ${project.id}  ${dto.path}${project == projects.first ? '  (default)' : ''}'
+      '${dto.error == null ? '' : '\n    error: ${dto.error}'}',
     );
+  }
+  stdout.writeln(
+    Directory(webRoot).existsSync() ? 'Web app: $webRoot' : 'Web app not built ($webRoot); serving the API only.',
+  );
   if (options.flag('generate-token')) stdout.writeln('Token: $token');
   if (allowed.isNotEmpty) stdout.writeln('Allowed clients: ${allowed.join(', ')}');
+  stdout.writeln('Board:');
   for (final url in await _urls(hosts, server.port)) {
     stdout.writeln('  $url${token == null ? '' : '/?token=$token'}');
   }

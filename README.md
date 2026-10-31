@@ -175,8 +175,12 @@ backlog lint                    # before ending the session
 ## The web board
 
 ```bash
-backlog-server -C path/to/backlog --token secret
+backlog-server -C path/to/backlog --token secret   # one backlog
+cd ~/p/myapp && backlog projects add               # or register every backlog once…
+backlog-server --token secret                      # …and serve them all from one server
 ```
+
+**Several projects:** without `-C`, the server serves every backlog of the project registry (`~/.config/kanban-ai/projects.yaml`, see `backlog projects` below) when it exists, otherwise the backlog found from the current folder. The board switches between them; the API has them under `/api/p/<id>/…` (`/api/projects` lists them) and the plain `/api/…` paths mean the first, default project. The registry is watched, so `backlog projects add/remove` apply without a restart. A project with a missing folder or a broken `backlog.yaml` does not stop the server, it is listed with its error. `-C` (or `BACKLOG_DIR`) always means just that one backlog.
 
 To keep the board off the LAN without a firewall, bind only to localhost and the VPN interface, and/or allow only some clients:
 
@@ -187,7 +191,8 @@ backlog-server --allow 127.0.0.1,10.77.11.22,10.77.0.0/16  # answer only these c
 
 | Option | Default | |
 |---|---|---|
-| `-C`, `--dir` | found from the current folder, `BACKLOG_DIR` | backlog folder |
+| `-C`, `--dir` | `BACKLOG_DIR` | serve only this backlog folder |
+| `--projects` | `BACKLOG_PROJECTS`, else `~/.config/kanban-ai/projects.yaml` if it exists, else the backlog found from the current folder | project registry to serve |
 | `--host` | `0.0.0.0` | addresses to bind, repeatable or comma-separated; `127.0.0.1` = local only |
 | `--allow` | `BACKLOG_ALLOW` | only these client IPs or CIDR ranges get an answer, others 403 |
 | `-p`, `--port` | `8640` | |
@@ -385,6 +390,7 @@ backlog_cli ──────────────────────�
 | Module | domain | application | infrastructure |
 |---|---|---|---|
 | `workflow` | `Workflow`, statuses and categories, `DispatcherConfig` | – | `backlog.yaml` parser |
+| `projects` | `ProjectRegistry`, `ProjectEntry`, port `ProjectRegistryStore` | `ProjectService` | `projects.yaml` (`yaml_edit`, keeps comments) |
 | `items` | `Item`, `ItemId`, `Checklist`, ports `ItemRepository`, `IdGenerator` | `ItemService`, `FieldChange` | Markdown codec (`yaml_edit`, keeps formatting), file-system repository |
 | `claims` | `Claim` (lease), port `ClaimStore` | `ClaimService` (claim, next, heartbeat, release, done) | lock files |
 | `planning` | `BacklogSnapshot`, `PlannedItem`: blocked, conflicting, ready, cycles, children | `PlanningService` | – |
@@ -399,17 +405,18 @@ backlog_cli ──────────────────────�
 
 There is no event bus or event sourcing: the state lives in files and git keeps the history.
 
-**The server** is a driving adapter. `ApiHandler` parses requests, calls the core services and maps the results through `DtoMapper` to the DTOs of `backlog_api`. `ChangeFeed` watches the folder, debounces bursts of changes and ignores `.git` and temporary files. `BacklogHost` reloads the workflow after `backlog.yaml` changes, the core's `Dispatcher` re-plans on the same change events, and `BacklogServer` is the composition root.
+**The server** is a driving adapter. `ApiHandler` parses requests, calls the core services and maps the results through `DtoMapper` to the DTOs of `backlog_api`. `ChangeFeed` watches the folder, debounces bursts of changes and ignores `.git` and temporary files. `BacklogHost` reloads the workflow after `backlog.yaml` changes, the core's `Dispatcher` re-plans on the same change events. Each backlog is a `HostedProject` (host, feed, dispatcher, API); `ProjectHub` keeps them in registry order and routes `/api/p/<id>/…`, `RegistryWatcher` applies registry edits live, and `BacklogServer` is the composition root.
 
 **The app** is split by feature (`features/board`, `features/item`). Each feature has `application/` (`ChangeNotifier` controllers without widgets, and pure logic such as `ColumnArrangement`) and `presentation/`. It depends only on the `BacklogApi` interface, which `AppScope` provides.
 
-**The REST API** (`/api/…`):
+**The REST API** (`/api/…` for the default project, the same under `/api/p/<id>/…` for each project):
+- `projects` (global: `[{id, name, path, error}]`)
 - `workflow`, `items` (`?all=true`)
 - `items/<id>`: GET (with its relations and the items it waits for or holds up through `touches`), and PATCH `{changes: ["status=done"], body}`
 - `items/<id>/claim|release|done`: POST `{agent, status, force}`
 - `views`: GET, and POST `{name, section?, base?, conditions: [filter expressions]}` (save a filter as a view)
 - `views/<id>`: GET (`?group_by=field` regroups it for that request), and PATCH `{section?, columns?}` (only the given keys change; null removes them)
-- `lint`, `health`
+- `lint`, `health` (global)
 - the WebSocket `events`
 
 Errors look like `{"error": {"type", "message"}}`, the same as `backlog --json`.

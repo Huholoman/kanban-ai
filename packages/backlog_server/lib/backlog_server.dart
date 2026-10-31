@@ -1,4 +1,4 @@
-/// HTTP server over a backlog folder: REST API, change events over WebSocket
+/// HTTP server over one or more backlog folders: REST API, change events over WebSocket
 /// and the built web app.
 library;
 
@@ -9,3 +9,6 @@ export 'src/http/api_handler.dart';
 export 'src/http/client_filter.dart';
 export 'src/http/dto_mapper.dart';
 export 'src/http/middleware.dart' show generateToken;
+export 'src/projects/hosted_project.dart';
+export 'src/projects/project_hub.dart';
+export 'src/projects/registry_watcher.dart';
