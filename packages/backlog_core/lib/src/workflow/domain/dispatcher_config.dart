@@ -1,6 +1,7 @@
 import 'package:path/path.dart' as p;
 
 import '../../shared/errors.dart';
+import 'action_definition.dart';
 
 /// Whether the dispatcher starts agents by itself or waits for a person.
 enum DispatchMode {
@@ -322,6 +323,8 @@ final class DispatcherConfig {
     int? maxAgents,
     String base = 'main',
     NewWorktrees? newWorktrees,
+    List<ActionDefinition> actions = const [],
+    Map<String, AgentProfile>? profiles,
   }) {
     if (worktrees.isEmpty && newWorktrees == null) {
       throw const ConfigurationException(
@@ -342,6 +345,16 @@ final class DispatcherConfig {
     }
     final limit = maxAgents ?? newWorktrees?.maxWorktrees ?? worktrees.length;
     if (limit < 1) throw const ConfigurationException('dispatcher.max_agents must be at least 1.');
+    final usable = {...AgentProfile.builtIns, ...?profiles, agent.name: agent};
+    final actionNames = <String>{};
+    for (final action in actions) {
+      if (!actionNames.add(action.name)) throw ConfigurationException('Duplicate dispatcher action "${action.name}".');
+      if (action.agent case final name? when !usable.containsKey(name)) {
+        throw ConfigurationException(
+          'dispatcher.actions "${action.name}": unknown agent "$name" (known: ${usable.keys.join(', ')}).',
+        );
+      }
+    }
     return DispatcherConfig._(
       List.unmodifiable(worktrees),
       agent,
@@ -352,6 +365,8 @@ final class DispatcherConfig {
       limit,
       base,
       newWorktrees,
+      List.unmodifiable(actions),
+      Map.unmodifiable(usable),
     );
   }
 
@@ -364,6 +379,8 @@ final class DispatcherConfig {
     this.maxAgents,
     this.base,
     this.newWorktrees,
+    this.actions,
+    this.profiles,
   );
 
   /// What the prompt may refer to: the item id and title, the worktree name,
@@ -433,8 +450,26 @@ final class DispatcherConfig {
   /// is free (`dispatcher.repo`); null when it only uses [worktrees].
   final NewWorktrees? newWorktrees;
 
+  /// `dispatcher.actions`: buttons and status hooks, in the configured order.
+  final List<ActionDefinition> actions;
+
+  /// Every agent profile an action may name: the built-in ones, those of
+  /// `dispatcher.agents` and [agent].
+  final Map<String, AgentProfile> profiles;
+
   /// The command of [agent].
   CommandTemplate get command => agent.command;
+
+  /// The action called [name]; null when there is none.
+  ActionDefinition? action(String name) {
+    for (final action in actions) {
+      if (action.name == name) return action;
+    }
+    return null;
+  }
+
+  /// The profile a prompt [action] starts: its `agent`, else [agent].
+  AgentProfile profileFor(ActionDefinition action) => action.agent == null ? agent : profiles[action.agent] ?? agent;
 
   /// The same configuration with [worktrees] in place of the listed ones
   /// (e.g. the listed ones plus those the dispatcher created).
@@ -447,6 +482,8 @@ final class DispatcherConfig {
     maxAgents,
     base,
     newWorktrees,
+    actions,
+    profiles,
   );
 
   WorktreeDefinition? worktree(String name) {

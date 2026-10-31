@@ -1,6 +1,7 @@
 import 'package:yaml/yaml.dart';
 
 import '../../shared/errors.dart';
+import '../domain/action_definition.dart';
 import '../domain/appearance.dart';
 import '../domain/dispatcher_config.dart';
 import '../domain/workflow.dart';
@@ -93,6 +94,7 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     'prompt',
     'resume_prompt',
     'command',
+    'actions',
   };
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
@@ -117,6 +119,10 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
       newWorktrees: newWorktrees,
       base: yaml['base'] == null ? 'main' : _base(_string(yaml['base'], 'dispatcher.base', origin)),
       agent: _agent(yaml, origin),
+      profiles: _profiles(yaml, origin),
+      actions: [
+        for (final entry in _list(yaml['actions'] ?? const [], 'dispatcher.actions', origin)) _action(entry, origin),
+      ],
       prompt: prompt == null
           ? null
           : TextTemplate(
@@ -194,10 +200,7 @@ AgentProfile _agent(YamlMap yaml, String origin) {
       'give either dispatcher.agent (a profile) or dispatcher.command (a plain command), not both.',
     );
   }
-  final custom = <String, AgentProfile>{
-    for (final MapEntry(:key, :value) in _map(yaml['agents'], 'dispatcher.agents', origin).entries)
-      '$key': _profile('$key', value, origin),
-  };
+  final custom = _profiles(yaml, origin);
   if (command != null) {
     return AgentProfile(name: 'command', command: _command(command as Object, 'dispatcher.command', origin));
   }
@@ -208,6 +211,50 @@ AgentProfile _agent(YamlMap yaml, String origin) {
     throw ConfigurationException('dispatcher.agent: unknown agent "$chosen" (known: ${names.join(', ')}).');
   }
   return profile;
+}
+
+/// The profiles of `dispatcher.agents`.
+Map<String, AgentProfile> _profiles(YamlMap yaml, String origin) => {
+  for (final MapEntry(:key, :value) in _map(yaml['agents'], 'dispatcher.agents', origin).entries)
+    '$key': _profile('$key', value, origin),
+};
+
+/// One entry of `dispatcher.actions`.
+ActionDefinition _action(Object? node, String origin) {
+  final yaml = _map(node, 'dispatcher.actions[]', origin);
+  const known = {'name', 'statuses', 'on_enter', 'prompt', 'run', 'agent', 'fresh'};
+  for (final key in yaml.keys) {
+    if (!known.contains('$key')) {
+      throw ConfigurationException('unknown key "dispatcher.actions[].$key" (expected ${known.join(', ')}).');
+    }
+  }
+  final name = _string(yaml['name'], 'dispatcher.actions[].name', origin);
+  final path = 'dispatcher.actions "$name"';
+  final fresh = yaml['fresh'] ?? false;
+  if (fresh is! bool) throw ConfigurationException('$path.fresh must be true or false.');
+  final run = yaml['run'];
+  return ActionDefinition(
+    name: name,
+    statuses: yaml['statuses'] == null ? null : _strings(yaml['statuses'], '$path.statuses', origin),
+    onEnter: yaml['on_enter'] == null ? null : _string(yaml['on_enter'], '$path.on_enter', origin),
+    prompt: yaml['prompt'] == null
+        ? null
+        : TextTemplate(
+            _string(yaml['prompt'], '$path.prompt', origin),
+            known: ActionDefinition.promptPlaceholders,
+            label: '$path.prompt',
+          ),
+    command: run is List
+        ? CommandTemplate(
+            _strings(run, '$path.run', origin),
+            label: '$path.run',
+            known: ActionDefinition.commandPlaceholders,
+          )
+        : null,
+    builtIn: run == null || run is List ? null : _string(run, '$path.run', origin),
+    agent: yaml['agent'] == null ? null : _string(yaml['agent'], '$path.agent', origin),
+    fresh: fresh,
+  );
 }
 
 AgentProfile _profile(String name, Object? node, String origin) {
@@ -414,4 +461,24 @@ claims:
 #   # The prompt when an agent continues its last session on the item; {news}
 #   # tells what happened since (how the run ended, new comments):
 #   resume_prompt: "Continue on {id}. Since your last run: {news}"
+#   # Actions: buttons on items (statuses: where they show; default every
+#   # status, or only the on_enter one) and hooks (on_enter: run by itself,
+#   # once, when an item enters that status). Each has exactly one of
+#   # prompt (an agent; it continues the item's session unless fresh: true)
+#   # and run (a command as a list, or a built-in action by name: noop).
+#   # Prompt placeholders as above plus {pr}, {status}, {base}, {action},
+#   # {news}; command placeholders {id} {title} {branch} {pr} {status}
+#   # {worktree} {path} {backlog} {base} {action}.
+#   actions:
+#     - name: Address PR comments
+#       statuses: [review]
+#       prompt: "Go through the unresolved comments of PR {pr}, fix them and answer them."
+#       # agent: claude      # profile (default: dispatcher.agent)
+#     - name: AI review
+#       on_enter: review    # also a button in review
+#       fresh: true         # a new session, not the item's own
+#       prompt: "Review the changes of {branch} against {base}; write findings with backlog comment {id}."
+#     - name: Tests
+#       statuses: [review]
+#       run: [sh, -c, "mise run check"]   # in the item's worktree; result as a note in the discussion
 ''';

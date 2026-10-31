@@ -374,6 +374,26 @@ void main() {
       );
       expect((await preset.linter.run()).map((i) => i.message), contains(contains('unverified preset')));
     });
+
+    test('warns about actions whose program is not on the PATH or that can never run', () async {
+      final (backlog, _) = await tempBacklog(
+        config:
+            'dispatcher: {command: sh, worktrees: [{name: here, path: .}], actions: ['
+            '{name: Tests, run: [no-such-tool-xyz, check]}, {name: Never, statuses: [], run: noop}, '
+            '{name: Review, prompt: x, agent: gemini}, {name: Fine, run: [sh, -c, "true"]}]}\n',
+      );
+      final issues = await backlog.linter.run();
+      expect(issues.map((i) => i.code).toSet(), {'dispatcher-action'});
+      expect(
+        issues.map((i) => i.message),
+        containsAll([
+          'Action "Tests": it runs "no-such-tool-xyz", which is not on the PATH.',
+          'Action "Never": it has no on_enter and an empty statuses list, so it can never run.',
+          'Action "Review": its agent "gemini" is an unverified preset.',
+        ]),
+      );
+      expect(issues.map((i) => i.message), isNot(contains(contains('"Fine"'))));
+    });
   });
 
   group('views', () {

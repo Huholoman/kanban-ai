@@ -90,6 +90,11 @@ appearance:
           template.substring(start).replaceAll(RegExp(r'^# (?=\s*(- |[a-z_-]+:))', multiLine: true), '');
       expect(parseWorkflowYaml(uncommented).appearance.priorities['p0'], '#e53935');
       expect(parseWorkflowYaml(uncommented).dispatcher!.worktrees.map((w) => w.name), ['monorepo-2', 'monorepo-3']);
+      expect(parseWorkflowYaml(uncommented).dispatcher!.actions.map((a) => a.name), [
+        'Address PR comments',
+        'AI review',
+        'Tests',
+      ]);
     });
 
     test('the dispatcher is off without its section', () {
@@ -222,6 +227,71 @@ dispatcher:
     test('splits a command string like a shell, without running one', () {
       expect(CommandTemplate.splitWords(r"""a  'b c' "d \"e\" \$f" g\ h ''"""), ['a', 'b c', r'd "e" $f', 'g h', '']);
       expect(() => CommandTemplate.splitWords('a "b'), throwsA(isA<ConfigurationException>()));
+    });
+
+    test('parses actions: buttons per status, on_enter hooks, prompt, command or built-in', () {
+      final dispatcher = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  agents:
+    reviewer: {command: "rev {prompt}"}
+  actions:
+    - name: Fix PR comments
+      statuses: [review]
+      prompt: "Fix the comments of {pr} on {branch}"
+    - name: AI review
+      on_enter: review
+      fresh: true
+      agent: reviewer
+      prompt: "Review {id}: {news}"
+    - name: Merge
+      on_enter: done
+      statuses: []
+      run: noop
+    - name: Tests
+      run: [sh, -c, "cd {path} && mise run check # {id} {pr} {base}"]
+''').dispatcher!;
+      final [fix, review, merge, tests] = dispatcher.actions;
+      expect(fix.kind, ActionKind.prompt);
+      expect([fix.offeredIn('review'), fix.offeredIn('todo')], [true, false]);
+      expect(fix.fresh, isFalse);
+      expect(dispatcher.profileFor(fix).name, 'claude');
+      expect(review.onEnter, 'review');
+      expect([review.offeredIn('review'), review.offeredIn('todo')], [true, false]);
+      expect(dispatcher.profileFor(review).name, 'reviewer');
+      expect(review.fresh, isTrue);
+      expect(merge.kind, ActionKind.builtIn);
+      expect(merge.builtIn, 'noop');
+      expect(merge.offeredIn('done'), isFalse);
+      expect(tests.kind, ActionKind.command);
+      expect([tests.offeredIn('todo'), tests.offeredIn('done')], [true, true]);
+      expect(tests.command!.render({'path': '/w', 'id': 'X-1', 'pr': '7', 'base': 'main'}), [
+        'sh',
+        '-c',
+        'cd /w && mise run check # X-1 7 main',
+      ]);
+      expect(dispatcher.action('Merge'), same(merge));
+      expect(dispatcher.action('merge'), isNull);
+    });
+
+    test('rejects broken actions', () {
+      void rejects(String actions, String message) => expect(
+        () => parseWorkflowYaml('dispatcher: {worktrees: [a], actions: [$actions]}'),
+        throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
+      );
+      rejects('{name: A}', 'give exactly one of prompt and run');
+      rejects('{name: A, prompt: x, run: noop}', 'give exactly one of prompt and run');
+      rejects('{name: A, run: "mise run check"}', 'unknown built-in action "mise run check" (known: noop)');
+      rejects('{name: A, prompt: x}, {name: A, run: noop}', 'Duplicate dispatcher action "A"');
+      rejects('{name: A, prompt: x, on_enter: reviewed}', 'unknown status "reviewed"');
+      rejects('{name: A, prompt: x, statuses: [todo, nope]}', 'unknown status "nope"');
+      rejects('{name: A, prompt: x, agent: robot}', 'unknown agent "robot"');
+      rejects('{name: A, run: noop, fresh: true}', 'only apply to prompt actions');
+      rejects('{name: A, prompt: x, fresh: yes please}', 'fresh must be true or false');
+      rejects('{name: A, prompt: "{prompt}"}', 'unknown placeholder "{prompt}"');
+      rejects('{name: A, run: [x, "{news}"]}', 'unknown placeholder "{news}"');
+      rejects('{name: A/B, run: noop}', 'must not contain "/"');
+      rejects('{name: A, run: noop, when: now}', 'unknown key "dispatcher.actions[].when"');
     });
 
     test('rejects a broken dispatcher section', () {
