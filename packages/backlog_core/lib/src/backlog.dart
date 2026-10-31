@@ -12,11 +12,13 @@ import 'items/domain/item_id.dart';
 import 'items/infrastructure/file_system_item_repository.dart';
 import 'items/infrastructure/markdown_item_codec.dart';
 import 'planning/application/planning_service.dart';
+import 'planning/infrastructure/git_branch_heads.dart';
 import 'shared/clock.dart';
 import 'shared/errors.dart';
 import 'validation/application/linter.dart';
 import 'views/application/view_service.dart';
 import 'views/infrastructure/yaml_views.dart';
+import 'workflow/domain/dispatcher_config.dart';
 import 'workflow/domain/workflow.dart';
 import 'workflow/infrastructure/yaml_workflow.dart';
 
@@ -61,7 +63,18 @@ final class Backlog {
     );
     final claimStore = FileSystemClaimStore(layout, defaultLease: workflow.claimLease);
     final viewRepository = YamlViewRepository(layout);
-    final planning = PlanningService(items: itemRepository, claims: claimStore, workflow: workflow, clock: clock);
+    final dispatcher = workflow.dispatcher;
+    final planning = PlanningService(
+      items: itemRepository,
+      claims: claimStore,
+      workflow: workflow,
+      clock: clock,
+      branches: GitBranchHeads([
+        ?dispatcher?.newWorktrees?.resolveRepo(layout.root),
+        for (final worktree in dispatcher?.worktrees ?? const <WorktreeDefinition>[]) worktree.resolvePath(layout.root),
+        layout.root,
+      ]),
+    );
 
     return Backlog._(
       layout: layout,

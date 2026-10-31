@@ -33,11 +33,21 @@ abstract final class TextOutput {
       if (planned.isBlocked) 'blocked by ${[...planned.openDependencies, ...planned.missingDependencies].join(',')}',
       if (planned.isConflicting) 'waits for ${planned.conflictsWith.join(',')} (touches overlap)',
       if (planned.needsHuman) 'needs a person (question by ${planned.item.discussion.openQuestion!.author})',
+      if (_review(planned) case final review?) review,
       if (planned.childCount > 0) 'children ${planned.childCount - planned.openChildCount}/${planned.childCount}',
       if (!checklist.isEmpty) 'checklist $checklist',
     ];
     return badges.isEmpty ? '' : '  ${badges.join(' ')}';
   }
+
+  /// `review ok`, `review: 3 findings`, `review outdated`; null without one.
+  static String? _review(PlannedItem planned) => switch (planned.review) {
+    ReviewState.none || ReviewState.running => null,
+    ReviewState.ok => 'review ok',
+    ReviewState.changes =>
+      'review: changes${planned.reviewFindings == 0 ? '' : ' (${planned.reviewFindings} findings)'}',
+    ReviewState.stale => 'review outdated (newer commits)',
+  };
 
   static List<String> detail(PlannedItem planned, BacklogSnapshot snapshot, {String? path}) {
     final item = planned.item;
@@ -63,6 +73,8 @@ abstract final class TextOutput {
       if (planned.isConflicting) 'WAITING',
       if (planned.needsHuman) 'NEEDS A PERSON: ${planned.item.discussion.openQuestion!.author} asked a question',
       if (planned.isReady) 'READY',
+      if (_review(planned) case final review?)
+        '${review.toUpperCase()} (${planned.item.discussion.lastReview!.author})',
       if (planned.claim != null)
         'claim: ${planned.claim!.agent} '
             '${planned.isClaimExpired ? 'expired' : 'until'} ${time(planned.claim!.expiresAt)}',

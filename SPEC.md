@@ -219,6 +219,8 @@ Rules:
 | `conflicting` | open (not started), has `touches`, and they overlap the `touches` of an item in an `active` status (§3.2) |
 | `conflicts_with` | those active items — the item waits for them ("waits for X") |
 | `needs_human` | not done, and the discussion has an open question: a `question` comment with no later comment by another author (notes do not count) |
+| `review` | where the review of the item's work stands, from its latest review comment (§3): `none` (no review), `ok`, `changes`, or `stale` when the head of the item's branch (`branch`, else `agent/<id>`) has commits the review did not see — it is not the commit the review names, or, when it names none, it was committed after the review was written. Branch heads come from `git for-each-ref` in `dispatcher.repo`, else the first existing dispatcher worktree, else the backlog folder; with no repository or branch there a review never becomes `stale`. A running dispatcher also knows `running` (§8.2) |
+| `review_findings` | the findings of the latest review when it asks for changes (its numbered list items, §3), else 0 |
 | `ready` | in the pickable status, not blocked, not conflicting, not `needs_human`, no open children, and no live claim (expired claims do not count) |
 | `children` | `{total, open}` — items whose `parent` is this one |
 | `progress` | checklist `{done, total}` from the body |
@@ -263,7 +265,7 @@ Global options: `-C/--dir <folder>`, `--json` (machine-readable output; JSON fie
 | `init [folder] [--prefix X] [--no-register]` | create `backlog.yaml`, `items/`, `views/` (default views), `docs/`, `.gitignore`, and register the backlog in the project registry (§1.2) unless it is there already or `--no-register` is given (no registry location — no `HOME`, `XDG_CONFIG_HOME` or `BACKLOG_PROJECTS` — skips it; a broken registry only warns); JSON `{root, project?: {id, name}}` |
 | `new <title> [-t type] [-s status] [-p priority] [-m milestone] [--parent id] [-d id,…] [--related id,…] [-l label,…] [--doc name] [--touches glob,…] [--assignee a] [--branch b] [--pr url] [--body md \| --body-file f]` | create an item, prints it |
 | `list [-a] [-s status] [-m milestone] [-l label] [-t type] [-w cond]…` | open items (all with `-a`), most urgent first |
-| `show <id>` | item with relations (parent, children, dependencies, dependents, related, the active items it waits for and the open items it holds up through `touches`), claim and body; JSON items always have `needs_human`, details also `discussion: [{author, at, text, question, note, review, commit}]` |
+| `show <id>` | item with relations (parent, children, dependencies, dependents, related, the active items it waits for and the open items it holds up through `touches`), claim and body; JSON items always have `needs_human`, `review` and `review_findings` (§3.1), details also `discussion: [{author, at, text, question, note, review, commit}]` |
 | `path <id>` | file path of the item |
 | `set <id> <change>…` | change fields: `status=review`, `labels+=infra`, `depends_on-=X-7f3a`, `touches+=lib/a/`, `milestone=` (empty clears); unknown keys become custom fields |
 | `ready [-w cond]` | items that can be started now (`list -w conflicting=true` shows the ones waiting for overlapping work) |
@@ -314,7 +316,7 @@ A mapping is an AND of its entries; `and: [...]`, `or: [...]`, `not: <expr>` com
 
 ### 6.2 Fields
 
-All front-matter keys (`id`, `title`, `type`, `status`, `priority`, `milestone`, `parent`, `depends_on`, `related`, `assignee`, `branch`, `pr`, `labels`, `docs`, `touches`, `created`, `updated`), the computed `ready`, `blocked`, `conflicting`, `conflicts_with`, `claimed`, `claimed_by`, `needs_human`, `category`, `has_children`, `ancestors` (parent chain, cycle-safe), `epic` (epics among the item and its ancestors — `epic: X` selects everything under epic X), and any custom key.
+All front-matter keys (`id`, `title`, `type`, `status`, `priority`, `milestone`, `parent`, `depends_on`, `related`, `assignee`, `branch`, `pr`, `labels`, `docs`, `touches`, `created`, `updated`), the computed `ready`, `blocked`, `conflicting`, `conflicts_with`, `claimed`, `claimed_by`, `needs_human`, `review` (`none`/`ok`/`changes`/`stale`, §3.1), `category`, `has_children`, `ancestors` (parent chain, cycle-safe), `epic` (epics among the item and its ancestors — `epic: X` selects everything under epic X), and any custom key.
 
 ### 6.3 Grouping
 

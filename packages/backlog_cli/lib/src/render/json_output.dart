@@ -37,6 +37,8 @@ abstract final class JsonOutput {
       'progress': {'done': checklist.done, 'total': checklist.total},
       'claim': planned.claim == null ? null : claim(planned.claim!, expired: planned.isClaimExpired),
       'needs_human': planned.needsHuman,
+      'review': planned.review.name,
+      'review_findings': planned.reviewFindings,
       'path': ?path,
       if (withBody) 'body': item.body,
       if (withBody) 'discussion': [for (final c in item.discussion.comments) comment(c)],

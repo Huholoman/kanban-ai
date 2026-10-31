@@ -134,7 +134,7 @@ void main() {
     final claimed = await api.claim(first.item.id, const ClaimRequest(agent: 'tobik'));
     expect(claimed.item.status, 'in-progress');
     expect(claimed.item.claim!.agent, 'tobik');
-    expect(
+    await expectLater(
       () => api.claim(first.item.id, const ClaimRequest(agent: 'other')),
       throwsA(apiError(409, 'claim_conflict')),
     );

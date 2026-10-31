@@ -112,11 +112,28 @@ void main() {
       contains('### reviewer · 2026-10-31 12:00:00 UTC · review changes @${head.substring(0, 12)}\n\nTwo problems.'),
     );
 
+    Future<Map<Object?, Object?>> listed() async =>
+        ((jsonDecode((await backlog(['--json', 'list', '-w', 'review=changes,stale'])).out) as List).single as Map);
+    expect(json['review'], 'changes');
+    expect(json['review_findings'], 2);
+    expect((await backlog(['show', id])).out, contains('REVIEW: CHANGES (2 FINDINGS) (reviewer)'));
+
+    // The branch heads come from the dispatcher's worktrees (or repo).
+    final config = File(p.join(backlogDir, 'backlog.yaml'));
+    config.writeAsStringSync('${config.readAsStringSync()}\ndispatcher:\n  worktrees: [{name: repo, path: ../repo}]\n');
+    expect((await listed())['review'], 'changes');
+    await git(repo, ['switch', '-q', 'agent/work']);
+    await git(repo, ['commit', '-q', '--allow-empty', '-m', 'Fix the findings']);
+    expect((await listed())['review'], 'stale', reason: 'new commits after the review');
+    expect((await backlog(['list'])).out, contains('review outdated (newer commits)'));
+
     final ok = await backlog(['review', id, '--ok', '--as', 'tobik']);
     expect(ok.code, 0, reason: ok.err);
-    expect(ok.out, contains('Reviewed $id of ${head.substring(0, 12)}: ok.'));
+    final fixed = await git(repo, ['rev-parse', 'agent/work']);
+    expect(ok.out, contains('Reviewed $id of ${fixed.substring(0, 12)}: ok.'));
     final last = Discussion.parse((await (await Backlog.open(backlogDir)).items.get(id)).body).lastReview!;
     expect((last.author, last.review, last.text), ('tobik', ReviewVerdict.ok, 'No findings.'));
+    expect((await backlog(['list'])).out, contains('review ok'));
   });
 
   test('names the given commit, none without a known branch; refuses bad input', () async {

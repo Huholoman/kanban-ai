@@ -4,6 +4,7 @@ import '../../items/domain/discussion.dart';
 import '../../items/domain/item.dart';
 import '../../items/domain/item_id.dart';
 import '../../workflow/domain/workflow.dart';
+import 'review_state.dart';
 
 /// An item together with what follows from the rest of the backlog: whether
 /// it is blocked, ready to pick up, claimed, how far its children are.
@@ -22,6 +23,7 @@ final class PlannedItem {
     this.needsHuman = false,
     this.ancestors = const [],
     this.epics = const [],
+    this.review = ReviewState.none,
   });
 
   final Item item;
@@ -60,6 +62,14 @@ final class PlannedItem {
 
   /// Epics among the item itself and its [ancestors], nearest first.
   final List<ItemId> epics;
+
+  /// Where the review of its work stands ([ReviewState.of]); never
+  /// [ReviewState.running] here, only a dispatcher knows that.
+  final ReviewState review;
+
+  /// The findings of the latest review when it asks for changes
+  /// ([Comment.findings]); 0 otherwise.
+  int get reviewFindings => item.discussion.lastReview?.findings ?? 0;
 
   ItemId get id => item.id;
 

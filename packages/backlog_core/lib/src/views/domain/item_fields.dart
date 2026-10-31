@@ -2,7 +2,8 @@ import '../../planning/domain/planned_item.dart';
 
 /// Fields a view can filter, sort and group by. Besides the front-matter keys
 /// there are computed ones: `ready`, `blocked`, `conflicting`, `conflicts_with`,
-/// `claimed`, `claimed_by`, `needs_human`,
+/// `claimed`, `claimed_by`, `needs_human`, `review` (none, ok, changes,
+/// stale — see `ReviewState`),
 /// `category`, `has_children`, `ancestors` (parent chain) and `epic` (the
 /// epics among the item and its ancestors). Any other name reads an unknown front-matter
 /// key, so custom fields work without code changes.
@@ -15,6 +16,7 @@ abstract final class ItemFields {
     'claimed',
     'claimed_by',
     'needs_human',
+    'review',
     'category',
     'has_children',
     'ancestors',
@@ -49,6 +51,7 @@ abstract final class ItemFields {
       'claimed' => ['${planned.isClaimed}'],
       'claimed_by' => [if (planned.isClaimed) planned.claim!.agent],
       'needs_human' => ['${planned.needsHuman}'],
+      'review' => [planned.review.name],
       'category' => [?planned.category?.name],
       'has_children' => ['${planned.childCount > 0}'],
       'ancestors' => [for (final id in planned.ancestors) id.value],

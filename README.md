@@ -313,7 +313,7 @@ Files may be edited by hand. When the tool writes a file, it keeps comments, key
 
 **The discussion** is the last section, `## Discussion`, written by `backlog comment` / `backlog ask` (and the board): one `### <author> · <date time> UTC` heading per comment, ` · question` for a question that waits for a person, ` · note` for a note, ` · review ok` / ` · review changes @<commit>` for a review (its numbered list items are its findings). It is plain Markdown, so it can be read and edited by hand (seconds and `UTC` may be left out); a comment ends at the next comment heading, the section at the next `#`/`##` heading.
 
-Derived properties are computed, never stored: `blocked`, `conflicting` (waits for overlapping work in progress), `needs_human` (an unanswered question), `ready`, and the progress of the checklist and of the children.
+Derived properties are computed, never stored: `blocked`, `conflicting` (waits for overlapping work in progress), `needs_human` (an unanswered question), `review` (the latest review: `ok`, `changes` — with `review_findings` —, `stale` when the item's branch has newer commits, or `none`), `ready`, and the progress of the checklist and of the children.
 
 ### Workflow (`backlog.yaml`)
 

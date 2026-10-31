@@ -29,6 +29,8 @@ export 'src/items/infrastructure/markdown_item_codec.dart';
 export 'src/planning/application/planning_service.dart';
 export 'src/planning/domain/backlog_snapshot.dart';
 export 'src/planning/domain/planned_item.dart';
+export 'src/planning/domain/review_state.dart';
+export 'src/planning/infrastructure/git_branch_heads.dart';
 export 'src/projects/application/project_service.dart';
 export 'src/projects/domain/project_registry.dart';
 export 'src/projects/infrastructure/yaml_project_registry.dart';
