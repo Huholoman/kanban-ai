@@ -57,3 +57,12 @@ run = [
 [tasks.serve]
 description = "Serve the playground (or BACKLOG_DIR) with the built web app"
 run = "dart run packages/backlog_server/bin/backlog_server.dart -C ${BACKLOG_DIR:-playground/backlog} --web packages/backlog_app/build/web"
+
+[tasks.install]
+description = "Install backlog and backlog-server into ~/.local/bin with Nix, from main or the given branch, tag or commit"
+usage = 'arg "[ref]" help="Branch, tag or commit of this clone" default="main"'
+run = 'tool/install.sh "${usage_ref:-main}"'
+
+[tasks.install-dev]
+description = "Install backlog-dev and backlog-server-dev into ~/.local/bin with Nix, from this worktree (uncommitted changes included)"
+run = "tool/install.sh --dev"

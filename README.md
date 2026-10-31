@@ -101,6 +101,18 @@ The `kanban-ai` package contains `backlog` and `backlog-server`. The web app (`p
 
 With home-manager, `home.packages = [ kanban-ai.packages.${system}.default ];` is enough.
 
+### From a clone, for your user
+
+With the project registry one `backlog-server` serves all your backlogs, so installing the tools once for your user is enough. From a clone of this repository (Nix with flakes needed):
+
+```bash
+mise run install                # backlog, backlog-server from main
+mise run install 3b0c6ec         # … or from another branch, tag or commit of the clone
+mise run install-dev            # backlog-dev, backlog-server-dev from this worktree (uncommitted changes included)
+```
+
+The task builds the flake with `nix build`, keeps the result as a GC root in `~/.local/state/kanban-ai/` (`release`, `dev`) and links the binaries into `~/.local/bin`, which must be on `PATH`; it prints the ref and commit it installed. The web app is bundled. `KANBAN_AI_BIN_DIR` and `KANBAN_AI_STATE_DIR` change the two folders. Without mise: `tool/install.sh [ref]`, `tool/install.sh --dev`. The `-dev` pair lets you try a branch next to the release, e.g. a second board with `backlog-server-dev --port 8650`.
+
 ### Without Nix
 
 You need Dart ≥ 3.8, and Flutter ≥ 3.32 for the web app.
@@ -432,7 +444,7 @@ Tools are pinned with [mise](https://mise.jdx.dev) in `mise.toml`: Flutter 3.32.
 mise install                    # Flutter + Dart, jq
 mise run get                    # dart pub get + flutter pub get in the app
 mise run check                  # format check, analysis, all tests — before committing
-mise tasks                      # analyze, test, format, build, build-web, playground, serve
+mise tasks                      # analyze, test, format, build, build-web, playground, serve, install, install-dev
 ```
 
 | Task | What it does |
@@ -440,6 +452,8 @@ mise tasks                      # analyze, test, format, build, build-web, playg
 | `mise run build` | the web app plus `build/backlog` and `build/backlog-server` |
 | `mise run playground` | regenerate `playground/` with demo data |
 | `mise run serve` | serve the playground (or `BACKLOG_DIR`) with the built web app |
+| `mise run install [ref]` | install `backlog` and `backlog-server` from `main` (or a branch, tag or commit) into `~/.local/bin` with Nix |
+| `mise run install-dev` | install `backlog-dev` and `backlog-server-dev` from this worktree, uncommitted changes included |
 
 The same commands without mise:
 
