@@ -160,7 +160,8 @@ final class ActionDefinition {
         '  backlog review $id --changes "<a one-line summary, a blank line, then the findings as a numbered list, '
         'one per line: 1. <file:line> – what is wrong and what to do>"\n'
         'The text may span several lines (or give - and pipe it in). Only real problems are findings; leave out '
-        'matters of taste. That review is your only comment on the item.';
+        'matters of taste. That review is your only comment on the item; write it in the language the people in the '
+        'item use.';
   }
 
   /// Whether items in [status] show the action as a button.

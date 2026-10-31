@@ -301,17 +301,19 @@ final class DispatchAssignment {
   }
 
   /// What the item's agent is told when an AI review with `auto_fix` asks
-  /// for changes: fix the findings of the review (`{review}`), publish
-  /// (`{publish}`), comment, set the status again and stop.
+  /// for changes: fix the findings of the review (`{review}`), comment only
+  /// on findings left unfixed, publish (`{publish}`), set the status again
+  /// and stop; the talking and running rules follow.
   static final fixFrame = TextTemplate(
     'You are the agent {worktree} on backlog item {id} ("{title}") in this git worktree, on branch {branch}. The '
     'item is claimed for you (BACKLOG_AGENT={worktree}) while you work; it stays in status {status}.\n'
     '{context}\n\n'
     'An AI review of your work asks for changes (automatic fix round {round} of {rounds}). Fix its findings '
     'below in small commits whose messages contain {id}. Where a finding is wrong, do not change the code; say '
-    'why instead. {publish} Then say briefly what you fixed (and what not, and why) with '
-    '`backlog comment {id} "…"`, run `backlog set {id} status={status}` and stop. If something is unclear, ask '
-    'with `backlog ask {id} "<your question>"` and stop.\n\n'
+    'why in exactly one comment (`backlog comment {id} "…"`); what you fixed belongs in the commit messages, not '
+    'in a comment. {publish} Then run `backlog set {id} status={status}` and stop. If something is unclear, ask '
+    'with `backlog ask {id} "<your question>"` and stop.\n'
+    '${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}\n\n'
     'The review by {reviewer} ({reviewed}):\n\n{review}',
     known: const [
       ...DispatcherConfig.promptPlaceholders,
