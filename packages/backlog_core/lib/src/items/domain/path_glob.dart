@@ -19,6 +19,10 @@
 final class PathGlob {
   factory PathGlob(String source) => PathGlob._(source, [for (final variant in _expand(source)) _parse(variant)]);
 
+  /// The concrete [path] taken literally (no wildcards), e.g. a file a
+  /// branch changed.
+  factory PathGlob.literal(String path) => PathGlob._(path, [_literal(path)]);
+
   PathGlob._(this.source, this._alternatives);
 
   final String source;
@@ -30,7 +34,7 @@ final class PathGlob {
   bool overlaps(PathGlob other) => _alternatives.any((a) => other._alternatives.any((b) => _Overlap(a, b).check()));
 
   /// Whether the concrete [path] (or something below it) is covered.
-  bool matches(String path) => overlaps(PathGlob._(path, [_literal(path)]));
+  bool matches(String path) => overlaps(PathGlob.literal(path));
 
   /// Whether any pattern of [a] overlaps any pattern of [b]; false when one
   /// of them is empty.

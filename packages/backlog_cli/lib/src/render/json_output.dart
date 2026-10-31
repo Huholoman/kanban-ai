@@ -35,6 +35,7 @@ abstract final class JsonOutput {
       ],
       'conflicting': planned.isConflicting,
       'conflicts_with': [for (final id in planned.conflictsWith) id.value],
+      'changed_files': planned.changedFiles,
       'children': {'total': planned.childCount, 'open': planned.openChildCount},
       'progress': {'done': checklist.done, 'total': checklist.total},
       'claim': planned.claim == null ? null : claim(planned.claim!, expired: planned.isClaimExpired),

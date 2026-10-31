@@ -114,6 +114,7 @@ abstract final class TextOutput {
       if (item.labels.isNotEmpty) 'labels: ${item.labels.join(', ')}',
       if (item.docs.isNotEmpty) 'docs: ${item.docs.join(', ')}',
       if (item.touches.isNotEmpty) 'touches: ${item.touches.join(', ')}',
+      if (planned.changedFiles.isNotEmpty) 'changed on its branch: ${planned.changedFiles.join(', ')}',
       for (final MapEntry(:key, :value) in item.extra.entries) '$key: $value',
       if (!planned.checklist.isEmpty) 'checklist: ${planned.checklist}',
       'created: ${itemTime(item.created)}   updated: ${itemTime(item.updated)}',

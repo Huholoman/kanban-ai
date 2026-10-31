@@ -22,6 +22,7 @@ final class BacklogSnapshot {
     Iterable<Claim> claims = const [],
     required DateTime now,
     Map<String, BranchHead> branchHeads = const {},
+    Map<String, List<String>> changedFiles = const {},
   }) {
     final byId = <ItemId, Item>{};
     for (final item in items) {
@@ -48,14 +49,24 @@ final class BacklogSnapshot {
       return chain;
     }
 
-    // Work in progress and the files it touches; open items overlapping it wait.
+    // Work in progress and the files it touches (declared, and for active
+    // items also changed on their branch); open items overlapping it wait.
+    bool isActive(Item item) => workflow.categoryOf(item.status) == StatusCategory.active;
+    final changed = {
+      for (final item in byId.values)
+        if (isActive(item)) item.id: changedFiles[branchOf(item)] ?? const <String>[],
+    };
     final globs = {
       for (final item in byId.values)
-        if (item.touches.isNotEmpty) item.id: [for (final pattern in item.touches) PathGlob(pattern)],
+        if (item.touches.isNotEmpty || (changed[item.id]?.isNotEmpty ?? false))
+          item.id: [
+            for (final pattern in item.touches) PathGlob(pattern),
+            for (final path in changed[item.id] ?? const <String>[]) PathGlob.literal(path),
+          ],
     };
     final active = [
       for (final id in globs.keys)
-        if (workflow.categoryOf(byId[id]!.status) == StatusCategory.active) id,
+        if (isActive(byId[id]!)) id,
     ]..sort();
     List<ItemId> conflictsOf(Item item) => workflow.categoryOf(item.status) != StatusCategory.open
         ? const []
@@ -78,8 +89,7 @@ final class BacklogSnapshot {
       final ancestors = ancestorsOf(item);
       final conflicts = conflictsOf(item);
       final needsHuman = category != StatusCategory.done && item.discussion.openQuestion != null;
-      final branch = item.branch?.trim();
-      final head = branchHeads[branch == null || branch.isEmpty ? 'agent/${item.id}' : branch];
+      final head = branchHeads[branchOf(item)];
       final review = ReviewState.of(item, head);
       planned[item.id] = PlannedItem(
         item: item,
@@ -93,6 +103,7 @@ final class BacklogSnapshot {
         isReady:
             pickable && !blocked && conflicts.isEmpty && !needsHuman && openKids == 0 && (claim == null || expired),
         conflictsWith: conflicts,
+        changedFiles: changed[item.id] ?? const [],
         needsHuman: needsHuman,
         ancestors: ancestors,
         epics: [
@@ -175,6 +186,12 @@ final class BacklogSnapshot {
       if (state[id] == null) visit(id);
     }
     return found.values.toList();
+  }
+
+  /// The branch of [item]'s work: its `branch`, else `agent/<id>`.
+  static String branchOf(Item item) {
+    final branch = item.branch?.trim();
+    return branch == null || branch.isEmpty ? 'agent/${item.id}' : branch;
   }
 
   /// The order of ready work: milestone first (as listed in the workflow;

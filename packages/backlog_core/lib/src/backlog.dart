@@ -16,6 +16,7 @@ import 'items/domain/item_id.dart';
 import 'items/infrastructure/file_system_item_repository.dart';
 import 'items/infrastructure/markdown_item_codec.dart';
 import 'planning/application/planning_service.dart';
+import 'planning/infrastructure/git_branch_changes.dart';
 import 'planning/infrastructure/git_branch_heads.dart';
 import 'presets/domain/init_preset.dart';
 import 'presets/infrastructure/built_in_presets.dart';
@@ -71,16 +72,18 @@ final class Backlog {
     final claimStore = FileSystemClaimStore(layout, defaultLease: workflow.claimLease);
     final viewRepository = YamlViewRepository(layout);
     final dispatcher = workflow.dispatcher;
+    final repositories = [
+      ?dispatcher?.newWorktrees?.resolveRepo(layout.root),
+      for (final worktree in dispatcher?.worktrees ?? const <WorktreeDefinition>[]) worktree.resolvePath(layout.root),
+      layout.root,
+    ];
     final planning = PlanningService(
       items: itemRepository,
       claims: claimStore,
       workflow: workflow,
       clock: clock,
-      branches: GitBranchHeads([
-        ?dispatcher?.newWorktrees?.resolveRepo(layout.root),
-        for (final worktree in dispatcher?.worktrees ?? const <WorktreeDefinition>[]) worktree.resolvePath(layout.root),
-        layout.root,
-      ]),
+      branches: GitBranchHeads(repositories),
+      changes: GitBranchChanges(repositories, base: dispatcher?.base ?? 'main'),
     );
 
     final items = ItemService(

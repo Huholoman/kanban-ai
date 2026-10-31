@@ -752,6 +752,34 @@ dispatcher:
       expect(snapshot.items.where(view.matches).map((i) => i.id.value), ['T-4']);
     });
 
+    test('files changed on the branch of active work count like its touches', () {
+      final snapshot = BacklogSnapshot.build(
+        items: [
+          item('T-1', status: 'in-progress'), // no touches, but its branch changed lib/a/x.dart
+          item('T-2', status: 'review', touches: ['docs/']).copyWith(branch: () => 'feat/two'),
+          item('T-3', touches: ['lib/a/']),
+          item('T-4', touches: ['lib/b.dart']),
+          item('T-5', touches: ['lib/c/']), // only the open T-5's own branch changed lib/c
+        ],
+        workflow: Workflow.standard(),
+        now: DateTime.utc(2026, 10, 31),
+        changedFiles: {
+          'agent/T-1': ['lib/a/x.dart'],
+          'feat/two': ['lib/b.dart'],
+          'agent/T-2': ['lib/c/y.dart'], // not T-2's branch
+          'agent/T-5': ['lib/c/y.dart'],
+        },
+      );
+      PlannedItem of(String id) => snapshot[ItemId(id)]!;
+      expect(of('T-3').conflictsWith, [ItemId('T-1')]);
+      expect(of('T-4').conflictsWith, [ItemId('T-2')]);
+      expect(of('T-5').conflictsWith, isEmpty);
+      expect(of('T-1').changedFiles, ['lib/a/x.dart']);
+      expect(of('T-2').changedFiles, ['lib/b.dart']);
+      expect(of('T-5').changedFiles, isEmpty); // open items do not report them
+      expect(snapshot.ready.map((i) => i.id.value), ['T-5']);
+    });
+
     test('orders by priority, then creation date', () {
       final snapshot = snapshotOf([
         item('T-1', priority: 'p2', created: '2026-01-01'),

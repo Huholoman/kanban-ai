@@ -20,6 +20,7 @@ final class PlannedItem {
     required this.isClaimExpired,
     required this.isReady,
     this.conflictsWith = const [],
+    this.changedFiles = const [],
     this.needsHuman = false,
     this.ancestors = const [],
     this.epics = const [],
@@ -57,6 +58,11 @@ final class PlannedItem {
   /// them so that two agents do not change the same files. Empty for items
   /// that are not open or have no `touches`.
   final List<ItemId> conflictsWith;
+
+  /// For an active item: the files its branch changed since it forked from
+  /// the base branch (`BranchChanges`). They count like `touches` entries
+  /// when open items are checked for overlaps. Empty for other items.
+  final List<String> changedFiles;
 
   /// Not done, and an agent asked a question in the discussion that nobody
   /// answered yet ([Discussion.openQuestion]): it waits for a person and is

@@ -74,5 +74,47 @@ void main() {
       addTearDown(() => notGit.delete(recursive: true));
       expect(await GitBranchHeads([notGit.path]).heads(), isEmpty);
     });
+
+    test('GitBranchChanges lists the files a branch changed since it forked from the base', () async {
+      final dir = await Directory.systemTemp.createTemp('branch_changes_');
+      addTearDown(() => dir.delete(recursive: true));
+      Future<void> git(List<String> args) async {
+        final result = await Process.run('git', [
+          '-c',
+          'user.name=T',
+          '-c',
+          'user.email=t@example.com',
+          ...args,
+        ], workingDirectory: dir.path);
+        expect(result.exitCode, 0, reason: '${result.stderr}');
+      }
+
+      Future<void> commit(String path) async {
+        await File(p.join(dir.path, path)).create(recursive: true);
+        await File(p.join(dir.path, path)).writeAsString(path);
+        await git(['add', '.']);
+        await git(['commit', '-q', '-m', path]);
+      }
+
+      await git(['init', '-q', '-b', 'main']);
+      await commit('README.md');
+      await git(['checkout', '-q', '-b', 'agent/T-1']);
+      await commit('lib/a b.dart');
+      await git(['mv', 'README.md', 'NOTES.md']);
+      await git(['commit', '-q', '-m', 'rename']); // a rename changes both paths
+      await git(['checkout', '-q', 'main']);
+      await commit('main-only.txt'); // the base moved on: not the branch's change
+
+      final changes = GitBranchChanges([p.join(dir.path, 'missing'), dir.path]);
+      final heads = await GitBranchHeads([dir.path]).heads();
+      final files = await changes.changedFiles(heads, ['agent/T-1', 'agent/T-2', 'main']);
+      expect(files.keys, ['agent/T-1']);
+      expect(files['agent/T-1'], unorderedEquals(['lib/a b.dart', 'README.md', 'NOTES.md']));
+      expect(await changes.changedFiles(heads, ['agent/T-1']), files); // from the cache
+      expect(await GitBranchChanges([dir.path], base: 'trunk').changedFiles(heads, ['agent/T-1']), isEmpty);
+      final notGit = await Directory.systemTemp.createTemp('no_git_');
+      addTearDown(() => notGit.delete(recursive: true));
+      expect(await GitBranchChanges([notGit.path]).changedFiles(heads, ['agent/T-1']), isEmpty);
+    });
   });
 }
