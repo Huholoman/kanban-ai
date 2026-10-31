@@ -152,6 +152,25 @@ void main() {
     expect(terminal.last.split('\n').first, 'backlog config › Project');
   });
 
+  test('a file that cannot be written keeps the review screen and the draft', () async {
+    File(p.join(workspace.path, 'blocker')).writeAsStringSync('a file, not a folder');
+    final registry = p.join(workspace.path, 'blocker', 'projects.yaml');
+    final terminal = FakeTerminal([
+      enter, end, up, enter, // Global → Edit a value
+      ...type('projects'), enter,
+      ...type('[]'), enter,
+      end, enter, // Review and save
+      const Key.char('y'),
+      const Key(KeyKind.interrupt),
+    ]);
+    final (code, err) = await run(['config', '--projects', registry], terminal);
+    expect(code, 0, reason: err);
+    expect(terminal.last, contains('Cannot write $registry'));
+    expect(terminal.last.split('\n').first, 'backlog config › Global › Review changes');
+    expect(terminal.last, contains('+projects: []'));
+    expect(terminal.closed, isTrue);
+  });
+
   test('needs a terminal', () async {
     final (code, err) = await run(['config'], null);
     expect(code, ExitCode.usage);
