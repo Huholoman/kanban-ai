@@ -241,6 +241,10 @@ final class DispatchAssignment {
             : 'You continue your earlier session on this item. Since your last run: $news\n'
                   'Run `backlog show ${item.id}` to see the item as it is now.',
         'task': action.prompt!.render(actionValues),
+        'publish': config.pr == null
+            ? 'Never push.'
+            : 'Never run `git push`: to publish your commits run `backlog pr ${item.id}` (it pushes your branch '
+                  'and updates the item\'s pull request).',
       });
     }
     final full = {...values, 'prompt': prompt, 'session': ?session?.id};
@@ -266,8 +270,9 @@ final class DispatchAssignment {
   }
 
   /// What the agent of a prompt action is told: who and where it is, that
-  /// the item keeps its status, the item's context and the action's text
-  /// (`{task}`).
+  /// the item keeps its status, the item's context, the action's text
+  /// (`{task}`) and how it may publish commits (`{publish}`: `backlog pr`
+  /// with `dispatcher.pr`, else never push).
   static final actionFrame = TextTemplate(
     'You are the agent {worktree}, started for the action "{action}" on backlog item {id} ("{title}") in this '
     'git worktree, on branch {branch}. The item is claimed for you (BACKLOG_AGENT={worktree}) only while the '
@@ -276,8 +281,8 @@ final class DispatchAssignment {
     '{context}\n\n'
     'The action:\n{task}\n\n'
     'When you are done, say briefly what you did or found with `backlog comment {id} "…"` and stop. If something '
-    'is unclear, ask with `backlog ask {id} "<your question>"` and stop.',
-    known: const [...ActionDefinition.promptPlaceholders, 'context', 'task'],
+    'is unclear, ask with `backlog ask {id} "<your question>"` and stop. {publish}',
+    known: const [...ActionDefinition.promptPlaceholders, 'context', 'task', 'publish'],
     label: 'action prompt',
   );
 

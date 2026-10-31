@@ -137,6 +137,14 @@ void main() {
       expect(agent.prompt, contains('Since your last run: your last run exited with code 0'));
       expect(agent.prompt, contains('Fix the comments of PR 42 (review, main)'));
       expect(agent.key, 'T-1@w2+resume:Fix comments');
+      expect(agent.prompt, contains('Never push.'));
+    });
+
+    test('with dispatcher.pr a prompt action publishes its commits with backlog pr', () {
+      final plan = _plan([_review('T-1', pr: '42')], workflow: _workflow(repo: 'pr: {create: tea pulls create}'));
+      final prompt = plan.actionStart('T-1', 'Fix comments').agent!.prompt;
+      expect(prompt, contains('Never run `git push`: to publish your commits run `backlog pr T-1`'));
+      expect(prompt, isNot(contains('Never push.')));
     });
 
     test('a fresh prompt action starts a new session where the item branch is checked out', () {
