@@ -164,6 +164,20 @@ final class ClaimService {
     return finished;
   }
 
+  /// Marks the unfinished items under [epic] whose work is on [branch]
+  /// (their `branch` field) done, whoever holds them: the epic was merged
+  /// with them. Returns their ids.
+  Future<List<ItemId>> completeMembers(ItemId epic, String branch) async {
+    final snapshot = await _planning.snapshot();
+    final done = <ItemId>[];
+    for (final planned in snapshot.items) {
+      if (planned.isDone || !planned.ancestors.contains(epic) || planned.item.branch?.trim() != branch) continue;
+      await complete(planned.id.value, force: true);
+      done.add(planned.id);
+    }
+    return done;
+  }
+
   Future<ClaimOutcome> _acquire(PlannedItem planned, String agent, {bool mirror = true, String? branch}) async {
     final id = planned.id;
     final now = _clock.now();

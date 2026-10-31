@@ -187,6 +187,20 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       expect(await git(path('origin.git'), ['log', '-1', '--format=%s', 'main']), 'Initial commit');
     });
 
+    test('merging an epic makes the items on its branch done with it', () async {
+      await item();
+      await backlog.items.create(
+        const NewItem(title: 'On the branch', parent: 'T-0001', status: 'review', branch: 'agent/T-0001'),
+      );
+      await backlog.items.create(const NewItem(title: 'Elsewhere', parent: 'T-0001', status: 'todo'));
+
+      final result = await merge();
+      expect(result.ok, isTrue, reason: result.summary);
+      expect(result.summary, contains('T-0001 is done; with it T-0002;'));
+      expect((await backlog.items.get('T-0002')).status, 'done');
+      expect((await backlog.items.get('T-0003')).status, 'todo');
+    });
+
     test('rebases onto a newer main, runs the check and pushes', () async {
       await configure(
         merge: '{strategy: local, check: [sh, -c, "test -f feature.txt && test -f other.txt"], push: true}',

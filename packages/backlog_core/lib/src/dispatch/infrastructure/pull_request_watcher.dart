@@ -125,7 +125,8 @@ final class PullRequestWatcher {
     }
     await backlog.claims.complete(id.value, force: true);
     final status = (await backlog.items.get(id.value)).status;
-    final steps = <String>[];
+    final members = await backlog.claims.completeMembers(id, DispatchAssignment.branchFor(planned));
+    final steps = <String>[if (members.isNotEmpty) 'with it ${members.join(', ')}'];
     if (config.merge.cleanup) {
       final repo = await MergeAction.primaryClone(config, backlog.root, null);
       if (repo != null) {

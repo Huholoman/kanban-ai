@@ -72,7 +72,8 @@ final class MergeAction implements BuiltInAction {
     }
     await context.backlog.claims.complete(id.value, force: true);
     final done = (await context.backlog.items.get(id.value)).status;
-    final cleaned = <String>[];
+    final members = await context.backlog.claims.completeMembers(id, branch);
+    final cleaned = <String>[if (members.isNotEmpty) 'with it ${members.join(', ')}'];
     if (merge.cleanup) {
       final repo = await primaryClone(
         context.config,
