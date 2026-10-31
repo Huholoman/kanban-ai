@@ -74,6 +74,10 @@ void main() {
       expect(draft.valueAt(['claims', 'lease_minutes']), isNull);
       draft.reset();
       expect(draft.text, '');
+      expect(draft.isYaml, isTrue);
+      final broken = ConfigDraft('claims: [\n');
+      expect(broken.isYaml, isFalse);
+      expect(() => broken.set(['claims'], 1), throwsA(isA<ConfigurationException>()));
     });
 
     test('typed values read as YAML and print back', () {
@@ -82,6 +86,10 @@ void main() {
       expect(parseConfigValue('[a, b]'), ['a', 'b']);
       expect(parseConfigValue('{a: 1}'), {'a': 1});
       expect(parseConfigValue('#3f51b5'), '#3f51b5');
+      expect(parseConfigValue('Hotfix #12'), 'Hotfix #12');
+      expect(parseConfigValue('[a, b] # two'), '[a, b] # two');
+      expect(parseConfigValue('a#b'), 'a#b');
+      expect(formatConfigValue('Hotfix #12'), 'Hotfix #12');
       expect(parseConfigValue('null'), isNull);
       expect(() => parseConfigValue('[a'), throwsA(isA<InvalidInputException>()));
       expect(formatConfigValue('#3f51b5'), '#3f51b5');
@@ -129,6 +137,17 @@ void main() {
       stale.set(['id', 'length'], 6);
       await expectLater(editor.save(stale), throwsA(isA<UnavailableException>()));
       expect(file.readAsStringSync(), endsWith('# edited by hand\n'));
+    });
+
+    test('a file that cannot be written is unavailable', () async {
+      File(p.join(dir.path, 'blocker')).writeAsStringSync('a file, not a folder');
+      final editor = registryConfigEditor(p.join(dir.path, 'blocker', 'projects.yaml'));
+      final draft = (await editor.open())..set(['projects'], []);
+      await expectLater(
+        editor.save(draft),
+        throwsA(isA<UnavailableException>().having((e) => e.message, 'message', startsWith('Cannot write '))),
+      );
+      expect(draft.changed, isTrue);
     });
 
     test('the registry editor starts from a missing file', () async {

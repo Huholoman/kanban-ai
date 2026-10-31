@@ -26,6 +26,16 @@ final class ConfigDraft {
 
   bool get changed => _text != original;
 
+  /// Whether [text] parses as YAML at all; edits need it.
+  bool get isYaml {
+    try {
+      loadYaml(_text);
+      return true;
+    } on YamlException {
+      return false;
+    }
+  }
+
   /// The changed lines with some context (see [diffHunks]).
   List<DiffLine> get diff => diffHunks(original, _text);
 
@@ -128,14 +138,16 @@ final class ConfigDraft {
 /// for broken YAML such as `[a`.
 Object? parseConfigValue(String text) {
   final trimmed = text.trim();
-  final Object? value;
+  final YamlNode node;
   try {
-    value = loadYaml(trimmed);
+    node = loadYamlNode(trimmed);
   } on YamlException catch (e) {
     throw InvalidInputException('"$trimmed" is not a YAML value: ${e.message}');
   }
-  if (value == null && !const {'', 'null', '~'}.contains(trimmed)) return trimmed;
-  return _plainValue(value);
+  if (node.value == null && !const {'', 'null', '~'}.contains(trimmed)) return trimmed;
+  // A YAML comment would drop the rest silently (`Hotfix #12`): keep it all as text.
+  if (node.span.end.offset < trimmed.length) return trimmed;
+  return _plainValue(node.value);
 }
 
 /// [value] as [parseConfigValue] reads it back: text as is unless it would
