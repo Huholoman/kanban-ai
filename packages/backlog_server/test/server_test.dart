@@ -199,4 +199,44 @@ void main() {
       expect((await api.workflow()).milestones.map((m) => m.id), ['launch']);
     });
   });
+
+  test('the dispatcher re-plans on changes and hands work to the launcher', () async {
+    final dir = await Directory.systemTemp.createTemp('backlog_dispatch_');
+    addTearDown(() => dir.delete(recursive: true));
+    await Backlog.init(dir.path, idPrefix: 'D');
+    final config = File(p.join(dir.path, 'backlog.yaml'));
+    config.writeAsStringSync(
+      '${config.readAsStringSync()}\ndispatcher:\n  mode: auto\n  worktrees: [repo-2]\n  command: agent {id}\n',
+    );
+    final launched = StreamController<DispatchAssignment>();
+    final logs = <String>[];
+    final server = await BacklogServer.start(
+      root: dir.path,
+      addresses: [InternetAddress.loopbackIPv4],
+      port: 0,
+      debounce: const Duration(milliseconds: 50),
+      dispatchDebounce: const Duration(milliseconds: 20),
+      launcher: _StreamLauncher(launched),
+      log: logs.add,
+    );
+    addTearDown(server.close);
+
+    final backlog = await Backlog.open(dir.path);
+    final item = await backlog.items.create(const NewItem(title: 'Work', status: 'todo'));
+    final assignment = await launched.stream.first.timeout(const Duration(seconds: 10));
+    expect(assignment.id, item.id);
+    expect(assignment.agent, 'repo-2');
+    expect(assignment.command, ['agent', '${item.id}']);
+    expect(assignment.path, p.join(p.dirname(server.host.root), 'repo-2'));
+    expect(logs, contains('Dispatcher (auto): 0/1 running; starts ${item.id} → repo-2.'));
+  });
+}
+
+final class _StreamLauncher implements AgentLauncher {
+  _StreamLauncher(this._sink);
+
+  final StreamController<DispatchAssignment> _sink;
+
+  @override
+  Future<void> launch(DispatchAssignment assignment) async => _sink.add(assignment);
 }
