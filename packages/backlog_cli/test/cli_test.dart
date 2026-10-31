@@ -273,4 +273,21 @@ void main() {
     expect(File(explicit).readAsStringSync(), contains('path: $backlogDir'));
     expect((await backlog(['projects'], env: {...env, 'BACKLOG_PROJECTS': explicit})).out, contains(backlogDir));
   });
+
+  test('init registers the new backlog unless told not to', () async {
+    final env = {'XDG_CONFIG_HOME': p.join(workspace.path, 'config')};
+    final registry = p.join(workspace.path, 'config', 'kanban-ai', 'projects.yaml');
+    final created = await backlog(['init', 'shop/backlog'], env: env);
+    expect(created.out, contains('Registered as project shop in $registry'));
+    final json = await backlog(['--json', 'init', 'tools'], env: env);
+    expect((json.json! as Map)['project'], {'id': 'tools', 'name': 'tools'});
+    expect((await backlog(['init', 'quiet', '--no-register'], env: env)).out, isNot(contains('Registered')));
+    final listed = await backlog(['--json', 'projects'], env: env);
+    expect((listed.json! as List).map((project) => (project as Map)['id']), ['shop', 'tools']);
+
+    File(registry).writeAsStringSync('projects: {broken: true}');
+    final warned = await backlog(['init', 'more'], env: env);
+    expect(warned.exitCode, 0);
+    expect(warned.err, contains('warning: not registered'));
+  });
 }

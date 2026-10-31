@@ -43,7 +43,7 @@ projects:
 - **id** — lower-case letters, digits, `-`, `_`, starting with a letter or digit; unique within the registry (a repeated or invalid id makes the whole file invalid). It appears in URLs (`/api/p/<id>/…`).
 - **Order** matters: the first project is the *default project*.
 - **pinned** — optional `true`/`false` (default false), read and written back; meant for clients that offer pinned projects first (not used yet).
-- Unknown keys and comments are kept; `backlog projects add/remove` edit the file in place. A missing file is an empty registry.
+- Unknown keys and comments are kept; `backlog init` and `backlog projects add/remove` edit the file in place. A missing file is an empty registry.
 
 ## 2. Configuration — `backlog.yaml`
 
@@ -202,7 +202,7 @@ Global options: `-C/--dir <folder>`, `--json` (machine-readable output; JSON fie
 
 | Command | What it does |
 |---|---|
-| `init [folder] [--prefix X]` | create `backlog.yaml`, `items/`, `views/` (default views), `docs/`, `.gitignore` |
+| `init [folder] [--prefix X] [--no-register]` | create `backlog.yaml`, `items/`, `views/` (default views), `docs/`, `.gitignore`, and register the backlog in the project registry (§1.2) unless it is there already or `--no-register` is given (no registry location — no `HOME`, `XDG_CONFIG_HOME` or `BACKLOG_PROJECTS` — skips it; a broken registry only warns); JSON `{root, project?: {id, name}}` |
 | `new <title> [-t type] [-s status] [-p priority] [-m milestone] [--parent id] [-d id,…] [--related id,…] [-l label,…] [--doc name] [--touches glob,…] [--assignee a] [--branch b] [--pr url] [--body md \| --body-file f]` | create an item, prints it |
 | `list [-a] [-s status] [-m milestone] [-l label] [-t type] [-w cond]…` | open items (all with `-a`), most urgent first |
 | `show <id>` | item with relations (parent, children, dependencies, dependents, related, the active items it waits for and the open items it holds up through `touches`), claim and body |

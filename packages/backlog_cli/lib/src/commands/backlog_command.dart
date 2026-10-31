@@ -33,6 +33,16 @@ abstract class BacklogCommand extends Command<int> {
               ));
   }
 
+  /// The project registry in [file], else where the environment points
+  /// (see [projectRegistryFile]); null without any location.
+  ProjectService? projectService([String? file]) {
+    final location = file ?? projectRegistryFile(context.environment);
+    if (location == null) return null;
+    return ProjectService(
+      YamlProjectRegistryStore(p.normalize(p.join(context.cwd, location)), home: context.environment['HOME']),
+    );
+  }
+
   void addAgentOption({bool mandatory = true}) => argParser.addOption(
     'as',
     help: mandatory

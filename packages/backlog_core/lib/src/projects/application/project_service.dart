@@ -23,6 +23,13 @@ final class ProjectService {
     return entry;
   }
 
+  /// Registers the backlog at [path] unless it is registered already;
+  /// returns its entry and whether it was added.
+  Future<(ProjectEntry, bool)> ensure(String path, {String? name}) async {
+    if ((await _store.load()).atPath(path) case final existing?) return (existing, false);
+    return (await add(path, name: name), true);
+  }
+
   /// Unregisters project [id]; the backlog itself stays untouched.
   Future<ProjectEntry> remove(String id) async {
     final registry = await _store.load();

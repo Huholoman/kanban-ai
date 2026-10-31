@@ -9,7 +9,13 @@ import 'backlog_command.dart';
 
 final class InitCommand extends BacklogCommand {
   InitCommand(super.context) {
-    argParser.addOption('prefix', defaultsTo: 'T', help: 'Prefix of item ids.');
+    argParser
+      ..addOption('prefix', defaultsTo: 'T', help: 'Prefix of item ids.')
+      ..addFlag(
+        'register',
+        defaultsTo: true,
+        help: 'Add the new backlog to the project registry (see `backlog projects`).',
+      );
   }
 
   @override
@@ -25,7 +31,24 @@ final class InitCommand extends BacklogCommand {
   Future<int> run() async {
     final folder = args.rest.isEmpty ? '.' : args.rest.single;
     final layout = await Backlog.init(p.join(context.cwd, folder), idPrefix: args.option('prefix')!);
-    json ? emitJson({'root': layout.root}) : line('Created backlog in ${layout.root}');
+    ProjectEntry? project;
+    String? registered;
+    final registry = args.flag('register') ? projectService() : null;
+    if (registry != null) {
+      try {
+        final (entry, added) = await registry.ensure(layout.root);
+        project = entry;
+        if (added) registered = 'Registered as project ${entry.id} in ${registry.location}';
+      } on BacklogException catch (error) {
+        context.err.writeln('warning: not registered in ${registry.location}: ${error.message}');
+      }
+    }
+    json
+        ? emitJson({
+            'root': layout.root,
+            if (project != null) 'project': {'id': project.id, 'name': project.displayName},
+          })
+        : lines(['Created backlog in ${layout.root}', ?registered]);
     return 0;
   }
 }

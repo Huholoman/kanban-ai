@@ -30,13 +30,9 @@ final class ProjectsCommand extends BacklogCommand {
   @override
   String get invocation => 'backlog projects [list | add [<path>] | remove <id>]';
 
-  ProjectService get _service {
-    final file = args.option('projects') ?? projectRegistryFile(context.environment);
-    if (file == null) throw UsageException('No registry location: set HOME or pass --projects <file>.', usage);
-    return ProjectService(
-      YamlProjectRegistryStore(p.normalize(p.join(context.cwd, file)), home: context.environment['HOME']),
-    );
-  }
+  ProjectService get _service =>
+      projectService(args.option('projects')) ??
+      (throw UsageException('No registry location: set HOME or pass --projects <file>.', usage));
 
   @override
   Future<int> run() async {
