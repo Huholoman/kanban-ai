@@ -333,6 +333,18 @@ dispatcher:
         'cd /w && mise run check # X-1 7 main',
       ]);
       expect(dispatcher.action('Merge'), same(merge));
+      expect([fix.review, review.review], [false, false]);
+
+      final [builtIn, extra] = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  actions:
+    - {name: AI review, review: true, on_enter: review}
+    - {name: Security review, review: true, statuses: [review], agent: claude, prompt: "Focus on {branch}."}
+''').dispatcher!.actions;
+      expect((builtIn.kind, builtIn.review, builtIn.fresh, builtIn.prompt), (ActionKind.prompt, true, true, null));
+      expect(builtIn.summary, 'AI review, agent, new session');
+      expect((extra.review, extra.prompt!.render({'branch': 'b'})), (true, 'Focus on b.'));
       expect(dispatcher.action('merge'), isNull);
     });
 
@@ -341,8 +353,11 @@ dispatcher:
         () => parseWorkflowYaml('dispatcher: {worktrees: [a], actions: [$actions]}'),
         throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
       );
-      rejects('{name: A}', 'give exactly one of prompt and run');
-      rejects('{name: A, prompt: x, run: noop}', 'give exactly one of prompt and run');
+      rejects('{name: A}', 'give exactly one of prompt, run and review');
+      rejects('{name: A, prompt: x, run: noop}', 'give exactly one of prompt, run and review');
+      rejects('{name: A, review: true, run: noop}', 'a review runs an agent; it takes no run');
+      rejects('{name: A, review: true, fresh: false}', 'a review always runs in a new session');
+      rejects('{name: A, review: yes please}', 'review must be true or false');
       rejects('{name: A, run: "mise run check"}', 'unknown built-in action "mise run check" (known: noop)');
       rejects('{name: A, prompt: x}, {name: A, run: noop}', 'Duplicate dispatcher action "A"');
       rejects('{name: A, prompt: x, on_enter: reviewed}', 'unknown status "reviewed"');

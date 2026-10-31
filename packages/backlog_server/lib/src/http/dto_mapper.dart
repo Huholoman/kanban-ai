@@ -88,6 +88,7 @@ abstract final class DtoMapper {
     onEnter: action.onEnter,
     agent: action.kind == ActionKind.prompt ? config.profileFor(action).name : null,
     fresh: action.fresh,
+    review: action.review,
   );
 
   static AgentRunDto run(AgentRun run) => AgentRunDto(

@@ -167,6 +167,42 @@ void main() {
       expect(noBranch.actionStart('T-1', 'AI review').agent!.worktree.name, 'w2', reason: 'the session worktree');
     });
 
+    test('a review action gets the built-in review task, changes nothing and finishes with backlog review', () {
+      final workflow = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [w1, w2]
+  pr: {create: tea pulls create}
+  actions:
+    - {name: AI review, review: true, on_enter: review}
+    - {name: Strict review, review: true, prompt: "Be strict about {base}."}
+''');
+      final plan = _plan(
+        [_review('T-1', branch: 'feat/x', pr: 'https://git.example/o/r/pulls/7')],
+        workflow: workflow,
+        conditions: DispatchConditions(sessions: {ItemId('T-1'): _session('T-1', 'w1')}, branches: {'w2': 'feat/x'}),
+      );
+      final agent = plan.actionStart('T-1', 'AI review').agent!;
+      expect(agent.resume, isNull, reason: 'always a new session');
+      expect(agent.worktree.name, 'w2');
+      final prompt = agent.prompt;
+      expect(prompt, contains('started for the action "AI review" on backlog item T-1'));
+      expect(
+        prompt,
+        contains('the changes of branch feat/x against main (`git log main..feat/x`, `git diff main...feat/x`)'),
+      );
+      expect(prompt, contains('proposed as pull request https://git.example/o/r/pulls/7'));
+      expect(prompt, contains('CLAUDE.md, AGENTS.md'));
+      expect(prompt, contains('Change nothing'));
+      expect(prompt, contains('backlog review T-1 --ok'));
+      expect(prompt, contains('backlog review T-1 --changes'));
+      expect(prompt, contains('record your verdict with `backlog review`'));
+      expect(prompt, contains('Never push.'));
+      expect(prompt, isNot(contains('backlog pr T-1')));
+      expect(prompt, isNot(contains('backlog comment T-1 "…"` and stop')));
+      expect(prompt, isNot(contains('Also:')));
+      expect(plan.actionStart('T-1', 'Strict review').agent!.prompt, contains('Also: Be strict about main.'));
+    });
+
     test('a command runs in the worktree of the item branch, else in the primary clone', () {
       final inWorktree = _plan([
         _review('T-1', pr: '7'),

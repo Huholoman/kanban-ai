@@ -10,6 +10,7 @@ final class ActionDto {
     this.onEnter,
     this.agent,
     this.fresh = false,
+    this.review = false,
   });
 
   factory ActionDto.fromJson(Json json) => ActionDto(
@@ -19,6 +20,7 @@ final class ActionDto {
     onEnter: json.optionalString('on_enter'),
     agent: json.optionalString('agent'),
     fresh: json.boolean('fresh'),
+    review: json.boolean('review'),
   );
 
   final String name;
@@ -39,6 +41,10 @@ final class ActionDto {
   /// A prompt action starts a new session instead of continuing the item's.
   final bool fresh;
 
+  /// An AI review (`review: true`): a prompt action with the built-in review
+  /// task that ends with `backlog review`.
+  final bool review;
+
   bool get isPrompt => kind == 'prompt';
 
   /// Whether items in [status] show it as a button.
@@ -54,6 +60,7 @@ final class ActionDto {
     'on_enter': onEnter,
     'agent': agent,
     'fresh': fresh,
+    'review': review,
   };
 }
 

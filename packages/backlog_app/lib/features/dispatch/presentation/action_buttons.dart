@@ -10,6 +10,7 @@ import 'dispatch_scope.dart';
 
 /// The icon of an action by what it runs: an agent, a command, a built-in.
 IconData actionIcon(ActionDto action) => switch (action.kind) {
+  _ when action.review => Icons.rate_review_outlined,
   'prompt' => Icons.smart_toy_outlined,
   'command' => Icons.terminal,
   _ => Icons.bolt,
@@ -17,6 +18,9 @@ IconData actionIcon(ActionDto action) => switch (action.kind) {
 
 /// What pressing [action] does, for tooltips.
 String actionHint(ActionDto action) => switch (action.kind) {
+  _ when action.review =>
+    'Starts ${action.agent ?? 'the agent'} in a new session to review the item\'s branch; it changes nothing and '
+        'records its verdict in the discussion',
   'prompt' =>
     'Starts ${action.agent ?? 'the agent'} on this item'
         '${action.fresh ? ' in a new session' : ', continuing its session when it can'}; the status stays',

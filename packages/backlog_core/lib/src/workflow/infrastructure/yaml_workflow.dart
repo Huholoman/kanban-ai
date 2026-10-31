@@ -256,7 +256,7 @@ Map<String, AgentProfile> _profiles(YamlMap yaml, String origin) => {
 /// One entry of `dispatcher.actions`.
 ActionDefinition _action(Object? node, String origin) {
   final yaml = _map(node, 'dispatcher.actions[]', origin);
-  const known = {'name', 'statuses', 'on_enter', 'prompt', 'run', 'agent', 'fresh'};
+  const known = {'name', 'statuses', 'on_enter', 'prompt', 'run', 'agent', 'fresh', 'review'};
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
       throw ConfigurationException('unknown key "dispatcher.actions[].$key" (expected ${known.join(', ')}).');
@@ -266,6 +266,11 @@ ActionDefinition _action(Object? node, String origin) {
   final path = 'dispatcher.actions "$name"';
   final fresh = yaml['fresh'] ?? false;
   if (fresh is! bool) throw ConfigurationException('$path.fresh must be true or false.');
+  final review = yaml['review'] ?? false;
+  if (review is! bool) throw ConfigurationException('$path.review must be true or false.');
+  if (review && yaml['fresh'] == false) {
+    throw ConfigurationException('$path: a review always runs in a new session (fresh: false is not possible).');
+  }
   final run = yaml['run'];
   return ActionDefinition(
     name: name,
@@ -288,6 +293,7 @@ ActionDefinition _action(Object? node, String origin) {
     builtIn: run == null || run is List ? null : _string(run, '$path.run', origin),
     agent: yaml['agent'] == null ? null : _string(yaml['agent'], '$path.agent', origin),
     fresh: fresh,
+    review: review,
   );
 }
 
@@ -498,8 +504,9 @@ claims:
 #   # Actions: buttons on items (statuses: where they show; default every
 #   # status, or only the on_enter one) and hooks (on_enter: run by itself,
 #   # once, when an item enters that status). Each has exactly one of
-#   # prompt (an agent; it continues the item's session unless fresh: true)
-#   # and run (a command as a list, or a built-in action by name: noop).
+#   # prompt (an agent; it continues the item's session unless fresh: true),
+#   # run (a command as a list, or a built-in action by name: noop) and
+#   # review: true (an AI review, see below).
 #   # Prompt placeholders as above plus {pr}, {status}, {base}, {action},
 #   # {news}; command placeholders {id} {title} {branch} {pr} {status}
 #   # {worktree} {path} {backlog} {base} {action}.
@@ -508,10 +515,15 @@ claims:
 #       statuses: [review]
 #       prompt: "Go through the unresolved comments of PR {pr}, fix them and answer them."
 #       # agent: claude      # profile (default: dispatcher.agent)
+#     # AI review: review: true gives the agent a built-in review task (in a
+#     # new session: read git diff {base}...{branch}, the item and the
+#     # project's rules; check correctness, tests, docs, security; change
+#     # nothing) and it ends with backlog review --ok|--changes, which the
+#     # board shows on the card.
 #     - name: AI review
+#       review: true
 #       on_enter: review    # also a button in review
-#       fresh: true         # a new session, not the item's own
-#       prompt: "Review the changes of {branch} against {base}; write findings with backlog comment {id}."
+#       # prompt: "Also check the database migrations."   # added to the built-in task
 #     - name: Tests
 #       statuses: [review]
 #       run: [sh, -c, "mise run check"]   # in the item's worktree; result as a note in the discussion

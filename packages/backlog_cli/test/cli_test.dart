@@ -392,6 +392,7 @@ void main() {
       'statuses': null,
       'agent': 'claude',
       'fresh': false,
+      'review': false,
     });
 
     final requested = await backlog(['action', id, 'Tests'], env: {'USER': 'tobik'});

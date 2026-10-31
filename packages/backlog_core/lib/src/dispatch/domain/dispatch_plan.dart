@@ -240,8 +240,15 @@ final class DispatchAssignment {
             ? 'Run `backlog show ${item.id}` first to see the item and its discussion.'
             : 'You continue your earlier session on this item. Since your last run: $news\n'
                   'Run `backlog show ${item.id}` to see the item as it is now.',
-        'task': action.prompt!.render(actionValues),
-        'publish': config.pr == null
+        'task': action.review
+            ? ActionDefinition.reviewTask(actionValues, extra: action.prompt?.render(actionValues))
+            : action.prompt!.render(actionValues),
+        'finish': action.review
+            ? 'When you are done, record your verdict with `backlog review` as described and stop.'
+            : 'When you are done, say briefly what you did or found with `backlog comment ${item.id} "…"` and stop.',
+        'publish': action.review
+            ? 'Never push.'
+            : config.pr == null
             ? 'Never push.'
             : 'Never run `git push`: to publish your commits run `backlog pr ${item.id}` (it pushes your branch '
                   'and updates the item\'s pull request).',
@@ -271,8 +278,10 @@ final class DispatchAssignment {
 
   /// What the agent of a prompt action is told: who and where it is, that
   /// the item keeps its status, the item's context, the action's text
-  /// (`{task}`) and how it may publish commits (`{publish}`: `backlog pr`
-  /// with `dispatcher.pr`, else never push).
+  /// (`{task}`, for a review the built-in review task), how to finish
+  /// (`{finish}`: `backlog comment`, a review `backlog review`) and how it
+  /// may publish commits (`{publish}`: `backlog pr` with `dispatcher.pr`,
+  /// else — and always for a review — never push).
   static final actionFrame = TextTemplate(
     'You are the agent {worktree}, started for the action "{action}" on backlog item {id} ("{title}") in this '
     'git worktree, on branch {branch}. The item is claimed for you (BACKLOG_AGENT={worktree}) only while the '
@@ -280,9 +289,8 @@ final class DispatchAssignment {
     'in-progress), and you take no other items.\n'
     '{context}\n\n'
     'The action:\n{task}\n\n'
-    'When you are done, say briefly what you did or found with `backlog comment {id} "…"` and stop. If something '
-    'is unclear, ask with `backlog ask {id} "<your question>"` and stop. {publish}',
-    known: const [...ActionDefinition.promptPlaceholders, 'context', 'task', 'publish'],
+    '{finish} If something is unclear, ask with `backlog ask {id} "<your question>"` and stop. {publish}',
+    known: const [...ActionDefinition.promptPlaceholders, 'context', 'task', 'finish', 'publish'],
     label: 'action prompt',
   );
 
