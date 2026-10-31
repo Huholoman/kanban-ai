@@ -531,6 +531,14 @@ void main() {
       expect(started.assignments, isEmpty);
       expect((await api.item(epic.item.id)).item.claim!.agent, 'w1');
       await expectLater(api.startEpic(epic.item.id), throwsA(apiError(409, 'unavailable')));
+
+      // While its agent works, the check sees the epic as that agent does.
+      await (await host.backlog).claims.claimInEpic(epic.item.id, 'w1');
+      final during = await api.epic(epic.item.id);
+      expect(during.problems, isEmpty);
+      expect(during.warnings, isEmpty);
+      expect(during.next, task.item.id);
+      expect(during.members.single.state, 'in-progress');
     });
 
     test('items that are not ready cannot be started', () async {

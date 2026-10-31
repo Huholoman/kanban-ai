@@ -213,8 +213,15 @@ final class ApiHandler {
     return _json((await _plan()).toJson());
   }
 
-  Future<Response> _epic(Request request, String ref) async =>
-      _json(DtoMapper.epic(await (await _host.backlog).claims.epic(ref)).toJson());
+  /// As seen by whoever implements the epic (the holder of its claim, else
+  /// the worktree of the agent running for it): its own claims are no
+  /// problem and its item in progress is next.
+  Future<Response> _epic(Request request, String ref) async {
+    final snapshot = await (await _host.backlog).planning.snapshot();
+    final epic = snapshot[ItemReference.resolve(ref, snapshot.ids)]!;
+    final agent = epic.isClaimed ? epic.claim!.agent : _dispatcher()?.current?.runFor(epic.id)?.worktree;
+    return _json(DtoMapper.epic(EpicPlan.of(snapshot, epic.id, agent: agent)).toJson());
+  }
 
   Future<Response> _startEpic(Request request) async {
     final payload = DispatchRequest.fromJson(await _body(request));
