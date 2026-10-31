@@ -183,6 +183,15 @@ final class Workflow {
     return index < 0 ? statuses.length : index;
   }
 
+  /// Where milestone [id] comes in the order of ready work: the position in
+  /// [milestones]; no milestone, `later` (the parking lot) and unknown ids
+  /// after all of them. Always 0 without milestones.
+  int milestoneRank(String? id) {
+    if (id == null || id == 'later') return milestones.length;
+    final index = milestones.indexWhere((m) => m.id == id);
+    return index < 0 ? milestones.length : index;
+  }
+
   int priorityRank(String id) {
     final index = priorities.indexOf(id);
     return index < 0 ? priorities.length : index;

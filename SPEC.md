@@ -155,7 +155,7 @@ Semantics:
 
 - **Status categories** drive behaviour: `open` = not started, `active` = being worked on, `done` = finished (any done-category status, e.g. `cancelled`, counts as finished for dependencies).
 - **Pickable status** — the open status agents take work from (`todo`). `claim` moves an item to the first `active` status; `release` returns an active item to the pickable status.
-- **Priorities** are ordered; the first is the most urgent. They rank items inside a milestone.
+- **Priorities** are ordered; the first is the most urgent. They rank items inside a milestone: ready work goes by milestone first (§3.1).
 - **Milestones** play the role of versions/releases; when the list is non-empty, `lint` warns about unknown ones.
 - **Types** are labels; the hierarchy comes from `parent`, not from the type. `epic` is special only in the UI (epic filter, the default Board view hides epics).
 - **Statuses are the board columns.** Add, rename or reorder them here; each view chooses which to show with `columns:` (§6), also editable from the app.
@@ -258,6 +258,8 @@ Rules:
 | `has_children`, `claimed`, `claimed_by` | for views and filters |
 
 Default order ("most urgent first"): priority, then `created`, then id.
+
+Ready work (`ready`, `backlog next`, the dispatcher's order, §8.2) goes by milestone first: in the order of `milestones` in `backlog.yaml` (earlier versions first); items without a milestone, with `later` (the parking lot) or with a milestone not in the list come after all of them. Then the default order. Without `milestones` it is just the default order.
 
 ### 3.2 Touches — which files the work changes
 
