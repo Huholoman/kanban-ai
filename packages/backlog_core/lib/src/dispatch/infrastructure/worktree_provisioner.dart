@@ -8,6 +8,7 @@ import '../../planning/domain/backlog_snapshot.dart';
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+import '../domain/action_run.dart';
 import '../domain/agent_log_format.dart';
 import '../domain/dispatch_plan.dart';
 import 'process_agent_launcher.dart';
@@ -130,6 +131,7 @@ final class WorktreeProvisioner extends AgentLauncher {
       sessions: inner.sessions,
       created: created,
       spare: spare,
+      branches: inner.branches,
     );
   }
 
@@ -142,6 +144,9 @@ final class WorktreeProvisioner extends AgentLauncher {
       await _write(record.copyWith(lastUsed: _clock.now()));
     }
   }
+
+  @override
+  Future<void> runJob(ActionJob job) => _inner.runJob(job);
 
   Future<void> _create(DispatchAssignment assignment, String repo) async {
     final path = assignment.path;

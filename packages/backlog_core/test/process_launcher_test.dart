@@ -96,6 +96,19 @@ dispatcher:
       output: claude-stream-json
       resume: [--resume, "{session}"]
   resume_prompt: "Continue {id}: {news}"
+  actions:
+    - name: Fix
+      statuses: [review]
+      prompt: "Fix it on {branch}"
+    - name: Review
+      statuses: [review]
+      fresh: true
+      prompt: "Review {id}"
+    - name: Check
+      statuses: [review]
+      run: [sh, -c, "echo checking {id} on \$(git symbolic-ref --short HEAD) as \$BACKLOG_AGENT; echo out-line; exit 3"]
+    - name: Noop
+      run: noop
 ''');
     clock = FixedClock(DateTime.utc(2026, 10, 31, 12));
     backlog = await Backlog.open(path('backlog'), clock: clock, ids: SequentialIds());
@@ -365,6 +378,97 @@ dispatcher:
     );
     expect(await dispatcher.stop('T-0001'), isTrue);
   });
+
+  group('actions', () {
+    /// T-0001 worked on by an agent in wt-1 and handed over for review.
+    Future<void> reviewed() async {
+      await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
+      await launcher.launch((await plan()).assignmentFor('T-0001'));
+      await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+      await finish('T-0001', 0);
+    }
+
+    Future<List<Comment>> notes() async =>
+        (await planned('T-0001')).item.discussion.comments.where((c) => c.author == 'kanban-ai').toList();
+
+    test('a prompt action continues the item session, keeps the status and drops its claim', () async {
+      await reviewed();
+      final start = (await plan()).actionStart('T-0001', 'Fix').agent!;
+      expect(start.resume!.id, 'sess-T-0001');
+      await launcher.launch(start);
+
+      final running = await planned('T-0001');
+      expect(running.claim!.agent, 'wt-1');
+      expect(running.item.status, 'review', reason: 'an action does not take the item over');
+      expect((await plan()).runFor(ItemId('T-0001'))!.action, 'Fix');
+      await waitForLog('T-0001', 'args T-0001 --resume sess-T-0001');
+      expect(await logOf('T-0001'), contains('action "Fix" on backlog item T-0001'));
+      await finish('T-0001', 0);
+
+      final after = await planned('T-0001');
+      expect((after.item.status, after.claim), ('review', null));
+      expect(File(p.join(stateDir, 'agents', 'demo', 'T-0001.hold.json')).existsSync(), isFalse);
+      expect((await notes()).single.text, startsWith('The action "Fix" (agent fake in wt-1) exited with code 0 after'));
+      expect((await notes()).single.note, isTrue);
+      expect((await plan()).sessions[ItemId('T-0001')]!.id, 'sess-T-0001', reason: 'still the item session');
+    });
+
+    test('a fresh prompt action is a side session that does not replace the item session', () async {
+      await reviewed();
+      final itemRun = (await plan()).sessions[ItemId('T-0001')]!.startedAt;
+      final start = (await plan()).actionStart('T-0001', 'Review').agent!;
+      expect((start.worktree.name, start.resume), ('wt-1', null), reason: 'where the branch is checked out');
+      await launcher.launch(start);
+      await finish('T-0001', 0);
+      expect((await plan()).sessions[ItemId('T-0001')]!.startedAt, itemRun);
+      final last = (await launcher.agentLog(ItemId('T-0001')))!;
+      expect(last.last!['action'], 'Review', reason: 'the log of the latest run');
+    });
+
+    test('a command runs in the item worktree and reports its result as a note', () async {
+      await reviewed();
+      final job = (await plan()).actionStart('T-0001', 'Check').job!;
+      expect(job.worktree, 'wt-1');
+      await launcher.runJob(job);
+      final busy = await plan();
+      expect(busy.worktrees.first.isBusy, isTrue);
+      expect(busy.runFor(ItemId('T-0001'))!.kind, RunKind.command);
+      expect(() => busy.actionStart('T-0001', 'Fix'), throwsA(isA<UnavailableException>()));
+      await finish('T-0001', 0);
+
+      final note = (await notes()).single;
+      expect(note.text, startsWith('The action "Check" (wt-1) exited with code 3 after'));
+      expect(note.text, contains('checking T-0001 on agent/T-0001 as wt-1\nout-line\n```'));
+      final after = await planned('T-0001');
+      expect((after.item.status, after.claim), ('review', null));
+      expect((await launcher.agentLog(ItemId('T-0001')))!.lines, contains('out-line'));
+      expect((await plan()).sessions[ItemId('T-0001')]!.id, 'sess-T-0001');
+    });
+
+    test('a built-in runs inside the server; after a restart it counts as interrupted', () async {
+      await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
+      await launcher.runJob((await plan()).actionStart('T-0001', 'Noop').job!);
+      await finish('T-0001', 0);
+      expect(
+        (await notes()).single.text,
+        startsWith('The action "Noop" (backlog) succeeded: did nothing (noop) after'),
+      );
+      expect(await logOf('T-0001'), contains('noop: nothing to do for T-0001'));
+
+      final hanging = ProcessAgentLauncher(
+        project: 'demo',
+        backlog: () async => backlog,
+        stateDir: stateDir,
+        clock: clock,
+        builtIns: {'noop': _Hanging()},
+      );
+      await hanging.runJob((await plan()).actionStart('T-0001', 'Noop').job!);
+      await expectLater(hanging.stop(ItemId('T-0001')), throwsA(isA<InvalidInputException>()));
+      await hanging.close();
+      await finish('T-0001', 0); // a new launcher, as after a restart
+      expect((await notes()).last.text, startsWith('The action "Noop" (backlog) was interrupted (the server stopped'));
+    });
+  });
 }
 
 final class _NoTimer implements Timer {
@@ -376,4 +480,13 @@ final class _NoTimer implements Timer {
 
   @override
   int get tick => 0;
+}
+
+/// A built-in action that never ends.
+final class _Hanging implements BuiltInAction {
+  @override
+  String get name => 'noop';
+
+  @override
+  Future<BuiltInActionResult> run(BuiltInActionContext context) => Completer<BuiltInActionResult>().future;
 }

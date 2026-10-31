@@ -31,7 +31,8 @@ final class BacklogServer {
   /// Each project's dispatcher re-plans after every change (debounced by
   /// [dispatchDebounce]) and, in auto mode, hands assignments to the
   /// project's launcher made by [launcher]; without one it only logs what it
-  /// would start.
+  /// would start. With [stateDir] the dispatchers remember status hooks
+  /// (`on_enter` actions) there across restarts.
   static Future<BacklogServer> start({
     String? root,
     String? projectsFile,
@@ -46,6 +47,7 @@ final class BacklogServer {
     void Function(String message)? log,
     LauncherFactory? launcher,
     Duration dispatchDebounce = const Duration(milliseconds: 500),
+    String? stateDir,
   }) async {
     if ((root == null) == (projectsFile == null)) {
       throw ArgumentError('Give either root or projectsFile.');
@@ -57,6 +59,7 @@ final class BacklogServer {
       launcher: launcher,
       log: log,
       prefixLogs: projectsFile != null,
+      stateDir: stateDir,
     );
     final hub = ProjectHub((entry) => HostedProject.live(entry, runtime));
     RegistryWatcher? watcher;

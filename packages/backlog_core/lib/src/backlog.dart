@@ -4,6 +4,8 @@ import 'package:path/path.dart' as p;
 
 import 'claims/application/claim_service.dart';
 import 'claims/infrastructure/file_system_claim_store.dart';
+import 'dispatch/domain/action_run.dart';
+import 'dispatch/infrastructure/action_files.dart';
 import 'infrastructure/backlog_layout.dart';
 import 'items/application/item_service.dart';
 import 'items/domain/item_id.dart';
@@ -153,4 +155,8 @@ final class Backlog {
   final Linter linter;
 
   String get root => layout.root;
+
+  /// Requests to run actions, for a server's dispatcher to pick up
+  /// (`backlog action`).
+  ActionRequests get actionRequests => FileActionRequests(layout);
 }

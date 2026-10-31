@@ -5,7 +5,9 @@ import '../../items/domain/item_id.dart';
 import '../../planning/domain/backlog_snapshot.dart';
 import '../../planning/domain/planned_item.dart';
 import '../../shared/errors.dart';
+import '../../workflow/domain/action_definition.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+import 'action_run.dart';
 import 'agent_log_format.dart';
 import 'agent_session.dart';
 
@@ -19,19 +21,30 @@ final class AgentRun {
     required this.log,
     required this.agent,
     this.branch,
+    this.action,
+    this.kind = RunKind.agent,
   });
 
   final ItemId item;
 
-  /// Name of the worktree it runs in (also the name of its claim).
+  /// Name of the worktree it runs in (also the name of its claim); for an
+  /// action's command outside the worktrees, the folder name of the primary
+  /// clone.
   final String worktree;
+
+  /// The action it runs for; null for the dispatcher's own agents.
+  final String? action;
+
+  /// An agent, or an action's command or built-in.
+  final RunKind kind;
   final int pid;
   final DateTime startedAt;
 
   /// Absolute path of the file its output goes to.
   final String log;
 
-  /// Name of the agent profile.
+  /// Name of the agent profile (the action's name for commands and
+  /// built-ins).
   final String agent;
   final String? branch;
 }
@@ -64,6 +77,8 @@ final class DispatchConditions {
     this.sessions = const {},
     this.created = const [],
     this.spare = const [],
+    this.branches = const {},
+    this.pending = const [],
   });
 
   static const none = DispatchConditions();
@@ -90,6 +105,25 @@ final class DispatchConditions {
   /// Worktrees the dispatcher may create when none is free, in the order it
   /// would create them (within `max_worktrees`).
   final List<WorktreeDefinition> spare;
+
+  /// Worktree name → the branch checked out there, for worktrees that are
+  /// not busy (where an item's actions run).
+  final Map<String, String> branches;
+
+  /// `on_enter` actions waiting to run.
+  final List<PendingAction> pending;
+
+  /// These conditions with [pending] in place of the current ones.
+  DispatchConditions withPending(List<PendingAction> pending) => DispatchConditions(
+    unavailable: unavailable,
+    held: held,
+    runs: runs,
+    sessions: sessions,
+    created: created,
+    spare: spare,
+    branches: branches,
+    pending: pending,
+  );
 }
 
 /// A configured worktree at the moment of planning.
@@ -152,6 +186,8 @@ final class DispatchAssignment {
     this.base,
     this.resume,
     this.createFrom,
+    this.action,
+    this.trigger = ActionTrigger.request,
   });
 
   /// Fills the [config]'s prompt, command and environment for [item] in
@@ -159,6 +195,10 @@ final class DispatchAssignment {
   /// [resume] (a session the profile can continue there, see
   /// [AgentSession.resumableBy]) the agent continues it with the resume
   /// prompt instead of starting a new session.
+  ///
+  /// With a prompt [action] the agent is the action's profile and its prompt
+  /// is the action's text inside [actionFrame]; it continues [resume] the
+  /// same way.
   factory DispatchAssignment.render(
     DispatcherConfig config, {
     required PlannedItem item,
@@ -167,6 +207,8 @@ final class DispatchAssignment {
     required String backlogRoot,
     AgentSession? resume,
     bool create = false,
+    ActionDefinition? action,
+    ActionTrigger trigger = ActionTrigger.request,
   }) {
     final branch = branchFor(item);
     final values = {
@@ -177,11 +219,30 @@ final class DispatchAssignment {
       'backlog': backlogRoot,
       'branch': branch,
     };
-    final profile = config.agent;
+    final profile = action == null ? config.agent : config.profileFor(action);
     final session = resume != null && resume.resumableBy(profile, worktree.name) ? resume : null;
-    final prompt = session == null
-        ? config.prompt.render(values)
-        : config.resumePrompt.render({...values, 'news': session.news(session.commentsIn(item.item))});
+    final news = session?.news(session.commentsIn(item.item));
+    final String prompt;
+    if (action == null) {
+      prompt = session == null ? config.prompt.render(values) : config.resumePrompt.render({...values, 'news': news!});
+    } else {
+      final actionValues = {
+        ...values,
+        'pr': item.item.pr ?? '',
+        'status': item.item.status,
+        'base': config.base,
+        'action': action.name,
+        'news': news ?? 'This is a new session.',
+      };
+      prompt = actionFrame.render({
+        ...actionValues,
+        'context': session == null
+            ? 'Run `backlog show ${item.id}` first to see the item and its discussion.'
+            : 'You continue your earlier session on this item. Since your last run: $news\n'
+                  'Run `backlog show ${item.id}` to see the item as it is now.',
+        'task': action.prompt!.render(actionValues),
+      });
+    }
     final full = {...values, 'prompt': prompt, 'session': ?session?.id};
     return DispatchAssignment(
       item: item,
@@ -199,8 +260,26 @@ final class DispatchAssignment {
       base: config.base,
       resume: session,
       createFrom: create ? config.newWorktrees?.resolveRepo(backlogRoot) : null,
+      action: action,
+      trigger: trigger,
     );
   }
+
+  /// What the agent of a prompt action is told: who and where it is, that
+  /// the item keeps its status, the item's context and the action's text
+  /// (`{task}`).
+  static final actionFrame = TextTemplate(
+    'You are the agent {worktree}, started for the action "{action}" on backlog item {id} ("{title}") in this '
+    'git worktree, on branch {branch}. The item is claimed for you (BACKLOG_AGENT={worktree}) only while the '
+    'action runs; it stays in status {status} unless the action asks you to change it (never set it to '
+    'in-progress), and you take no other items.\n'
+    '{context}\n\n'
+    'The action:\n{task}\n\n'
+    'When you are done, say briefly what you did or found with `backlog comment {id} "…"` and stop. If something '
+    'is unclear, ask with `backlog ask {id} "<your question>"` and stop.',
+    known: const [...ActionDefinition.promptPlaceholders, 'context', 'task'],
+    label: 'action prompt',
+  );
 
   /// The branch an agent works on for [item]: its `branch` field, else
   /// `agent/<id>`.
@@ -243,6 +322,14 @@ final class DispatchAssignment {
   /// the agent starts; null when the worktree exists.
   final String? createFrom;
 
+  /// The prompt action the agent runs for; null for the item's own work.
+  /// Such an agent takes the claim without changing the item (status,
+  /// assignee), never lifts or causes a hold and loses the claim at the end.
+  final ActionDefinition? action;
+
+  /// Why the [action] runs.
+  final ActionTrigger trigger;
+
   ItemId get id => item.id;
 
   /// The name the claim is taken under.
@@ -250,7 +337,7 @@ final class DispatchAssignment {
 
   /// `<id>@<worktree>` (with `+resume` when continuing a session); equal
   /// keys mean the same decision.
-  String get key => '$id@${worktree.name}${resume == null ? '' : '+resume'}';
+  String get key => '$id@${worktree.name}${resume == null ? '' : '+resume'}${action == null ? '' : ':${action!.name}'}';
 }
 
 /// What the dispatcher would do with one [BacklogSnapshot]: which ready items
@@ -258,6 +345,10 @@ final class DispatchAssignment {
 ///
 /// Pure and deterministic: ready items in the order of `backlog next`
 /// (priority, age, id), free worktrees in the configured order.
+extension on String {
+  String ifEmpty(String other) => isEmpty ? other : this;
+}
+
 final class DispatchPlan {
   const DispatchPlan({
     required this.config,
@@ -270,6 +361,9 @@ final class DispatchPlan {
     this.spare = const [],
     this.recheckAt,
     this.sessions = const {},
+    this.runs = const [],
+    this.pending = const [],
+    this.branches = const {},
   });
 
   /// Whether a person (anyone but the agent) commented on unfinished,
@@ -286,8 +380,8 @@ final class DispatchPlan {
 
   /// The free, existing worktree in [free] where [config]'s agent can
   /// continue [session]; a new worktree never holds a session.
-  static WorktreeState? _resumableIn(AgentSession? session, DispatcherConfig config, List<WorktreeState> free) =>
-      session == null ? null : free.firstWhereOrNull((w) => !w.isNew && session.resumableBy(config.agent, w.name));
+  static WorktreeState? _resumableIn(AgentSession? session, AgentProfile profile, List<WorktreeState> free) =>
+      session == null ? null : free.firstWhereOrNull((w) => !w.isNew && session.resumableBy(profile, w.name));
 
   /// The plan for [snapshot], or null when its workflow has no dispatcher.
   /// Relative worktree paths are resolved against [backlogRoot].
@@ -349,7 +443,7 @@ final class DispatchPlan {
     final ready = [
       ...replied,
       for (final item in snapshot.ready)
-        if (!conditions.held.containsKey(item.id) && !replied.contains(item)) item,
+        if (!conditions.held.containsKey(item.id) && !replied.contains(item) && !runningItems.contains(item.id)) item,
     ];
 
     final waitingForAnswer = [
@@ -361,7 +455,7 @@ final class DispatchPlan {
     final left = <PlannedItem>[];
     for (final (index, candidate) in ready.indexed) {
       final session = sessions[candidate.id];
-      final own = _resumableIn(session, config, free);
+      final own = _resumableIn(session, config.agent, free);
       if (assignments.length >= slots || free.isEmpty || (own == null && !candidate.isReady)) {
         left.add(candidate); // a reply waits for the worktree of its session
         continue;
@@ -370,7 +464,7 @@ final class DispatchPlan {
       // to them, and those of agents waiting for an answer to their question.
       final reserved = {
         for (final later in [...ready.skip(index + 1), ...waitingForAnswer])
-          if (_resumableIn(sessions[later.id], config, free) case final w?) w.name,
+          if (_resumableIn(sessions[later.id], config.agent, free) case final w?) w.name,
       };
       final target = own ?? free.firstWhere((w) => !reserved.contains(w.name), orElse: () => free.first);
       free.remove(target);
@@ -408,6 +502,9 @@ final class DispatchPlan {
       ]),
       spare: List.unmodifiable(spare),
       recheckAt: recheckAt,
+      runs: List.unmodifiable(conditions.runs),
+      pending: List.unmodifiable(conditions.pending),
+      branches: Map.unmodifiable(conditions.branches),
     );
   }
 
@@ -439,6 +536,137 @@ final class DispatchPlan {
   /// The session of each item's last agent run, where one is known and its
   /// worktree still exists.
   final Map<ItemId, AgentSession> sessions;
+
+  /// Everything running now: agents (also those of prompt actions) and the
+  /// commands and built-ins of actions, inside the worktrees or not.
+  final List<AgentRun> runs;
+
+  /// `on_enter` actions waiting to run.
+  final List<PendingAction> pending;
+
+  /// Worktree name → its checked-out branch (worktrees that are not busy).
+  final Map<String, String> branches;
+
+  /// What runs for [id] now, if anything.
+  AgentRun? runFor(ItemId id) => runs.firstWhereOrNull((run) => run.item == id);
+
+  /// The actions that items in [planned]'s status offer as buttons.
+  List<ActionDefinition> actionsFor(PlannedItem planned) => [
+    for (final action in config.actions)
+      if (action.offeredIn(planned.item.status)) action,
+  ];
+
+  /// What starting the action [name] on [reference] runs now: an agent for
+  /// a prompt action, otherwise an [ActionJob] (exactly one is set).
+  ///
+  /// Nothing else may run for the item. A person ([ActionTrigger.request])
+  /// may only start actions the item's status offers. A prompt action
+  /// needs a worktree within `max_agents`: it continues the item's last
+  /// session in its worktree unless the action is `fresh`, else it prefers
+  /// the free worktree that has the item's branch checked out, then the
+  /// worktree of the item's session, then any free (or new) one. A command
+  /// or built-in runs in the free worktree that has the item's branch
+  /// checked out, else in the primary clone (`dispatcher.repo`); a command
+  /// without either cannot run (a built-in then runs in the backlog folder).
+  ({DispatchAssignment? agent, ActionJob? job}) actionStart(
+    String reference,
+    String name, {
+    ActionTrigger trigger = ActionTrigger.request,
+  }) {
+    final action =
+        config.action(name) ??
+        (throw NotFoundException(
+          'No action "$name" (configured: ${config.actions.map((a) => a.name).join(', ').ifEmpty('none')}).',
+        ));
+    final planned = snapshot[ItemReference.resolve(reference, snapshot.ids)]!;
+    final id = planned.id;
+    final status = planned.item.status;
+    if (trigger == ActionTrigger.request && !action.offeredIn(status)) {
+      throw InvalidInputException('The action "$name" is not offered for items in $status.');
+    }
+    if (runFor(id) case final run?) {
+      throw UnavailableException(
+        '${run.action == null ? 'An agent' : 'The action "${run.action}"'} already runs for $id '
+        '(in ${run.worktree}); try again when it has ended.',
+      );
+    }
+    final branch = DispatchAssignment.branchFor(planned);
+    final home = worktrees.firstWhereOrNull((w) => !w.isBusy && !w.isNew && branches[w.name] == branch);
+
+    if (action.kind == ActionKind.prompt) {
+      if (planned.isClaimed) throw ClaimConflictException('$id is claimed by ${planned.claim!.agent}.');
+      final free = available;
+      if (free.isEmpty || capacity == 0) {
+        throw UnavailableException(
+          'No free worktree for the action "$name" on $id ($running/${config.maxAgents} running).',
+        );
+      }
+      final profile = config.profileFor(action);
+      final session = sessions[id];
+      final own = action.fresh ? null : _resumableIn(session, profile, free);
+      bool isFree(String? worktree) => free.any((w) => w.name == worktree && !w.isNew);
+      final target =
+          own ??
+          free.firstWhereOrNull((w) => w.name == home?.name) ??
+          free.firstWhereOrNull((w) => isFree(session?.worktree) && w.name == session!.worktree) ??
+          free.first;
+      return (
+        agent: DispatchAssignment.render(
+          config,
+          item: planned,
+          worktree: target.worktree,
+          path: target.path,
+          backlogRoot: backlogRoot,
+          resume: own == null ? null : session,
+          create: target.isNew,
+          action: action,
+          trigger: trigger,
+        ),
+        job: null,
+      );
+    }
+
+    final repo = config.newWorktrees?.resolveRepo(backlogRoot);
+    final path =
+        home?.path ??
+        repo ??
+        (action.kind == ActionKind.builtIn
+            ? backlogRoot
+            : throw UnavailableException(
+                'The action "$name" runs in the worktree of $id, but no free dispatcher worktree has its branch '
+                '$branch checked out (and dispatcher.repo is not set).',
+              ));
+    final values = {
+      'id': id.value,
+      'title': planned.item.title,
+      'branch': branch,
+      'pr': planned.item.pr ?? '',
+      'status': status,
+      'worktree': home?.name ?? '',
+      'path': path,
+      'backlog': backlogRoot,
+      'base': config.base,
+      'action': action.name,
+    };
+    return (
+      agent: null,
+      job: ActionJob(
+        item: planned,
+        action: action,
+        trigger: trigger,
+        worktree: home?.name,
+        path: path,
+        values: values,
+        command: action.command?.render(values),
+        environment: {
+          'BACKLOG_DIR': backlogRoot,
+          'BACKLOG_AGENT': ?home?.name,
+          'KANBAN_AI_ITEM': id.value,
+          'KANBAN_AI_ACTION': action.name,
+        },
+      ),
+    );
+  }
 
   /// The session a start of [id] would continue with the configured agent
   /// (in its own worktree); null when it would start a new one.
@@ -486,7 +714,7 @@ final class DispatchPlan {
       );
     }
     final session = fresh ? null : sessions[planned.id];
-    final own = _resumableIn(session, config, free);
+    final own = _resumableIn(session, config.agent, free);
     if (own == null && !planned.isReady) {
       throw UnavailableException(
         'The worktree ${session!.worktree} of the session of ${planned.id} is not free; '
@@ -536,7 +764,13 @@ final class DispatchPlan {
       _sameList(other.assignments.map((a) => a.key), assignments.map((a) => a.key)) &&
       _sameList(other.waiting.map((i) => i.id), waiting.map((i) => i.id)) &&
       _sameList(other.held.map((h) => '${h.item.id}:${h.reason}'), held.map((h) => '${h.item.id}:${h.reason}')) &&
-      _sameList(other.worktrees.map(_worktreeKey), worktrees.map(_worktreeKey));
+      _sameList(other.worktrees.map(_worktreeKey), worktrees.map(_worktreeKey)) &&
+      _sameList(other.runs.map(_runKey), runs.map(_runKey)) &&
+      _sameList(other.pending.map(_pendingKey), pending.map(_pendingKey));
+
+  static String _runKey(AgentRun run) => '${run.item}:${run.worktree}:${run.pid}:${run.action}';
+
+  static String _pendingKey(PendingAction action) => '${action.item}:${action.action}:${action.status}';
 
   static String _worktreeKey(WorktreeState w) =>
       '${w.name}:${w.isBusy}:${w.unavailable}:${w.run?.item}:${w.run?.pid}:${w.isNew}';
@@ -558,6 +792,10 @@ abstract class AgentLauncher {
   /// plan of [snapshot] (whose workflow has the dispatcher [config]).
   Future<DispatchConditions> conditions(DispatcherConfig config, String backlogRoot, BacklogSnapshot snapshot) async =>
       DispatchConditions.none;
+
+  /// Runs the command or built-in of an action ([ActionJob]); like
+  /// [launch] it returns once the job is recorded as running.
+  Future<void> runJob(ActionJob job) async => throw const UnavailableException('This dispatcher cannot run actions.');
 
   /// Stops the agent working on [item]; false when none runs.
   Future<bool> stop(ItemId item) async => false;

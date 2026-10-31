@@ -117,6 +117,7 @@ Future<void> main(List<String> arguments) async {
       allow: allow.isEmpty ? null : allow,
       webRoot: webRoot,
       log: options.flag('quiet') ? null : stdout.writeln,
+      stateDir: ProcessAgentLauncher.defaultStateDir(environment),
       launcher: (project, host, log) => WorktreeProvisioner(
         ProcessAgentLauncher(
           project: project,
