@@ -140,6 +140,44 @@ void main() {
     expect(tester.widget<EditableText>(search).focusNode.hasFocus, isTrue);
   });
 
+  group('phone filter bar', () {
+    Finder search() => find.byKey(const ValueKey('filter-search'));
+    bool dot(WidgetTester tester) =>
+        tester.widget<Badge>(find.byKey(const ValueKey('filter-toggle-dot'))).isLabelVisible;
+
+    testWidgets('is hidden until the toggle slides it down', (tester) async {
+      await pumpApp(tester, width: 400, height: 800);
+      expect(search(), findsNothing);
+      final header = tester.getBottomLeft(find.byKey(const ValueKey('view-picker'))).dy;
+
+      await tester.tap(find.byKey(const ValueKey('filter-toggle')));
+      await tester.pumpAndSettle();
+      expect(search(), findsOneWidget);
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('filter-button'))).dy,
+        tester.getCenter(search()).dy,
+        reason: 'search and Filters share a row',
+      );
+      expect(tester.getTopLeft(search()).dy, greaterThanOrEqualTo(header), reason: 'below the header row');
+
+      await tester.enterText(search(), 'item');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('filter-toggle')));
+      await tester.pumpAndSettle();
+      expect(search(), findsNothing);
+      expect(dot(tester), isTrue, reason: 'the hidden filter is still active');
+    });
+
+    testWidgets('opens on / with the search focused', (tester) async {
+      await pumpApp(tester, width: 400, height: 800);
+      expect(dot(tester), isFalse);
+      await tester.sendKeyEvent(LogicalKeyboardKey.slash);
+      await tester.pumpAndSettle();
+      final field = find.descendant(of: search(), matching: find.byType(EditableText));
+      expect(tester.widget<EditableText>(field).focusNode.hasFocus, isTrue);
+    });
+  });
+
   testWidgets('phones get the board one column at a time', (tester) async {
     await pumpApp(tester, width: 400);
     expect(tester.widget<KanbanBoard>(find.byType(KanbanBoard)).paged, isTrue);

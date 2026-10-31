@@ -49,6 +49,10 @@ class FilterBar extends StatefulWidget {
 class _FilterBarState extends State<FilterBar> {
   static const _wideFrom = 900.0;
 
+  /// Below this width search and Filters share the first row, the rest
+  /// wraps below them (phones).
+  static const _narrowBelow = 500.0;
+
   late final _search = TextEditingController(text: widget.filter.text);
 
   @override
@@ -72,22 +76,23 @@ class _FilterBarState extends State<FilterBar> {
         final tally = filter.isEmpty
             ? null
             : _Tally(shown: widget.shown, total: widget.total, onClear: () => widget.onChanged(BoardFilter.none));
-        final controls = [
-          _SearchField(
-            controller: _search,
-            focusNode: widget.searchFocus,
-            width: (constraints.maxWidth - 24).clamp(120.0, 280.0),
-            onChanged: (text) => widget.onChanged(filter.withText(text)),
-          ),
-          _FiltersButton(
-            filter: filter,
-            options: widget.options,
-            counts: widget.counts,
-            index: widget.index,
-            matching: widget.shown,
-            onChanged: widget.onChanged,
-            onSaveAsView: widget.onSaveAsView,
-          ),
+        final narrow = constraints.maxWidth < _narrowBelow;
+        final search = _SearchField(
+          controller: _search,
+          focusNode: widget.searchFocus,
+          width: narrow ? double.infinity : (constraints.maxWidth - 24).clamp(120.0, 280.0),
+          onChanged: (text) => widget.onChanged(filter.withText(text)),
+        );
+        final filtersButton = _FiltersButton(
+          filter: filter,
+          options: widget.options,
+          counts: widget.counts,
+          index: widget.index,
+          matching: widget.shown,
+          onChanged: widget.onChanged,
+          onSaveAsView: widget.onSaveAsView,
+        );
+        final rest = [
           SegmentedChoice<ItemFlag>(
             segments: [
               for (final flag in ItemFlag.values)
@@ -110,18 +115,44 @@ class _FilterBarState extends State<FilterBar> {
                 onRemove: () => widget.onChanged(_without(facet)),
               ),
         ];
+        if (narrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: search),
+                  const SizedBox(width: 8),
+                  filtersButton,
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [...rest, ?tally],
+              ),
+            ],
+          );
+        }
         if (!wide) {
           return Wrap(
             spacing: 8,
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
-            children: [...controls, ?tally],
+            children: [search, filtersButton, ...rest, ?tally],
           );
         }
         return Row(
           children: [
             Expanded(
-              child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: controls),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [search, filtersButton, ...rest],
+              ),
             ),
             if (tally != null) ...[const SizedBox(width: 12), tally],
           ],
