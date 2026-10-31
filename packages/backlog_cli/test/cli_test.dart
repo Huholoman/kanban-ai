@@ -357,4 +357,46 @@ void main() {
     expect((json['discussion'] as List).last, containsPair('note', true));
     expect(File(json['path'] as String).readAsStringSync(), contains('### tobik · 2026-10-29 12:00:00 UTC · note\n'));
   });
+
+  test('action lists what an item offers and leaves a request for the server', () async {
+    final config = File(p.join(backlogDir, 'backlog.yaml'));
+    config.writeAsStringSync(
+      '${config.readAsStringSync()}\n'
+      'dispatcher:\n'
+      '  worktrees: [w1]\n'
+      '  actions:\n'
+      '    - {name: AI review, on_enter: review, prompt: "Review {id}"}\n'
+      '    - {name: Tests, statuses: [review], run: [sh, -c, "true"]}\n'
+      '    - {name: Noop, run: noop}\n',
+    );
+    final id = await create('Export', ['-s', 'review']);
+    final listed = await backlog(['action', id]);
+    expect(listed.exitCode, 0, reason: '$listed');
+    expect(listed.out.split('\n'), [
+      'AI review  —  agent; runs on entering review',
+      'Tests  —  run: sh -c true',
+      'Noop  —  run: noop',
+      '',
+    ]);
+    final todo = await create('Other', ['-s', 'todo']);
+    expect((await backlog(['action', todo])).out, contains('(AI review runs by itself on entering review)'));
+    expect(((await backlog(['--json', 'action', todo])).json! as List).first, {
+      'name': 'AI review',
+      'kind': 'prompt',
+      'offered': false,
+      'on_enter': 'review',
+      'statuses': null,
+      'agent': 'claude',
+      'fresh': false,
+    });
+
+    final requested = await backlog(['action', id, 'Tests'], env: {'USER': 'tobik'});
+    expect(requested.exitCode, 0, reason: '$requested');
+    expect(requested.out, contains('Requested "Tests" for $id. A running backlog-server'));
+    final requests = await (await Backlog.open(backlogDir)).actionRequests.take();
+    expect(requests.map((r) => (r.item, r.action, r.by)), [(id, 'Tests', 'tobik')]);
+
+    expect((await backlog(['action', todo, 'Tests'])).err, contains('not offered for items in todo'));
+    expect((await backlog(['action', id, 'Nope'])).exitCode, 4);
+  });
 }
