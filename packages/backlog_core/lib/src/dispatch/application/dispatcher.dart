@@ -259,7 +259,13 @@ final class Dispatcher {
       }
       if (current.runFor(pending.item) != null || (action.kind == ActionKind.prompt && planned.isClaimed)) continue;
       try {
-        final started = await _startAction(current, pending.item.value, pending.action, ActionTrigger.onEnter);
+        final started = await _startAction(
+          current,
+          pending.item.value,
+          pending.action,
+          ActionTrigger.onEnter,
+          from: pending.from,
+        );
         _log('Dispatcher: the action "${pending.action}" for ${pending.item} started ($started).');
       } on UnavailableException catch (error) {
         if (action.kind == ActionKind.prompt) continue; // waits for a free worktree
@@ -305,8 +311,14 @@ final class Dispatcher {
   }
 
   /// Starts [name] on [reference] with [plan] and describes what started.
-  Future<String> _startAction(DispatchPlan plan, String reference, String name, ActionTrigger trigger) async {
-    final start = plan.actionStart(reference, name, trigger: trigger);
+  Future<String> _startAction(
+    DispatchPlan plan,
+    String reference,
+    String name,
+    ActionTrigger trigger, {
+    String? from,
+  }) async {
+    final start = plan.actionStart(reference, name, trigger: trigger, from: from);
     if (start.agent case final assignment?) {
       await _launcher.launch(assignment);
       _launched.add(assignment.key);

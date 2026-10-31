@@ -90,7 +90,9 @@ void main() {
       expect(queued, isEmpty, reason: 'an item seen for the first time has no transition');
 
       (state, queued) = state.observe(snapshot({'T-1': 'review', 'T-2': 'review'}), actions, now);
-      expect(queued.map((p) => '${p.item} ${p.action} ${p.status}'), ['T-1 AI review review']);
+      expect(queued.map((p) => '${p.item} ${p.action} ${p.from} → ${p.status}'), [
+        'T-1 AI review in-progress → review',
+      ]);
       expect(state.pending, hasLength(1));
 
       (state, queued) = state.observe(snapshot({'T-1': 'review', 'T-2': 'review'}), actions, now);
@@ -105,11 +107,14 @@ void main() {
     test('survives a round trip through JSON', () {
       final state = ActionState(
         statuses: {ItemId('T-1'): 'review'},
-        pending: [PendingAction(item: ItemId('T-1'), action: 'AI review', status: 'review', since: now)],
+        pending: [
+          PendingAction(item: ItemId('T-1'), action: 'AI review', status: 'review', since: now, from: 'in-progress'),
+        ],
       );
       final back = ActionState.fromJson(state.toJson());
       expect(back.statuses, state.statuses);
       expect(back.pending.single.toJson(), state.pending.single.toJson());
+      expect(back.pending.single.from, 'in-progress');
       expect(ActionState.fromJson(const {}).statuses, isNull);
     });
   });

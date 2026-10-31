@@ -56,7 +56,10 @@ final class ActionDefinition {
   /// Actions built into kanban-ai, usable as `run: <name>`, with what they
   /// do. Each needs an implementation in the launcher's registry
   /// (`BuiltInActions`).
-  static const builtIns = <String, String>{'noop': 'does nothing and succeeds (for trying actions out)'};
+  static const builtIns = <String, String>{
+    'noop': 'does nothing and succeeds (for trying actions out)',
+    'merge': 'merges the item\'s branch into the base (dispatcher.merge), then marks it done and cleans up',
+  };
 
   /// What an action's prompt may refer to: the dispatcher prompt's
   /// placeholders, the item's `{pr}` and `{status}`, `dispatcher.base`, the

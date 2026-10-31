@@ -12,6 +12,7 @@ export 'src/dispatch/domain/agent_session.dart';
 export 'src/dispatch/domain/dispatch_plan.dart';
 export 'src/dispatch/infrastructure/action_files.dart';
 export 'src/dispatch/infrastructure/built_in_actions.dart';
+export 'src/dispatch/infrastructure/merge_action.dart';
 export 'src/dispatch/infrastructure/process_agent_launcher.dart';
 export 'src/dispatch/infrastructure/pull_request_opener.dart';
 export 'src/dispatch/infrastructure/worktree_provisioner.dart';

@@ -357,6 +357,10 @@ final class ProcessAgentLauncher extends AgentLauncher {
           values: job.values,
           environment: {..._environment, ...job.environment},
           log: sink.writeln,
+          trigger: job.trigger,
+          from: job.from,
+          stateDir: stateDir,
+          project: project,
         ),
       );
     } catch (error) {

@@ -577,6 +577,7 @@ final class DispatchPlan {
     String reference,
     String name, {
     ActionTrigger trigger = ActionTrigger.request,
+    String? from,
   }) {
     final action =
         config.action(name) ??
@@ -659,6 +660,7 @@ final class DispatchPlan {
         item: planned,
         action: action,
         trigger: trigger,
+        from: from,
         worktree: home?.name,
         path: path,
         values: values,

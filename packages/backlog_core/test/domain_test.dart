@@ -409,7 +409,7 @@ dispatcher:
       );
       rejects('{name: A}', 'give exactly one of prompt and run');
       rejects('{name: A, prompt: x, run: noop}', 'give exactly one of prompt and run');
-      rejects('{name: A, run: "mise run check"}', 'unknown built-in action "mise run check" (known: noop)');
+      rejects('{name: A, run: "mise run check"}', 'unknown built-in action "mise run check" (known: noop, merge)');
       rejects('{name: A, prompt: x}, {name: A, run: noop}', 'Duplicate dispatcher action "A"');
       rejects('{name: A, prompt: x, on_enter: reviewed}', 'unknown status "reviewed"');
       rejects('{name: A, prompt: x, statuses: [todo, nope]}', 'unknown status "nope"');

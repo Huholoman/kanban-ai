@@ -5,6 +5,8 @@ import '../../backlog.dart';
 import '../../planning/domain/planned_item.dart';
 import '../../workflow/domain/action_definition.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+import '../domain/action_run.dart';
+import 'merge_action.dart';
 
 /// What a built-in action gets to work with.
 final class BuiltInActionContext {
@@ -19,7 +21,23 @@ final class BuiltInActionContext {
     required this.environment,
     required void Function(String line) log,
     this.worktree,
+    this.trigger = ActionTrigger.request,
+    this.from,
+    this.stateDir,
+    this.project,
   }) : _log = log;
+
+  /// Why it runs: a person asked, or the item entered the `on_enter` status.
+  final ActionTrigger trigger;
+
+  /// For a hook: the status the item was in before it entered the
+  /// `on_enter` status; null otherwise (or when not known).
+  final String? from;
+
+  /// The dispatcher's state folder and the project id (records of created
+  /// worktrees and agent sessions); null outside a launcher.
+  final String? stateDir;
+  final String? project;
 
   /// The item as it was when the action started.
   final PlannedItem item;
@@ -54,7 +72,11 @@ final class BuiltInActionContext {
 
   /// Runs [command] (no shell) in [workingDirectory] (default [path]) with
   /// [environment]; its output goes to the log. Returns the exit code.
-  Future<int> run(List<String> command, {String? workingDirectory}) async {
+  Future<int> run(List<String> command, {String? workingDirectory}) async =>
+      (await capture(command, workingDirectory: workingDirectory)).exitCode;
+
+  /// Like [run], and also returns the output (standard output and error).
+  Future<CommandOutput> capture(List<String> command, {String? workingDirectory}) async {
     log('\$ ${CommandTemplate.join(command)}');
     final Process process;
     try {
@@ -67,15 +89,31 @@ final class BuiltInActionContext {
       );
     } on ProcessException catch (error) {
       log('cannot run ${command.first}: ${error.message}');
-      return 127;
+      return CommandOutput(127, 'cannot run ${command.first}: ${error.message}');
     }
     await process.stdin.close();
+    final output = StringBuffer();
+    void line(String text) {
+      log(text);
+      output.writeln(text);
+    }
+
     await Future.wait([
       for (final stream in [process.stdout, process.stderr])
-        stream.transform(utf8.decoder).transform(const LineSplitter()).forEach(log),
+        stream.transform(utf8.decoder).transform(const LineSplitter()).forEach(line),
     ]);
-    return process.exitCode;
+    return CommandOutput(await process.exitCode, '$output');
   }
+}
+
+/// The exit code and output (standard output and error) of a program.
+final class CommandOutput {
+  const CommandOutput(this.exitCode, this.output);
+
+  final int exitCode;
+  final String output;
+
+  bool get ok => exitCode == 0;
 }
 
 /// How a built-in action ended: [ok] and one line for the item's
@@ -103,7 +141,7 @@ abstract interface class BuiltInAction {
 /// here.
 abstract final class BuiltInActions {
   static final Map<String, BuiltInAction> standard = {
-    for (final action in <BuiltInAction>[NoopAction()]) action.name: action,
+    for (final action in <BuiltInAction>[const NoopAction(), const MergeAction()]) action.name: action,
   };
 }
 

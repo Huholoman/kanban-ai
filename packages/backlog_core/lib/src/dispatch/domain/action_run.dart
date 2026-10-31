@@ -39,13 +39,14 @@ enum ActionTrigger {
 /// a prompt action, a worktree is free). It is dropped when the item leaves
 /// [status] first or the action is no longer configured.
 final class PendingAction {
-  const PendingAction({required this.item, required this.action, required this.status, required this.since});
+  const PendingAction({required this.item, required this.action, required this.status, required this.since, this.from});
 
   factory PendingAction.fromJson(Map<String, Object?> json) => PendingAction(
     item: ItemId(json['item']! as String),
     action: json['action']! as String,
     status: json['status']! as String,
     since: DateTime.parse(json['since']! as String),
+    from: json['from'] as String?,
   );
 
   final ItemId item;
@@ -55,11 +56,16 @@ final class PendingAction {
   final String status;
   final DateTime since;
 
+  /// The status the item came from (e.g. `review` for an item moved to
+  /// `deploy`); null in state written by older versions.
+  final String? from;
+
   Map<String, Object?> toJson() => {
     'item': item.value,
     'action': action,
     'status': status,
     'since': since.toUtc().toIso8601String(),
+    'from': ?from,
   };
 }
 
@@ -89,7 +95,9 @@ final class ActionState {
         if (previous == null || previous == status) continue;
         for (final action in actions) {
           if (action.onEnter == status) {
-            queued.add(PendingAction(item: planned.id, action: action.name, status: status, since: now.toUtc()));
+            queued.add(
+              PendingAction(item: planned.id, action: action.name, status: status, since: now.toUtc(), from: previous),
+            );
           }
         }
       }
@@ -182,11 +190,16 @@ final class ActionJob {
     this.worktree,
     this.command,
     this.environment = const {},
+    this.from,
   });
 
   final PlannedItem item;
   final ActionDefinition action;
   final ActionTrigger trigger;
+
+  /// For a hook: the status the item was in before it entered the
+  /// action's `on_enter` status (where a failed merge sends it back).
+  final String? from;
 
   /// The dispatcher worktree it runs in (busy meanwhile); null in the
   /// primary clone.
