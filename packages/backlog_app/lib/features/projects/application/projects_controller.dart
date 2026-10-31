@@ -79,6 +79,13 @@ class ProjectsController extends ChangeNotifier {
     if (_selectable(id) case final project?) _open(project);
   }
 
+  /// The view last chosen in the open project (or the single backlog).
+  String? get lastView => _memory.readView(current?.id);
+
+  /// Remembers [view] as the one to show when the open project is opened
+  /// again.
+  void rememberView(String view) => _memory.writeView(current?.id, view);
+
   ProjectDto? _selectable(String? id) => id == null ? null : available.where((p) => p.id == id).firstOrNull;
 
   void _open(ProjectDto project) {

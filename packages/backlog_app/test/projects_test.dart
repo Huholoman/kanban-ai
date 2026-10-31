@@ -1,5 +1,6 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/backlog_app.dart';
+import 'package:backlog_app/features/board/presentation/view_layouts.dart';
 import 'package:backlog_app/features/projects/application/project_memory.dart';
 import 'package:backlog_app/features/projects/application/project_route.dart';
 import 'package:backlog_app/features/projects/application/projects_controller.dart';
@@ -194,6 +195,35 @@ void main() {
 
       await pushRoute(tester, '/p/nope');
       expect(find.text('Item C-1'), findsOneWidget, reason: 'unknown projects are ignored');
+    });
+
+    testWidgets('coming back to a project shows the view last chosen there', (tester) async {
+      final memory = InMemoryProjectMemory();
+      await pumpApp(tester, projects: threeProjects(), route: '/p/a', memory: memory);
+      expect(find.byType(GroupedItemList), findsNothing, reason: 'the default view is the board');
+      await tester.tap(find.byKey(const ValueKey('view-list')));
+      await tester.pumpAndSettle();
+      expect(find.byType(GroupedItemList), findsOneWidget);
+      expect(memory.readView('a'), 'list');
+
+      await pushRoute(tester, '/p/b');
+      expect(find.text('Item B-1'), findsOneWidget);
+      expect(find.byType(GroupedItemList), findsNothing, reason: 'project b has its own last view');
+
+      await pushRoute(tester, '/p/a');
+      expect(find.text('Item A-1'), findsOneWidget);
+      expect(find.byType(GroupedItemList), findsOneWidget);
+    });
+
+    testWidgets('a remembered view that is gone falls back to the default one', (tester) async {
+      await pumpApp(
+        tester,
+        projects: threeProjects(),
+        route: '/p/a',
+        memory: InMemoryProjectMemory(null, {'a': 'deleted'}),
+      );
+      expect(find.text('Item A-1'), findsOneWidget);
+      expect(find.byType(GroupedItemList), findsNothing);
     });
 
     testWidgets('a server without projects shows its single backlog', (tester) async {

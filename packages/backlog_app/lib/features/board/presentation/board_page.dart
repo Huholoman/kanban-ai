@@ -65,10 +65,13 @@ class _BoardPageState extends State<BoardPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_controller != null) return;
-    final api = AppScope.of(context).api;
-    final controller = _controller = BoardController(api);
+    final scope = AppScope.of(context);
+    final api = scope.api;
+    final projects = scope.projects;
+    final controller = _controller = BoardController(api, onViewChosen: projects?.rememberView);
     _notices = controller.notices.listen(_showNotice);
-    unawaited(controller.start());
+    // The view last chosen in this project; a deleted one falls back to the default.
+    unawaited(controller.start(viewId: projects?.lastView));
     final dispatch = _dispatch = DispatchController(api);
     _dispatchNotices = dispatch.notices.listen(_showNotice);
     unawaited(dispatch.start());
