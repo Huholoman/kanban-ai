@@ -98,6 +98,8 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     'actions',
     'pr',
     'merge',
+    'allow',
+    'deny',
   };
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
@@ -129,6 +131,8 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
       ],
       pr: pr,
       merge: _merge(yaml['merge'], pr, origin),
+      allow: yaml['allow'] == null ? const [] : _strings(yaml['allow'], 'dispatcher.allow', origin),
+      deny: yaml['deny'] == null ? const [] : _strings(yaml['deny'], 'dispatcher.deny', origin),
       prompt: prompt == null
           ? null
           : TextTemplate(
@@ -533,6 +537,11 @@ claims:
 #   cleanup_after_days: 14   # remove created ones idle this long that lose nothing (default: keep)
 #   base: main            # new branches agent/<id> start here (an item's own branch field wins)
 #   agent: claude         # built-in: claude; unverified presets: codex, gemini, aider
+#   # Claude Code tool rules added to the built-in whitelist (backlog, git,
+#   # mise, dart, flutter, ./scripts, read-only commands, web, file tools) and
+#   # to its deny list (pushing is always denied):
+#   allow: ["Bash(dotnet *)"]
+#   deny: ["WebFetch"]
 #   # Own profiles (or replacing a built-in one), chosen with agent: <name>:
 #   agents:
 #     claude-sonnet:

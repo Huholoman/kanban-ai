@@ -274,6 +274,40 @@ dispatcher:
       rejects('  merge: {strategy: pr}\n', 'needs dispatcher.pr with dispatcher.pr.merge');
     });
 
+    test('dispatcher.allow and deny extend the claude whitelist; the push ban stays', () {
+      String after(List<String> command, String flag) => command[command.indexOf(flag) + 1];
+      final config = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  allow: ["Bash(dotnet *)", "Bash(make {x})"]
+  deny: [WebFetch]
+  agents:
+    sonnet: {command: 'claude -p {prompt} --model sonnet --allowedTools "Read Edit"'}
+    other: {command: 'my-agent {prompt}'}
+  actions: [{name: Review, prompt: x, agent: sonnet}, {name: Other, prompt: x, agent: other}]
+''').dispatcher!;
+      final claude = config.command.arguments;
+      final allowed = after(claude, '--allowedTools');
+      expect(allowed, startsWith(AgentProfile.claudeAllowedTools));
+      expect(allowed, endsWith(' Bash(dotnet *) Bash(make {{x}})'));
+      expect(after(claude, '--disallowedTools'), '${AgentProfile.claudeDisallowedTools} WebFetch');
+      expect(config.command.render(const {}), contains(endsWith('Bash(make {x})')));
+      expect(config.allow, ['Bash(dotnet *)', 'Bash(make {x})']);
+
+      final sonnet = config.profiles['sonnet']!.command.arguments;
+      expect(after(sonnet, '--allowedTools'), 'Read Edit Bash(dotnet *) Bash(make {{x}})');
+      expect(sonnet.skip(sonnet.length - 2), ['--disallowedTools', 'WebFetch'], reason: 'appended when missing');
+      expect(config.profiles['other']!.command.arguments, ['my-agent', '{prompt}']);
+      expect(config.profiles['claude']!.command.arguments, claude);
+
+      final plain = parseWorkflowYaml('dispatcher: {worktrees: [a]}').dispatcher!;
+      expect(plain.command.arguments, AgentProfile.builtIns['claude']!.command.arguments);
+      expect(
+        () => parseWorkflowYaml('dispatcher: {worktrees: [a], allow: "Bash(x *)"}'),
+        throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains('must be a list'))),
+      );
+    });
+
     test('agent profiles: claude by default, built-in by name, own ones in agents', () {
       final byDefault = parseWorkflowYaml('dispatcher: {worktrees: [a]}').dispatcher!;
       expect(byDefault.agent.name, 'claude');
@@ -283,7 +317,20 @@ dispatcher:
       expect(claude.take(3), ['claude', '-p', '{prompt}']);
       expect(claude, containsAllInOrder(['--permission-mode', 'acceptEdits', '--allowedTools']));
       final allowed = claude[claude.indexOf('--allowedTools') + 1];
-      for (final tool in ['Bash(backlog *)', 'Bash(git *)', 'Bash(mise run *)', 'Bash(./*)', 'Edit']) {
+      for (final tool in [
+        'Bash(backlog *)',
+        'Bash(git *)',
+        'Bash(mise *)',
+        'Bash(dart *)',
+        'Bash(flutter *)',
+        'Bash(./*)',
+        'Bash(cat *)',
+        'Bash(rg *)',
+        'Bash(sort *)',
+        'Edit',
+        'WebFetch',
+        'WebSearch',
+      ]) {
         expect(allowed, contains(tool), reason: 'the project\'s scripts (./greet.sh) run too');
       }
       expect(claude, isNot(contains('--bare')));

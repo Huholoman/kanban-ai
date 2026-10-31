@@ -250,13 +250,17 @@ final class AgentProfile {
   /// Tried with the real CLI; unverified presets may need adjusting.
   final bool verified;
 
-  /// Tools Claude Code may use without asking: the backlog CLI, git, mise
-  /// tasks, the project's own scripts (`./greet.sh`, `./tool/x.sh`) and the
-  /// file tools. Everything else is refused (nobody answers
-  /// permission prompts in headless mode); pushing is forbidden outright
-  /// ([claudeDisallowedTools]).
+  /// Tools Claude Code may use without asking: the backlog CLI, git, mise,
+  /// dart and flutter, the project's own scripts (`./greet.sh`,
+  /// `./tool/x.sh`), common read-only commands, the web and the file tools.
+  /// Everything else is refused (nobody answers permission prompts in
+  /// headless mode) unless `dispatcher.allow` adds it; pushing is forbidden
+  /// outright ([claudeDisallowedTools]).
   static const claudeAllowedTools =
-      'Bash(backlog *) Bash(git *) Bash(mise run *) Bash(./*) Read Edit Write Grep Glob TodoWrite';
+      'Bash(backlog *) Bash(git *) Bash(mise *) Bash(dart *) Bash(flutter *) Bash(./*) '
+      'Bash(ls *) Bash(cat *) Bash(head *) Bash(tail *) Bash(wc *) Bash(find *) Bash(grep *) Bash(rg *) '
+      'Bash(jq *) Bash(diff *) Bash(sort *) '
+      'Read Edit Write Grep Glob TodoWrite WebFetch WebSearch';
 
   /// What Claude Code must never run, even though `Bash(git *)` allows git:
   /// pushing in any spelling — `git push`, but also behind git's global
@@ -266,6 +270,43 @@ final class AgentProfile {
   /// that would rename push. An agent's work leaves the worktree only
   /// through `backlog pr`, which pushes the item's branch and nothing else.
   static const claudeDisallowedTools = 'Bash(git push *) Bash(git -*) Bash(git send-pack *) Bash(git config *alias*)';
+
+  /// The options of Claude Code that take tool rules.
+  static const _allowFlags = {'--allowedTools', '--allowed-tools'};
+  static const _denyFlags = {'--disallowedTools', '--disallowed-tools'};
+
+  /// Whether `dispatcher.allow` / `dispatcher.deny` can be applied: the
+  /// command passes Claude Code an `--allowedTools` list (the built-in
+  /// `claude` profile, or an own one written the same way).
+  bool get takesToolRules => command.arguments.any(_allowFlags.contains);
+
+  /// This profile with [allow] added to its `--allowedTools` list and [deny]
+  /// to its `--disallowedTools` list (appended when it has none); unchanged
+  /// when both are empty or it does not [takesToolRules].
+  AgentProfile withToolRules({List<String> allow = const [], List<String> deny = const []}) {
+    if ((allow.isEmpty && deny.isEmpty) || !takesToolRules) return this;
+    String escape(String rule) => rule.replaceAll('{', '{{').replaceAll('}', '}}');
+    final arguments = [...command.arguments];
+    var denied = deny.isEmpty;
+    for (var i = 0; i < arguments.length - 1; i++) {
+      final isDeny = _denyFlags.contains(arguments[i]);
+      if (!isDeny && !_allowFlags.contains(arguments[i])) continue;
+      final extra = isDeny ? deny : allow;
+      if (isDeny) denied = true;
+      if (extra.isNotEmpty) arguments[i + 1] = [arguments[i + 1], ...extra.map(escape)].join(' ');
+      i++;
+    }
+    if (!denied) arguments.addAll(['--disallowedTools', deny.map(escape).join(' ')]);
+    return AgentProfile(
+      name: name,
+      command: CommandTemplate(arguments, label: 'agent $name'),
+      environment: environment,
+      output: output,
+      resume: resume,
+      builtIn: builtIn,
+      verified: verified,
+    );
+  }
 
   /// The profiles usable without defining them. Only `claude` is verified
   /// (Claude Code 2.1); the others are presets after the CLIs' documentation.
@@ -338,7 +379,16 @@ final class DispatcherConfig {
     Map<String, AgentProfile>? profiles,
     PullRequestConfig? pr,
     MergeConfig? merge,
+    List<String> allow = const [],
+    List<String> deny = const [],
   }) {
+    for (final rule in [...allow, ...deny]) {
+      if (rule.trim().isEmpty) {
+        throw const ConfigurationException('dispatcher.allow and deny must not hold empty rules.');
+      }
+    }
+    agent = agent.withToolRules(allow: allow, deny: deny);
+    profiles = profiles?.map((name, profile) => MapEntry(name, profile.withToolRules(allow: allow, deny: deny)));
     if (worktrees.isEmpty && newWorktrees == null) {
       throw const ConfigurationException(
         'dispatcher.worktrees must list at least one worktree (or set dispatcher.repo).',
@@ -358,7 +408,12 @@ final class DispatcherConfig {
     }
     final limit = maxAgents ?? newWorktrees?.maxWorktrees ?? worktrees.length;
     if (limit < 1) throw const ConfigurationException('dispatcher.max_agents must be at least 1.');
-    final usable = {...AgentProfile.builtIns, ...?profiles, agent.name: agent};
+    final usable = {
+      for (final MapEntry(:key, :value) in AgentProfile.builtIns.entries)
+        key: value.withToolRules(allow: allow, deny: deny),
+      ...?profiles,
+      agent.name: agent,
+    };
     final actionNames = <String>{};
     for (final action in actions) {
       if (!actionNames.add(action.name)) throw ConfigurationException('Duplicate dispatcher action "${action.name}".');
@@ -403,6 +458,8 @@ final class DispatcherConfig {
       Map.unmodifiable(usable),
       pr,
       mergeConfig,
+      List.unmodifiable(allow),
+      List.unmodifiable(deny),
     );
   }
 
@@ -419,6 +476,8 @@ final class DispatcherConfig {
     this.profiles,
     this.pr,
     this.merge,
+    this.allow,
+    this.deny,
   );
 
   /// What the prompt may refer to: the item id and title, the worktree name,
@@ -453,8 +512,9 @@ final class DispatcherConfig {
   /// whitelist lets them through (nobody can approve anything else).
   static const runRules =
       'Running things: run the project\'s scripts directly as `./script args` (not `sh script`), one command per '
-      'call without `;` or `&&` chains, and read files with your Read tool rather than `cat`; anything else needs an '
-      'approval nobody can give and is denied.';
+      'call without `;` or `&&` chains, and prefer your Read, Grep and Glob tools for files; besides backlog, git, '
+      'mise, dart, flutter, common read-only commands (ls, cat, grep, find, …) and web search/fetch, only what the '
+      'project allows runs: anything else needs an approval nobody can give and is denied.';
 
   /// The prompt every agent gets unless `dispatcher.prompt` replaces it.
   static const defaultPrompt =
@@ -559,6 +619,15 @@ final class DispatcherConfig {
   /// `dispatcher.agents` and [agent].
   final Map<String, AgentProfile> profiles;
 
+  /// Claude Code tool rules (`dispatcher.allow`) added to the `--allowedTools`
+  /// of every profile that has such a list (the built-in `claude`); already
+  /// applied to [agent] and [profiles].
+  final List<String> allow;
+
+  /// Claude Code tool rules (`dispatcher.deny`) added to the
+  /// `--disallowedTools` of the same profiles. The built-in push ban stays.
+  final List<String> deny;
+
   /// How finished work becomes a pull request (`dispatcher.pr`); null when
   /// the project opens none (the default prompt then forbids pushing).
   final PullRequestConfig? pr;
@@ -596,6 +665,8 @@ final class DispatcherConfig {
     profiles,
     pr,
     merge,
+    allow,
+    deny,
   );
 
   WorktreeDefinition? worktree(String name) {

@@ -178,6 +178,24 @@ final class Linter {
         }
       }
     }
+    if (dispatcher != null && (dispatcher.allow.isNotEmpty || dispatcher.deny.isNotEmpty)) {
+      final used = {
+        dispatcher.agent,
+        for (final action in dispatcher.actions)
+          if (action.kind == ActionKind.prompt) dispatcher.profileFor(action),
+      };
+      for (final profile in used.where((profile) => !profile.takesToolRules)) {
+        issues.add(
+          LintIssue(
+            Severity.warning,
+            'dispatcher-allow',
+            'dispatcher.allow/deny do not apply to agent "${profile.name}": its command has no --allowedTools '
+                'list to add them to.',
+            location: 'backlog.yaml',
+          ),
+        );
+      }
+    }
     final programExists = _programExists;
     if (dispatcher != null && programExists != null) {
       final agent = dispatcher.agent;
