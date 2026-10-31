@@ -97,6 +97,15 @@ void main() {
       );
     });
 
+    test('change events say which parts of the backlog they concern', () {
+      Set<BacklogPart> parts(List<String> paths) => BacklogChangeEvent(paths).parts;
+      expect(const BacklogChangeEvent.dispatch().parts, {BacklogPart.plan});
+      expect(parts(['items/T-1-a.md', '.locks/T-1.lock']), {BacklogPart.items});
+      expect(parts(['views/board.yaml', 'backlog.yaml']), {BacklogPart.views, BacklogPart.workflow});
+      expect(parts(['docs/notes.md']), isEmpty);
+      expect(parts(['docs/notes.md', 'README.md']), BacklogPart.values.toSet(), reason: 'unknown paths: everything');
+    });
+
     final claim = ClaimDto(
       item: 'T-1',
       agent: 'm2',

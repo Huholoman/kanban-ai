@@ -31,7 +31,12 @@ class DispatchController extends ChangeNotifier {
   bool get configured => plan.configured;
 
   Future<void> start() async {
-    _changes ??= DebouncedChanges(_api, () => unawaited(load()), delay: _refreshDelay, dispatch: true);
+    _changes ??= DebouncedChanges(
+      _api,
+      (_) => unawaited(load()),
+      delay: _refreshDelay,
+      watched: const {BacklogPart.workflow, BacklogPart.items, BacklogPart.plan},
+    );
     await load();
   }
 

@@ -150,7 +150,12 @@ class DashboardController extends ChangeNotifier {
       }
       final api = project == null ? _projects.api! : _projects.apiOf(id);
       final source = _sources[id] = _Source(project, api);
-      source.changes = DebouncedChanges(api, () => unawaited(_load(source)), delay: _refreshDelay, dispatch: true);
+      source.changes = DebouncedChanges(
+        api,
+        (changed) => unawaited(_load(source, changed)),
+        delay: _refreshDelay,
+        watched: BacklogPart.values.toSet(),
+      );
       added.add(source);
     }
     // Keep the registry's order.
@@ -164,24 +169,43 @@ class DashboardController extends ChangeNotifier {
     if (added.isEmpty) notifyListeners();
   }
 
-  Future<void> _load(_Source source) async {
+  /// Loads what depends on the [changed] parts of [source]'s backlog and
+  /// keeps the rest of its digest; everything when null or nothing is loaded.
+  Future<void> _load(_Source source, [Set<BacklogPart>? changed]) async {
     final api = source.api;
+    final previous = source.digest;
+    final all = changed == null || previous == null;
+    bool any(Set<BacklogPart> parts) => all || changed.any(parts.contains);
     try {
-      final loaded = await Future.wait<Object>([api.workflow(), api.items(includeDone: true), _plan(api), api.lint()]);
-      final items = loaded[1] as List<ItemDto>;
+      final workflowRequest = any(const {BacklogPart.workflow}) ? api.workflow() : null;
+      // Items carry the AI review state of the plan.
+      final itemsRequest = any(const {BacklogPart.workflow, BacklogPart.items, BacklogPart.plan})
+          ? api.items(includeDone: true)
+          : null;
+      final planRequest = any(const {BacklogPart.workflow, BacklogPart.items, BacklogPart.plan}) ? _plan(api) : null;
+      final lintRequest = any(const {BacklogPart.workflow, BacklogPart.items, BacklogPart.views}) ? api.lint() : null;
+      await Future.wait<Object>([?workflowRequest, ?itemsRequest, ?planRequest, ?lintRequest]);
+      // What another load brought meanwhile is newer than [previous].
+      final latest = source.digest ?? previous;
+      final items = await itemsRequest ?? latest!.items;
+      // Questions live in item files; other changes keep the loaded ones.
+      final reloadQuestions = any(const {BacklogPart.workflow, BacklogPart.items});
       final questions = <String, CommentDto>{};
       await Future.wait([
         for (final item in items)
           if (item.needsHuman && !item.isDone)
-            _question(api, item.id).then((q) => q == null ? null : questions[item.id] = q),
+            if (!reloadQuestions && previous!.questions[item.id] != null)
+              Future.value(questions[item.id] = previous.questions[item.id]!)
+            else
+              _question(api, item.id).then((q) => q == null ? null : questions[item.id] = q),
       ]);
       source
         ..digest = ProjectDigest(
           project: source.project,
-          workflow: loaded[0] as WorkflowDto,
+          workflow: await workflowRequest ?? source.digest!.workflow,
           items: items,
-          plan: loaded[2] as DispatchDto,
-          lint: loaded[3] as List<LintIssueDto>,
+          plan: await planRequest ?? source.digest!.plan,
+          lint: await lintRequest ?? source.digest!.lint,
           questions: questions,
         )
         ..error = null;

@@ -43,7 +43,47 @@ final class BacklogChangeEvent {
 
   bool get isDispatch => type == 'dispatch';
 
+  /// What the change concerns, so that clients reload only that: `backlog.yaml`
+  /// the workflow, `items/` and `.locks/` (claims) the items, `views/` the
+  /// views, a dispatch event the plan; `docs/` nothing, any other path
+  /// everything.
+  Set<BacklogPart> get parts {
+    if (isDispatch) return const {BacklogPart.plan};
+    final parts = <BacklogPart>{};
+    for (final path in paths) {
+      final top = path.split('/').first;
+      switch (top) {
+        case 'backlog.yaml':
+          parts.add(BacklogPart.workflow);
+        case 'items' || '.locks':
+          parts.add(BacklogPart.items);
+        case 'views':
+          parts.add(BacklogPart.views);
+        case 'docs':
+          break;
+        default:
+          return BacklogPart.values.toSet();
+      }
+    }
+    return parts;
+  }
+
   Json toJson() => {'type': type, 'paths': paths};
+}
+
+/// A part of a backlog a client shows, by [BacklogChangeEvent.parts].
+enum BacklogPart {
+  /// `backlog.yaml`: workflow, appearance, dispatcher settings.
+  workflow,
+
+  /// Item files and claims.
+  items,
+
+  /// Saved views.
+  views,
+
+  /// The dispatcher's plan.
+  plan,
 }
 
 /// An error answered by the server, in the same shape as `backlog --json`.

@@ -90,6 +90,14 @@ final class FakeBacklogApi implements BacklogApi {
   final _changes = StreamController<BacklogChangeEvent>.broadcast();
   int viewLoads = 0;
 
+  /// How often `workflow`, `items` and `lint` were loaded.
+  final loads = <String, int>{};
+
+  void _loaded(String name) => loads[name] = (loads[name] ?? 0) + 1;
+
+  /// Simulates changes of [paths] on disk without changing anything.
+  void touched(List<String> paths) => _changes.add(BacklogChangeEvent(paths));
+
   /// Someone listens to the live updates (the WebSocket would be open).
   bool get listening => listeners > 0;
 
@@ -110,23 +118,28 @@ final class FakeBacklogApi implements BacklogApi {
   List<ActionDto> actions = const [];
 
   @override
-  Future<WorkflowDto> workflow() async => WorkflowDto(
-    statuses: _workflow.statuses,
-    priorities: _workflow.priorities,
-    types: _workflow.types,
-    defaultStatus: _workflow.defaultStatus,
-    defaultPriority: _workflow.defaultPriority,
-    defaultType: _workflow.defaultType,
-    appearance: appearance,
-    actions: actions,
-  );
+  Future<WorkflowDto> workflow() async {
+    _loaded('workflow');
+    return WorkflowDto(
+      statuses: _workflow.statuses,
+      priorities: _workflow.priorities,
+      types: _workflow.types,
+      defaultStatus: _workflow.defaultStatus,
+      defaultPriority: _workflow.defaultPriority,
+      defaultType: _workflow.defaultType,
+      appearance: appearance,
+      actions: actions,
+    );
+  }
 
   /// Simulates an edit of backlog.yaml.
   void configChange() => _changes.add(const BacklogChangeEvent(['backlog.yaml']));
 
   @override
-  Future<List<ItemDto>> items({bool includeDone = false}) async =>
-      items_.values.where((i) => includeDone || !i.isDone).toList();
+  Future<List<ItemDto>> items({bool includeDone = false}) async {
+    _loaded('items');
+    return items_.values.where((i) => includeDone || !i.isDone).toList();
+  }
 
   @override
   Future<ItemDetailDto> item(String reference) async {
@@ -294,6 +307,10 @@ final class FakeBacklogApi implements BacklogApi {
   @override
   Future<ViewResultDto> view(String id, {String? groupBy}) async {
     viewLoads++;
+    return _view(id, groupBy);
+  }
+
+  ViewResultDto _view(String id, String? groupBy) {
     final all = items_.values.toList();
     if (groupBy == 'priority') {
       return ViewResultDto(
@@ -327,7 +344,10 @@ final class FakeBacklogApi implements BacklogApi {
   List<LintIssueDto> lintIssues = const [];
 
   @override
-  Future<List<LintIssueDto>> lint() async => lintIssues;
+  Future<List<LintIssueDto>> lint() async {
+    _loaded('lint');
+    return lintIssues;
+  }
 
   @override
   Stream<BacklogChangeEvent> changes() {

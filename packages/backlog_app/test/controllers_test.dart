@@ -126,6 +126,29 @@ void main() {
       expect(board.result!.groups.first.items.map((i) => i.id), containsAll(['T-3', 'T-4']));
     });
 
+    test('reloads only what the changed paths concern', () async {
+      Future<Map<String, int>> after(List<String>? paths) async {
+        final before = {...api.loads};
+        final views = api.viewLoads;
+        paths == null ? api.dispatchChange(DispatchDto.off) : api.touched(paths);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        return {
+          for (final name in ['workflow', 'items', 'lint']) name: (api.loads[name] ?? 0) - (before[name] ?? 0),
+          'view': api.viewLoads - views,
+        };
+      }
+
+      expect(await after(['items/T-1-a.md']), {'workflow': 0, 'items': 1, 'lint': 1, 'view': 1});
+      expect(await after(['views/board.yaml']), {'workflow': 0, 'items': 0, 'lint': 1, 'view': 1});
+      expect(await after(['backlog.yaml']), {'workflow': 1, 'items': 1, 'lint': 1, 'view': 1});
+      expect(await after(['docs/notes.md']), {'workflow': 0, 'items': 0, 'lint': 0, 'view': 0});
+      expect(await after(['other.txt']), {'workflow': 1, 'items': 1, 'lint': 1, 'view': 1});
+      // The plan: items carry the AI review state.
+      expect(await after(null), {'workflow': 0, 'items': 1, 'lint': 0, 'view': 1});
+      expect(board.lint, isEmpty);
+      expect(board.workflow, isNotNull);
+    });
+
     test('an unreachable server is an error, not a crash', () async {
       final broken = BoardController(_UnreachableApi(api));
       addTearDown(broken.dispose);
@@ -163,6 +186,35 @@ void main() {
       expect(controller.error, isA<BacklogApiException>());
       expect(controller.result!.id, 'board', reason: 'the last good content stays');
       expect(controller.loading, isFalse);
+    });
+
+    test('a refresh that discards an older one loads the older one\'s parts too', () async {
+      final gated = _GatedApi(api);
+      final controller = BoardController(gated);
+      addTearDown(controller.dispose);
+      final first = controller.start();
+      gated.open();
+      await Future<void>.delayed(Duration.zero);
+      gated.open();
+      await first;
+
+      gated.requests.clear();
+      final older = controller.refresh(quiet: true, changed: {BacklogPart.views});
+      await Future<void>.delayed(Duration.zero);
+      expect(gated.requests, unorderedEquals(['view board', 'views', 'lint']));
+      gated.requests.clear();
+      final newer = controller.refresh(quiet: true, changed: {BacklogPart.plan});
+      await Future<void>.delayed(Duration.zero);
+      expect(gated.requests, unorderedEquals(['view board', 'views', 'lint', 'items']));
+      gated.open();
+      await Future.wait([older, newer]);
+
+      gated.requests.clear();
+      final next = controller.refresh(quiet: true, changed: {BacklogPart.plan});
+      await Future<void>.delayed(Duration.zero);
+      expect(gated.requests, unorderedEquals(['view board', 'items']), reason: 'loaded parts are fresh');
+      gated.open();
+      await next;
     });
   });
 

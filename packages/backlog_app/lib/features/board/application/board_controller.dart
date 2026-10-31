@@ -25,6 +25,9 @@ class BoardController extends ChangeNotifier {
   DebouncedChanges? _changes;
   int _generation = 0;
 
+  /// Parts of the backlog changed since the last refresh that loaded them.
+  final _stale = <BacklogPart>{};
+
   WorkflowDto? workflow;
   List<ViewSummaryDto> views = const [];
   String? selectedViewId;
@@ -213,7 +216,12 @@ class BoardController extends ChangeNotifier {
 
   Future<void> start({String? viewId}) async {
     // Plan changes too: they start and end AI reviews, which cards show.
-    _changes ??= DebouncedChanges(_api, () => unawaited(refresh(quiet: true)), delay: _refreshDelay, dispatch: true);
+    _changes ??= DebouncedChanges(
+      _api,
+      (changed) => unawaited(refresh(quiet: true, changed: changed)),
+      delay: _refreshDelay,
+      watched: BacklogPart.values.toSet(),
+    );
     selectedViewId = viewId;
     await refresh();
   }
@@ -253,13 +261,19 @@ class BoardController extends ChangeNotifier {
     setFilter(next.toggle(FilterFacet.person, agent));
   }
 
-  /// Reloads everything; [quiet] keeps the current content visible meanwhile.
-  Future<void> refresh({bool quiet = false}) async {
+  /// Reloads everything, or with [changed] only what depends on those parts
+  /// of the backlog (and the current view); [quiet] keeps the current
+  /// content visible meanwhile.
+  Future<void> refresh({bool quiet = false, Set<BacklogPart>? changed}) async {
     final generation = ++_generation;
     if (!quiet) {
       loading = true;
       notifyListeners();
     }
+    // A newer refresh discards an older one, so it loads its parts too.
+    _stale.addAll(changed ?? BacklogPart.values);
+    final wanted = workflow == null || error != null ? BacklogPart.values.toSet() : {..._stale};
+    bool any(Set<BacklogPart> parts) => wanted.any(parts.contains);
     try {
       // The requests are independent, so they run at the same time. The
       // current view is asked for right away too; its answer is used only when
@@ -268,15 +282,20 @@ class BoardController extends ChangeNotifier {
       final guessed = selectedViewId;
       final early = guessed == null ? null : _api.view(guessed, groupBy: groupBy);
       unawaited(early?.then<void>((_) {}, onError: (Object _) {})); // an unused answer may fail silently
-      final workflowRequest = _api.workflow();
-      final viewsRequest = _api.views();
-      final lintRequest = _api.lint();
-      final itemsRequest = _api.items(includeDone: true);
-      await Future.wait([workflowRequest, viewsRequest, lintRequest, itemsRequest]);
-      final loadedWorkflow = await workflowRequest;
-      final loadedViews = await viewsRequest;
-      final loadedLint = await lintRequest;
-      final loadedItems = await itemsRequest;
+      final workflowRequest = any(const {BacklogPart.workflow}) ? _api.workflow() : null;
+      final viewsRequest = any(const {BacklogPart.workflow, BacklogPart.items, BacklogPart.views})
+          ? _api.views()
+          : null;
+      final lintRequest = any(const {BacklogPart.workflow, BacklogPart.items, BacklogPart.views}) ? _api.lint() : null;
+      // Items carry the AI review state of the plan.
+      final itemsRequest = any(const {BacklogPart.workflow, BacklogPart.items, BacklogPart.plan})
+          ? _api.items(includeDone: true)
+          : null;
+      await Future.wait<Object>([?workflowRequest, ?viewsRequest, ?lintRequest, ?itemsRequest]);
+      final loadedWorkflow = await workflowRequest ?? workflow;
+      final loadedViews = await viewsRequest ?? views;
+      final loadedLint = await lintRequest ?? lint;
+      final loadedItems = await itemsRequest ?? index.values;
       final id = _pickView(loadedViews);
       final loadedResult = id == null
           ? null
@@ -289,6 +308,7 @@ class BoardController extends ChangeNotifier {
       selectedViewId = id;
       result = loadedResult;
       error = null;
+      _stale.removeAll(wanted);
     } catch (e) {
       if (generation != _generation) return;
       error = e;

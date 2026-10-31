@@ -604,7 +604,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 **Other**
 - Columns button in the header (views with `group_by`): pick and reorder the shown groups, saved as `columns:`; *Default* removes it.
 - Theme switch system → light → dark (for the session; default from `appearance.mode`); colours from `appearance`, reloaded live.
-- Live updates over the WebSocket (debounced refresh), reconnecting automatically.
+- Live updates over the WebSocket (debounced refresh), reconnecting automatically. Each screen reloads only what the changed paths concern: `backlog.yaml` the workflow (and everything derived from it), `items/` and `.locks/` the items, lint, view counts and the current view, `views/` the views, lint and the current view, a `dispatch` event the plan, the items (AI review state) and the current view; `docs/` nothing, any other path everything. The theme reloads only on `backlog.yaml`, the detail on items and `backlog.yaml`, the dashboard per project only the parts concerned (open questions only on item changes).
 - Works without internet access: CanvasKit and the fonts come from the server — Roboto and *BoardSymbols* (`packages/backlog_app/fonts/`, a subset of the Noto symbol fonts made by `tool/symbols_font.sh`: arrows, ticks, geometric shapes, dingbats, math operators, box drawing), the theme's fallback font. Only characters outside both (emoji, CJK and other scripts) make the web engine fetch a Noto font from `fonts.gstatic.com`; offline they show as boxes.
 
 ## 10. Installation and operation
