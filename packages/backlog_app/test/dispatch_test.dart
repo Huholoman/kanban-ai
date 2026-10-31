@@ -160,6 +160,29 @@ void main() {
     expect(find.text('w2 · unavailable'), findsOneWidget);
   });
 
+  testWidgets('a worktree the dispatcher would create shows as new; Start works without a free one', (tester) async {
+    const plan = DispatchDto(
+      configured: true,
+      mode: 'manual',
+      agent: 'claude',
+      maxAgents: 2,
+      capacity: 2,
+      maxWorktrees: 2,
+      spareWorktrees: 2,
+      worktrees: [
+        DispatchWorktreeDto(name: 'app-2', path: '/w/app-2', busy: false, unavailable: 'uncommitted changes'),
+        DispatchWorktreeDto(name: 'app-3', path: '/w/app-3', busy: false, created: true, isNew: true),
+      ],
+      assignments: [DispatchAssignmentDto(item: 'R-2', title: 'Item R-2', worktree: 'app-3', newWorktree: true)],
+    );
+    expect(DispatchDto.fromJson(plan.toJson()).toJson(), plan.toJson());
+    await _pumpDetail(tester, 'R-3', plan);
+    expect(find.text('AGENTS · MANUAL · 0/2 · 1/2 WORKTREES'), findsOneWidget);
+    expect(find.text('app-3 · new'), findsOneWidget);
+    expect(find.text('R-2 → app-3 (new)'), findsOneWidget);
+    expect(_key('start-agent'), findsOneWidget, reason: 'a worktree can be created');
+  });
+
   testWidgets('a running agent shows where and since when, its log and a Stop button', (tester) async {
     final (api, _) = await _pumpDetail(tester, 'R-1', _plan(running: true));
     expect(find.text('w1 · R-1'), findsOneWidget);
