@@ -36,29 +36,54 @@ class ProjectSwitcher extends StatelessWidget {
         ),
       );
     }
-    return MenuAnchor(
-      menuChildren: [
-        for (final (title, projects) in _sections(controller)) ...[
-          if (title != null) SectionLabel(title, key: ValueKey('project-section-$title')),
-          for (final project in projects) _ProjectEntry(controller: controller, project: project),
-        ],
-      ],
-      builder: (context, menu, _) => Tooltip(
-        message: 'Switch project',
-        child: InkWell(
-          key: const ValueKey('project-switcher'),
-          borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
-          onTap: () => menu.isOpen ? menu.close() : menu.open(),
-          child: SizedBox(
-            height: 36,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 8, right: 4),
-              child: Row(
-                children: [
-                  Flexible(child: label),
-                  const SizedBox(width: 4),
-                  Icon(Icons.unfold_more, size: 18, color: tokens.muted),
+    final sections = _sections(controller);
+    // As wide as the navigation, just below the name, and set off from the
+    // panel by a border and a shadow: both have the surface colour.
+    return LayoutBuilder(
+      builder: (context, constraints) => MenuAnchor(
+        alignmentOffset: const Offset(0, 4),
+        style: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(tokens.surface),
+          side: WidgetStatePropertyAll(BorderSide(color: tokens.borderStrong)),
+          elevation: const WidgetStatePropertyAll(8),
+          shadowColor: const WidgetStatePropertyAll(Colors.black54),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(BoardTokens.radius)),
+          ),
+          padding: const WidgetStatePropertyAll(EdgeInsets.only(bottom: 4)),
+        ),
+        menuChildren: [
+          SizedBox(
+            width: constraints.maxWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (sections.first.$1 == null) const SectionLabel('Projects', key: ValueKey('project-section-header')),
+                for (final (title, projects) in sections) ...[
+                  if (title != null) SectionLabel(title, key: ValueKey('project-section-$title')),
+                  for (final project in projects) _ProjectEntry(controller: controller, project: project),
                 ],
+              ],
+            ),
+          ),
+        ],
+        builder: (context, menu, _) => Tooltip(
+          message: 'Switch project',
+          child: InkWell(
+            key: const ValueKey('project-switcher'),
+            borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
+            onTap: () => menu.isOpen ? menu.close() : menu.open(),
+            child: SizedBox(
+              height: 36,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8, right: 4),
+                child: Row(
+                  children: [
+                    Flexible(child: label),
+                    const SizedBox(width: 4),
+                    Icon(Icons.unfold_more, size: 18, color: tokens.muted),
+                  ],
+                ),
               ),
             ),
           ),
