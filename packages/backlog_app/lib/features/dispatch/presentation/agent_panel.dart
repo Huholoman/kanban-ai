@@ -70,9 +70,10 @@ class _AgentPanelState extends State<AgentPanel> {
     final id = widget.item.id;
     final run = dispatch.runFor(id);
     final held = dispatch.plan.heldReason(id);
+    final queued = dispatch.pendingActionsFor(id);
     final log = _log;
     final hasLog = log?.hasLog ?? false;
-    if (run == null && held == null && !hasLog) return const SizedBox.shrink();
+    if (run == null && held == null && !hasLog && queued.isEmpty) return const SizedBox.shrink();
     final showLog = hasLog && (_showLogChoice ?? (run != null || (log?.running ?? false)));
     return Container(
       key: const ValueKey('agent-panel'),
@@ -97,7 +98,7 @@ class _AgentPanelState extends State<AgentPanel> {
               Expanded(
                 child: run != null
                     ? Text(
-                        'Agent ${run.agent} in ${run.worktree} since ${sinceText(run.startedAt)}'
+                        '${_running(run)} since ${sinceText(run.startedAt)}'
                         '${run.branch == null ? '' : ' · ${run.branch}'}',
                         key: const ValueKey('agent-running'),
                         style: small?.copyWith(color: tokens.text),
@@ -114,29 +115,59 @@ class _AgentPanelState extends State<AgentPanel> {
                   label: showLog ? 'Hide log' : 'Log',
                   onPressed: () => setState(() => _showLogChoice = !showLog),
                 ),
-              if (run != null)
+              if (run != null && run.kind != 'builtin')
                 SecondaryButton(
                   key: const ValueKey('stop-agent'),
                   label: 'Stop',
                   icon: Icons.stop,
-                  onPressed: dispatch.pending.contains(id) ? null : () => unawaited(_confirmStop(dispatch.stopAgent)),
+                  onPressed: dispatch.pending.contains(id)
+                      ? null
+                      : () => unawaited(_confirmStop(dispatch.stopAgent, run.action)),
                 ),
             ],
           ),
+          for (final pending in queued)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                children: [
+                  Icon(Icons.schedule, size: 16, color: tokens.muted),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Queued: the action "${pending.action}" (entered ${pending.status} at '
+                      '${sinceText(pending.since)}); it starts once nothing else runs for the item',
+                      key: ValueKey('action-queued-${pending.action}'),
+                      style: small?.copyWith(color: tokens.muted),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (showLog && log != null) ...[const SizedBox(height: 8), AgentLogView(controller: log)],
         ],
       ),
     );
   }
 
-  Future<void> _confirmStop(Future<void> Function(String item) stop) async {
+  /// `Agent claude in wt-2`, `Action "AI review" · claude in wt-2`,
+  /// `Action "Tests" (command) in wt-2`.
+  static String _running(AgentRunDto run) => switch (run) {
+    AgentRunDto(action: null) => 'Agent ${run.agent} in ${run.worktree}',
+    AgentRunDto(kind: 'agent') => 'Action "${run.action}" · ${run.agent} in ${run.worktree}',
+    _ => 'Action "${run.action}" (${run.kind == 'builtin' ? 'built-in' : run.kind}) in ${run.worktree}',
+  };
+
+  Future<void> _confirmStop(Future<void> Function(String item) stop, String? action) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Stop the agent of ${widget.item.id}?'),
-        content: const Text(
-          'Its process is terminated; the item goes back to the queue and is held. '
-          'Uncommitted changes stay in the worktree.',
+        title: Text(action == null ? 'Stop the agent of ${widget.item.id}?' : 'Stop the action "$action"?'),
+        content: Text(
+          action == null
+              ? 'Its process is terminated; the item goes back to the queue and is held. '
+                    'Uncommitted changes stay in the worktree.'
+              : 'Its process is terminated; the item keeps its status. Uncommitted changes stay in the worktree.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),

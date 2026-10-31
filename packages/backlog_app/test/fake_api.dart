@@ -75,6 +75,9 @@ final class FakeBacklogApi implements BacklogApi {
   /// What backlog.yaml would say under `appearance`.
   AppearanceDto appearance = const AppearanceDto();
 
+  /// What backlog.yaml would say under `dispatcher.actions`.
+  List<ActionDto> actions = const [];
+
   @override
   Future<WorkflowDto> workflow() async => WorkflowDto(
     statuses: _workflow.statuses,
@@ -84,6 +87,7 @@ final class FakeBacklogApi implements BacklogApi {
     defaultPriority: _workflow.defaultPriority,
     defaultType: _workflow.defaultType,
     appearance: appearance,
+    actions: actions,
   );
 
   /// Simulates an edit of backlog.yaml.
@@ -112,6 +116,10 @@ final class FakeBacklogApi implements BacklogApi {
       ],
       related: [for (final id in found.related) linkTo(id)],
       conflicts: [for (final id in found.conflictsWith) linkTo(id)],
+      actions: [
+        for (final action in actions)
+          if (action.offeredIn(found.status)) action,
+      ],
       waiting: [
         for (final other in items_.values)
           if (other.conflictsWith.contains(found.id)) link(other),

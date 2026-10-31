@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/app_scope.dart';
+import 'package:backlog_app/features/board/presentation/item_card.dart';
 import 'package:backlog_app/features/dispatch/application/agent_log_controller.dart';
 import 'package:backlog_app/features/dispatch/application/dispatch_controller.dart';
+import 'package:backlog_app/features/dispatch/presentation/action_buttons.dart';
 import 'package:backlog_app/features/dispatch/presentation/dispatch_overview.dart';
 import 'package:backlog_app/features/dispatch/presentation/dispatch_scope.dart';
 import 'package:backlog_app/features/item/presentation/item_page.dart';
 import 'package:backlog_app/shared/tokens.dart';
+import 'package:backlog_app/shared/ui/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -71,12 +74,15 @@ List<ItemDto> _items() => [
 Future<(FakeBacklogApi, DispatchController)> _pumpDetail(
   WidgetTester tester,
   String reference,
-  DispatchDto plan,
-) async {
+  DispatchDto plan, {
+  List<ActionDto> actions = const [],
+}) async {
   tester.view.physicalSize = const Size(700, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  final api = FakeBacklogApi(_items())..plan = plan;
+  final api = FakeBacklogApi(_items())
+    ..plan = plan
+    ..actions = actions;
   final dispatch = DispatchController(api, refreshDelay: Duration.zero);
   addTearDown(dispatch.dispose);
   await dispatch.start();
@@ -106,6 +112,13 @@ Future<(FakeBacklogApi, DispatchController)> _pumpDetail(
   await tester.pumpAndSettle();
   return (api, dispatch);
 }
+
+Future<(FakeBacklogApi, DispatchController)> _pumpDetailWith(
+  WidgetTester tester,
+  String reference,
+  DispatchDto plan, {
+  List<ActionDto> actions = const [],
+}) => _pumpDetail(tester, reference, plan, actions: actions);
 
 Finder _key(String key) => find.byKey(ValueKey(key));
 
@@ -252,6 +265,124 @@ void main() {
     expect(api.stopped, ['R-1']);
     expect(find.text('Held: stopped by a person'), findsOneWidget);
     expect(find.text('R-1 held'), findsOneWidget);
+  });
+
+  group('actions', () {
+    const actions = [
+      ActionDto(name: 'Fix comments', kind: 'prompt', statuses: ['in-progress'], agent: 'claude'),
+      ActionDto(name: 'Tests', kind: 'command', statuses: ['in-progress', 'todo']),
+      ActionDto(name: 'AI review', kind: 'prompt', onEnter: 'review', agent: 'claude', fresh: true),
+    ];
+    final testsRun = DispatchDto(
+      configured: true,
+      mode: 'manual',
+      agent: 'claude',
+      maxAgents: 2,
+      capacity: 2,
+      worktrees: [DispatchWorktreeDto(name: 'w1', path: '/w/w1', busy: true)],
+      runs: [
+        AgentRunDto(
+          item: 'R-1',
+          worktree: 'w1',
+          pid: 9,
+          startedAt: DateTime.utc(2026, 10, 31, 12),
+          log: '/state/logs/R-1.log',
+          agent: 'Tests',
+          action: 'Tests',
+          kind: 'command',
+        ),
+      ],
+      pendingActions: [],
+    );
+
+    testWidgets('the detail has a button per action of its status; a run shows in the Agent box', (tester) async {
+      final (api2, dispatch) = await _pumpDetailWith(tester, 'R-1', _plan(), actions: actions);
+      expect(_key('action-Fix comments'), findsOneWidget);
+      expect(_key('action-Tests'), findsOneWidget);
+      expect(_key('action-AI review'), findsNothing, reason: 'offered in review only');
+
+      api2.afterAction = testsRun;
+      await tester.tap(_key('action-Tests'));
+      await tester.pumpAndSettle();
+      expect(api2.actionsRun, ['R-1 Tests']);
+      expect(find.textContaining('Action "Tests" (command) in w1 since'), findsOneWidget);
+      final button = tester.widget<SecondaryButton>(_key('action-Fix comments'));
+      expect(button.onPressed, isNull, reason: 'something runs for the item');
+      expect(dispatch.configured, isTrue);
+    });
+
+    testWidgets('a queued on_enter action shows in the Agent box', (tester) async {
+      final plan = DispatchDto(
+        configured: true,
+        mode: 'auto',
+        agent: 'claude',
+        maxAgents: 2,
+        capacity: 2,
+        pendingActions: [
+          PendingActionDto(item: 'R-1', action: 'AI review', status: 'review', since: DateTime.utc(2026, 10, 31, 12)),
+        ],
+      );
+      expect(DispatchDto.fromJson(plan.toJson()).toJson(), plan.toJson());
+      await _pumpDetailWith(tester, 'R-1', plan, actions: actions);
+      expect(_key('action-queued-AI review'), findsOneWidget);
+    });
+
+    testWidgets('a card offers the actions of its status in a menu', (tester) async {
+      final api = FakeBacklogApi(_items())
+        ..plan = _plan()
+        ..actions = actions;
+      final dispatch = DispatchController(api, refreshDelay: Duration.zero);
+      addTearDown(dispatch.dispose);
+      await dispatch.start();
+      final workflow = await api.workflow();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: BoardTokens.light.toTheme(Brightness.light),
+          home: Scaffold(
+            body: DispatchScope(
+              controller: dispatch,
+              child: Column(
+                children: [
+                  ItemCard(
+                    item: _items()[1],
+                    workflow: workflow,
+                    menu: CardActionsMenu(item: _items()[1], workflow: workflow),
+                  ),
+                  ItemCard(
+                    item: _items()[3],
+                    workflow: workflow,
+                    menu: CardActionsMenu(item: _items()[3], workflow: workflow),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(_key('card-actions-B-1'), findsNothing, reason: 'backlog offers no actions');
+      await tester.tap(_key('card-actions-R-2'));
+      await tester.pumpAndSettle();
+      expect(find.text('Fix comments'), findsNothing);
+      await tester.tap(find.text('Tests'));
+      await tester.pumpAndSettle();
+      expect(api.actionsRun, ['R-2 Tests']);
+    });
+
+    test('runAction reports what started, and failures', () async {
+      final api = FakeBacklogApi(_items())..plan = _plan();
+      final dispatch = DispatchController(api, refreshDelay: Duration.zero);
+      addTearDown(dispatch.dispose);
+      final notices = <String>[];
+      dispatch.notices.listen(notices.add);
+      await dispatch.start();
+      api.afterAction = testsRun;
+      await dispatch.runAction('R-1', 'Tests');
+      expect(dispatch.canRunAction('R-1'), isFalse);
+      api.failAction = const BacklogApiException(409, 'unavailable', 'The action "Tests" already runs for R-1.');
+      await dispatch.runAction('R-1', 'Tests');
+      await Future<void>.delayed(Duration.zero);
+      expect(notices, ['Started "Tests" for R-1 in w1.', 'The action "Tests" already runs for R-1.']);
+    });
   });
 
   testWidgets('after the run the detail keeps the Agent box with the last log and how it ended', (tester) async {

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../../shared/item_style.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
+import '../../dispatch/presentation/action_buttons.dart';
 import '../application/column_arrangement.dart';
 import 'item_card.dart';
 
@@ -152,6 +153,7 @@ class KanbanBoard extends StatelessWidget {
         onTap: () => onOpen(item.id),
         onLongPress: onLongPress,
         footer: toggle,
+        menu: CardActionsMenu(item: item, workflow: workflow),
       );
       content = onMove == null || !draggable
           ? card
@@ -589,6 +591,7 @@ class GroupedItemList extends StatelessWidget {
                             showStatus: result.groupBy != 'status',
                             selected: item.id == selectedId,
                             onTap: () => onOpen(item.id),
+                            menu: CardActionsMenu(item: item, workflow: workflow),
                           ),
                           if (showDependencies && item.dependsOn.isNotEmpty)
                             Padding(

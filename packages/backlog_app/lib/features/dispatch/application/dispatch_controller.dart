@@ -69,6 +69,24 @@ class DispatchController extends ChangeNotifier {
     _notices.add(run == null ? '$verb an agent for $item.' : '$verb ${run.agent} for $item in ${run.worktree}.');
   });
 
+  /// Whether an action can start on [item] now: a dispatcher runs and
+  /// nothing runs for the item yet.
+  bool canRunAction(String item) => configured && runFor(item) == null && !pending.contains(item);
+
+  /// The `on_enter` actions waiting to run for [item].
+  List<PendingActionDto> pendingActionsFor(String item) => plan.pendingFor(item);
+
+  /// Starts the configured action [name] on [item].
+  Future<void> runAction(String item, String name) => _act(item, () async {
+    plan = await _api.runAction(item, name);
+    final run = plan.runFor(item);
+    _notices.add(switch (run) {
+      null => 'Started "$name" for $item.',
+      AgentRunDto(kind: 'agent') => 'Started "$name" for $item: ${run.agent} in ${run.worktree}.',
+      _ => 'Started "$name" for $item in ${run.worktree}.',
+    });
+  });
+
   /// Stops the agent of [item]; the item goes back to the queue, held.
   Future<void> stopAgent(String item) => _act(item, () async {
     plan = await _api.stopAgent(item);
