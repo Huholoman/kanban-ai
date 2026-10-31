@@ -53,4 +53,6 @@ export 'src/workflow/domain/appearance.dart';
 export 'src/workflow/domain/dispatcher_config.dart';
 export 'src/workflow/domain/merge_config.dart';
 export 'src/workflow/domain/workflow.dart';
+export 'src/workflow/domain/workflow_source.dart';
+export 'src/workflow/infrastructure/file_workflow_source.dart';
 export 'src/workflow/infrastructure/yaml_workflow.dart' show parseWorkflowYaml;
