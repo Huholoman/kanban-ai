@@ -245,6 +245,7 @@ branch: feat/backups
 pr: https://github.com/org/repo/pull/42   # shown as a clickable "PR #42"
 labels: [infra, db]
 docs: [backups]
+touches: [deploy/backup/, "scripts/*.sh"]   # files in the code repository the work changes
 created: 2026-10-29
 updated: 2026-10-29
 estimate: 3d             # unknown keys are kept and can be filtered on
@@ -265,6 +266,8 @@ estimate: 3d             # unknown keys are kept and can be filtered on
 - *Bug*, *decision* and *idea* mean what they say.
 
 The hierarchy comes from `parent`. The type is just a label, so you can define your own.
+
+**Touches** are paths or globs in the code repository (relative to its root) that the work will change: `lib/payments/` (a folder and everything in it), `lib/**/*.dart`, `pubspec.yaml`, `{lib,test}/payments/`. Two items overlap when some file could match both; matching errs on the side of an overlap (a pattern also covers what is below it, as in `.gitignore`, unless its last part looks like a file name such as `*.dart`). `lint` warns about malformed patterns and ones that cover the whole repository.
 
 Files may be edited by hand. When the tool writes a file, it keeps comments, key order and unknown keys and changes only what changed, so git diffs stay small. Ids can be shortened: `7f3a` or `MA-7f` is enough when unambiguous.
 
@@ -318,10 +321,10 @@ Views can filter and group by every item field, by custom keys and by the comput
 | Command | What it does |
 |---|---|
 | `init [dir] --prefix MA` | create a backlog |
-| `new <title> -t -s -p -m --parent -d -l --body --body-file` | create an item |
+| `new <title> -t -s -p -m --parent -d -l --touches --body --body-file` | create an item |
 | `list [-w field=a,b] [-s] [-m] [-l] [-t] [--all]` | list items (without finished ones) |
 | `show <id>`, `path <id>` | details, path of the file |
-| `set <id> status=review labels+=x depends_on-=MA-1 milestone=` | edit fields (`=` sets, `+=`/`-=` for lists, empty clears) |
+| `set <id> status=review labels+=x touches+=lib/a/ depends_on-=MA-1 milestone=` | edit fields (`=` sets, `+=`/`-=` for lists, empty clears) |
 | `ready`, `blocked` | what can be done / what is waiting |
 | `next [-w …] --as <agent>` | claim the most urgent ready item |
 | `claim / heartbeat / release / done <id> --as <agent>` | work with claims (`--force` overrides the checks) |

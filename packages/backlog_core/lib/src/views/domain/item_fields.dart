@@ -35,6 +35,7 @@ abstract final class ItemFields {
       'pr' => [?item.pr],
       'labels' => item.labels,
       'docs' => item.docs,
+      'touches' => item.touches,
       'created' => [?item.created],
       'updated' => [?item.updated],
       'ready' => ['${planned.isReady}'],

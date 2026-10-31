@@ -42,6 +42,11 @@ final class NewCommand extends BacklogCommand {
       ..addMultiOption('related')
       ..addMultiOption('label', abbr: 'l')
       ..addMultiOption('doc')
+      ..addMultiOption(
+        'touches',
+        help: 'Paths or globs in the code repository the work will change (repeat or separate by commas).',
+        splitCommas: false,
+      )
       ..addOption('assignee')
       ..addOption('branch')
       ..addOption('pr', help: 'Link to the pull request.')
@@ -80,6 +85,7 @@ final class NewCommand extends BacklogCommand {
         related: args.multiOption('related'),
         labels: args.multiOption('label'),
         docs: args.multiOption('doc'),
+        touches: args.multiOption('touches').expand(FieldChange.splitList).toList(),
         assignee: args.option('assignee'),
         branch: args.option('branch'),
         pr: args.option('pr'),
@@ -181,7 +187,7 @@ final class SetCommand extends BacklogCommand {
 
   @override
   String get description =>
-      'Change fields: status=review  labels+=infra  depends_on-=T-7f3a  milestone=  (empty clears).';
+      'Change fields: status=review  labels+=infra  depends_on-=T-7f3a  touches+=lib/a/  milestone=  (empty clears).';
 
   @override
   String get invocation => 'backlog set <id> <field=value>...';

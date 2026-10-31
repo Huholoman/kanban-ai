@@ -113,6 +113,14 @@ void main() {
     expect(taskView.out, contains('## Plan'));
   });
 
+  test('touches: new, set, show and JSON', () async {
+    final id = await create('Payments', ['--touches', 'lib/payments/', '--touches', 'lib/*.{dart,yaml},docs/']);
+    final json = (await backlog(['--json', 'show', id])).json! as Map;
+    expect(json['touches'], ['lib/payments/', 'lib/*.{dart,yaml}', 'docs/']);
+    expect((await backlog(['set', id, 'touches-=docs/'])).exitCode, 0);
+    expect((await backlog(['show', id])).out, contains('touches: lib/payments/, lib/*.{dart,yaml}\n'));
+  });
+
   test('list filters: default hides done, --where, --all', () async {
     final a = await create('A', ['-s', 'todo', '-l', 'ui']);
     final b = await create('B', ['-s', 'done']);

@@ -4,6 +4,7 @@ import '../../claims/domain/claim.dart';
 import '../../items/domain/item.dart';
 import '../../items/domain/item_id.dart';
 import '../../items/domain/item_repository.dart';
+import '../../items/domain/path_glob.dart';
 import '../../planning/domain/backlog_snapshot.dart';
 import '../../shared/clock.dart';
 import '../../views/domain/view.dart';
@@ -129,6 +130,12 @@ final class Linter {
     }
     if (item.milestone != null && !_workflow.acceptsMilestone(item.milestone!)) {
       report(Severity.warning, 'unknown-milestone', 'Milestone "${item.milestone}" is not listed in backlog.yaml.');
+    }
+
+    for (final pattern in item.touches) {
+      if (PathGlob.problem(pattern) case final problem?) {
+        report(Severity.warning, 'invalid-touches', '"touches" entry "$pattern" $problem.');
+      }
     }
 
     final references = {

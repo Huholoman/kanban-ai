@@ -145,6 +145,7 @@ appearance:
     expect(FieldChange.parse('milestone=').clears, isTrue);
     expect(FieldChange.parse('title=Fix: a = b').value, 'Fix: a = b');
     expect(() => FieldChange.parse('nonsense'), throwsA(isA<InvalidInputException>()));
+    expect(FieldChange.parse('touches+=lib/*.{dart,yaml}, docs/').values, ['lib/*.{dart,yaml}', 'docs/']);
   });
 
   group('BacklogSnapshot', () {

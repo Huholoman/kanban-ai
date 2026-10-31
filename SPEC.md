@@ -103,6 +103,7 @@ branch: feat/backups
 pr: https://github.com/org/repo/pull/42
 labels: [infra, db]
 docs: [backups]          # names of files in docs/
+touches: [deploy/backup/, "scripts/*.sh"]   # paths/globs in the code repository the work changes (§3.2)
 created: 2026-10-29
 updated: 2026-10-29
 estimate: 3d             # any unknown key is kept and can be filtered on
@@ -137,6 +138,17 @@ Rules:
 
 Default order ("most urgent first"): priority, then `created`, then id.
 
+### 3.2 Touches — which files the work changes
+
+`touches` lists paths or globs relative to the root of the code repository (not the backlog) that the work is expected to change. It answers one question: can two items hit the same file? Matching therefore errs on the side of an overlap:
+
+- A pattern also covers everything below what it matches, as in `.gitignore`: `lib/foo`, `lib/foo/` and `lib/foo/**` are the same. Only a last segment that looks like a file name (a dot after its first character: `pubspec.yaml`, `*.dart`) without a trailing `/` stands for files alone.
+- `*` and `?` match within one segment, `**` any number of segments (also none), `{a,b}` lists alternatives (commas inside braces do not split list values in `set`/`--touches`), `[...]` counts as any one character, `\` escapes.
+- A leading `/` or `./`, empty and `.` segments are ignored; matching is case-sensitive.
+- Two items overlap when some path is covered by a pattern of each. An item without `touches` overlaps nothing.
+
+`lint` warns (`invalid-touches`) about an unclosed `[` or `{`, a stray `}`, a trailing `\`, `..` segments and patterns covering the whole repository (`**`, `*`, `.`).
+
 ## 4. Claims — parallel work without collisions
 
 A claim is an agent's exclusive, time-limited lock on an item, stored as `.locks/<id>.lock` (JSON: item, agent, claimed_at, heartbeat_at, expires_at).
@@ -158,11 +170,11 @@ Global options: `-C/--dir <folder>`, `--json` (machine-readable output; JSON fie
 | Command | What it does |
 |---|---|
 | `init [folder] [--prefix X]` | create `backlog.yaml`, `items/`, `views/` (default views), `docs/`, `.gitignore` |
-| `new <title> [-t type] [-s status] [-p priority] [-m milestone] [--parent id] [-d id,…] [--related id,…] [-l label,…] [--doc name] [--assignee a] [--branch b] [--pr url] [--body md \| --body-file f]` | create an item, prints it |
+| `new <title> [-t type] [-s status] [-p priority] [-m milestone] [--parent id] [-d id,…] [--related id,…] [-l label,…] [--doc name] [--touches glob,…] [--assignee a] [--branch b] [--pr url] [--body md \| --body-file f]` | create an item, prints it |
 | `list [-a] [-s status] [-m milestone] [-l label] [-t type] [-w cond]…` | open items (all with `-a`), most urgent first |
 | `show <id>` | item with relations (parent, children, dependencies, dependents, related), claim and body |
 | `path <id>` | file path of the item |
-| `set <id> <change>…` | change fields: `status=review`, `labels+=infra`, `depends_on-=X-7f3a`, `milestone=` (empty clears); unknown keys become custom fields |
+| `set <id> <change>…` | change fields: `status=review`, `labels+=infra`, `depends_on-=X-7f3a`, `touches+=lib/a/`, `milestone=` (empty clears); unknown keys become custom fields |
 | `ready [-w cond]` | items that can be started now |
 | `blocked` | unfinished items waiting for others |
 | `next [--as a] [-w cond]` | claim the most urgent ready item; exit 2 when there is none |
@@ -203,7 +215,7 @@ A mapping is an AND of its entries; `and: [...]`, `or: [...]`, `not: <expr>` com
 
 ### 6.2 Fields
 
-All front-matter keys (`id`, `title`, `type`, `status`, `priority`, `milestone`, `parent`, `depends_on`, `related`, `assignee`, `branch`, `pr`, `labels`, `docs`, `created`, `updated`), the computed `ready`, `blocked`, `claimed`, `claimed_by`, `category`, `has_children`, `ancestors` (parent chain, cycle-safe), `epic` (epics among the item and its ancestors — `epic: X` selects everything under epic X), and any custom key.
+All front-matter keys (`id`, `title`, `type`, `status`, `priority`, `milestone`, `parent`, `depends_on`, `related`, `assignee`, `branch`, `pr`, `labels`, `docs`, `touches`, `created`, `updated`), the computed `ready`, `blocked`, `claimed`, `claimed_by`, `category`, `has_children`, `ancestors` (parent chain, cycle-safe), `epic` (epics among the item and its ancestors — `epic: X` selects everything under epic X), and any custom key.
 
 ### 6.3 Grouping
 
@@ -215,7 +227,7 @@ Default views from `init`: **Board** (kanban by status, epics hidden), **Ready t
 
 Errors and warnings with a code, item and location:
 
-`unreadable` (broken file / front matter), `duplicate-id`, `file-name`, `unknown-status`, `unknown-priority`, `unknown-type`, `unknown-milestone`, `dangling-reference` (parent/depends_on/related to a missing item), `self-reference`, `dependency-cycle`, `parent-cycle`, `invalid-view`, `expired-claim`, `stale-claim`, `orphan-claim`.
+`unreadable` (broken file / front matter), `duplicate-id`, `file-name`, `unknown-status`, `unknown-priority`, `unknown-type`, `unknown-milestone`, `dangling-reference` (parent/depends_on/related to a missing item), `self-reference`, `dependency-cycle`, `parent-cycle`, `invalid-touches` (warning, §3.2), `invalid-view`, `expired-claim`, `stale-claim`, `orphan-claim`.
 
 ## 8. Server — `backlog-server`
 

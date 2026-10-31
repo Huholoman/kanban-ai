@@ -289,6 +289,14 @@ void main() {
       );
     });
 
+    test('warns about malformed or overly broad touches', () async {
+      final (backlog, _) = await tempBacklog();
+      await backlog.items.create(const NewItem(title: 'A', touches: ['lib/[ab', '**', 'lib/a/']));
+      final issues = (await backlog.linter.run()).where((i) => i.code == 'invalid-touches').toList();
+      expect(issues.map((i) => i.message), [contains('lib/[ab'), contains('whole repository')]);
+      expect(issues.every((i) => i.severity == Severity.warning), isTrue);
+    });
+
     test('reports leftover claims', () async {
       final (backlog, clock) = await tempBacklog();
       await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
@@ -397,6 +405,17 @@ void main() {
       expect(() => backlog.views.setSection('../backlog', 'X'), throwsA(isA<NotFoundException>()));
       expect(() => backlog.views.setSection('nope', 'X'), throwsA(isA<NotFoundException>()));
     });
+  });
+
+  test('touches is a list field: created, added to, removed from', () async {
+    final (backlog, _) = await tempBacklog();
+    final created = await backlog.items.create(const NewItem(title: 'Payments', touches: ['lib/payments/']));
+    expect(created.touches, ['lib/payments/']);
+    await backlog.items.update('0001', [FieldChange.parse('touches+=lib/*.{dart,yaml},docs/')]);
+    expect((await backlog.items.get('0001')).touches, ['lib/payments/', 'lib/*.{dart,yaml}', 'docs/']);
+    final removed = await backlog.items.update('0001', [FieldChange.parse('touches-=lib/payments/')]);
+    expect(removed.touches, ['lib/*.{dart,yaml}', 'docs/']);
+    expect(removed.extra, isEmpty);
   });
 
   test('pr is a regular field: set, saved and cleared', () async {

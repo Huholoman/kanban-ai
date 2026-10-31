@@ -22,6 +22,7 @@ abstract final class JsonOutput {
       'pr': item.pr,
       'labels': item.labels,
       'docs': item.docs,
+      'touches': item.touches,
       'created': item.created,
       'updated': item.updated,
       'extra': item.extra,

@@ -93,6 +93,26 @@ estimate: 3d          # custom key
     expect(decoded.body, '## Kontext\n\nText.\n');
   });
 
+  test('touches round-trip as globs, through new files and updates', () {
+    final globs = ['lib/payments/', '**/*.dart', 'lib/*.{dart,yaml}', '*.md'];
+    final fresh = Item(
+      id: ItemId('T-0002'),
+      title: 'Payments',
+      type: 'task',
+      status: 'todo',
+      priority: 'p1',
+      touches: globs,
+    );
+    expect(codec.decode(codec.encode(fresh)).touches, globs);
+
+    final item = codec.decode(handWritten);
+    final updated = codec.update(handWritten, item.copyWith(touches: globs));
+    expect(updated, contains('# Written by hand, comments must survive.'));
+    expect(codec.decode(updated).touches, globs);
+    expect(codec.decode(updated).extra, {'estimate': '3d'});
+    expect(codec.update(updated, item), handWritten);
+  });
+
   test('reports files it cannot read', () {
     expect(() => codec.decode('# just markdown'), throwsFormatException);
     expect(() => codec.decode('---\ntitle: no id\n---\n'), throwsFormatException);

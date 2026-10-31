@@ -23,6 +23,7 @@ final class Item {
     this.pr,
     List<String> labels = const [],
     List<String> docs = const [],
+    List<String> touches = const [],
     this.created,
     this.updated,
     Map<String, Object?> extra = const {},
@@ -31,6 +32,7 @@ final class Item {
        related = List.unmodifiable(related),
        labels = List.unmodifiable(labels),
        docs = List.unmodifiable(docs),
+       touches = List.unmodifiable(touches),
        extra = Map.unmodifiable(extra) {
     if (title.trim().isEmpty) {
       throw InvalidInputException('Item $id has an empty title.');
@@ -53,6 +55,7 @@ final class Item {
     'pr',
     'labels',
     'docs',
+    'touches',
     'created',
     'updated',
   ];
@@ -81,6 +84,10 @@ final class Item {
 
   /// Names of documents in the backlog's `docs/` folder.
   final List<String> docs;
+
+  /// Paths and globs in the code repository the work is expected to change
+  /// (see `PathGlob`); open items overlapping active ones wait for them.
+  final List<String> touches;
   final String? created;
   final String? updated;
 
@@ -108,6 +115,7 @@ final class Item {
     String? Function()? pr,
     List<String>? labels,
     List<String>? docs,
+    List<String>? touches,
     String? Function()? created,
     String? Function()? updated,
     Map<String, Object?>? extra,
@@ -127,6 +135,7 @@ final class Item {
     pr: pr == null ? this.pr : pr(),
     labels: labels ?? this.labels,
     docs: docs ?? this.docs,
+    touches: touches ?? this.touches,
     created: created == null ? this.created : created(),
     updated: updated == null ? this.updated : updated(),
     extra: extra ?? this.extra,

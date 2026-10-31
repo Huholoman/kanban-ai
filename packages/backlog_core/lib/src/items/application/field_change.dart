@@ -27,7 +27,27 @@ final class FieldChange {
   final String value;
 
   /// The value split as a comma-separated list.
-  List<String> get values => value.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toList();
+  List<String> get values => splitList(value);
+
+  /// Splits [text] at commas, except inside `{…}` (glob alternatives such as
+  /// `lib/*.{dart,yaml}`), trimming and dropping empty entries.
+  static List<String> splitList(String text) {
+    final parts = <String>[];
+    var depth = 0, start = 0;
+    for (var i = 0; i < text.length; i++) {
+      switch (text[i]) {
+        case '{':
+          depth++;
+        case '}' when depth > 0:
+          depth--;
+        case ',' when depth == 0:
+          parts.add(text.substring(start, i));
+          start = i + 1;
+      }
+    }
+    parts.add(text.substring(start));
+    return parts.map((v) => v.trim()).where((v) => v.isNotEmpty).toList();
+  }
 
   bool get clears => op == ChangeOp.set && value.isEmpty;
 

@@ -20,6 +20,7 @@ final class NewItem {
     this.related = const [],
     this.labels = const [],
     this.docs = const [],
+    this.touches = const [],
     this.assignee,
     this.branch,
     this.pr,
@@ -36,6 +37,9 @@ final class NewItem {
   final List<String> related;
   final List<String> labels;
   final List<String> docs;
+
+  /// Paths or globs in the code repository the work will change.
+  final List<String> touches;
   final String? assignee;
   final String? branch;
   final String? pr;
@@ -82,6 +86,7 @@ final class ItemService {
       related: _distinct(draft.related.map((r) => ItemReference.resolve(r, known))),
       labels: _distinct(draft.labels),
       docs: _distinct(draft.docs),
+      touches: _distinct(draft.touches),
       assignee: draft.assignee,
       branch: draft.branch,
       pr: draft.pr,
@@ -142,6 +147,7 @@ final class ItemService {
       'related' => item.copyWith(related: _applyList(item.related, change, resolve)),
       'labels' => item.copyWith(labels: _applyList(item.labels, change, (v) => v)),
       'docs' => item.copyWith(docs: _applyList(item.docs, change, (v) => v)),
+      'touches' => item.copyWith(touches: _applyList(item.touches, change, (v) => v)),
       'assignee' => item.copyWith(assignee: () => optional((v) => v)),
       'branch' => item.copyWith(branch: () => optional((v) => v)),
       'pr' => item.copyWith(pr: () => optional((v) => v)),

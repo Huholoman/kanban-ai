@@ -74,6 +74,7 @@ final class MarkdownItemCodec {
         pr: optional('pr'),
         labels: _strings(yaml['labels'], 'labels'),
         docs: _strings(yaml['docs'], 'docs'),
+        touches: _strings(yaml['touches'], 'touches'),
         created: optional('created'),
         updated: optional('updated'),
         extra: {
@@ -143,6 +144,7 @@ final class MarkdownItemCodec {
     'pr': item.pr,
     'labels': item.labels,
     'docs': item.docs,
+    'touches': item.touches,
     'created': item.created,
     'updated': item.updated,
     ...item.extra,
