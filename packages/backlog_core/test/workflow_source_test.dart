@@ -106,7 +106,9 @@ claims:
     await Backlog.init(dir.path);
     final backlog = await Backlog.open(dir.path);
     expect(await backlog.isStale, isFalse);
-    await backlog.configuration.edit(const [WorkflowEdit.set(['id', 'prefix'], 'KA')]);
+    await backlog.configuration.edit(const [
+      WorkflowEdit.set(['id', 'prefix'], 'KA'),
+    ]);
     expect(await backlog.isStale, isTrue);
     expect(backlog.workflow.idPrefix, 'T');
     expect((await Backlog.open(dir.path)).workflow.idPrefix, 'KA');
