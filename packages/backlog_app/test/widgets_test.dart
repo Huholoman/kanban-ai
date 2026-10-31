@@ -84,6 +84,22 @@ void main() {
     expect(find.text('Fresh idea'), findsOneWidget); // detail opened
   });
 
+  testWidgets('on a phone New item is a full page', (tester) async {
+    final api = await pumpApp(tester, width: 400);
+    await tester.tap(find.text('New item'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('new-item-page')), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(tester.getSize(find.byKey(const ValueKey('new-item-page'))).width, 400);
+    await tester.enterText(find.byKey(const ValueKey('new-title')), 'From the phone');
+    await tester.enterText(find.byKey(const ValueKey('new-body')), 'Some words');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(api.createdItems.single.title, 'From the phone');
+    expect(api.createdItems.single.body, 'Some words');
+    expect(find.byKey(const ValueKey('new-item-page')), findsNothing);
+  });
+
   testWidgets('the parent of a new item is searched by id or title', (tester) async {
     final api = await pumpApp(
       tester,

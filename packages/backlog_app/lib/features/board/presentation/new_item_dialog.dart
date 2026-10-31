@@ -9,23 +9,41 @@ import '../application/new_item_defaults.dart';
 /// Asks for the fields of a new item; returns null when cancelled. The
 /// parent is searched among [candidates] by id or title; with [parent] the
 /// item starts under it, with the child type of its type
-/// ([NewItemDefaults.childType]).
+/// ([NewItemDefaults.childType]). Narrower than [newItemPageBelow] (phones)
+/// it is a full page, so the keyboard leaves room for the field typed in.
 Future<NewItemRequest?> showNewItemDialog(
   BuildContext context,
   WorkflowDto workflow, {
   List<ItemDto> candidates = const [],
   ItemDto? parent,
-}) => showDialog<NewItemRequest>(
-  context: context,
-  builder: (_) => _NewItemDialog(workflow, candidates: candidates, parent: parent),
-);
+}) {
+  if (MediaQuery.sizeOf(context).width < newItemPageBelow) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<NewItemRequest>(
+        fullscreenDialog: true,
+        builder: (_) => _NewItemDialog(workflow, candidates: candidates, parent: parent, page: true),
+      ),
+    );
+  }
+  return showDialog<NewItemRequest>(
+    context: context,
+    builder: (_) => _NewItemDialog(workflow, candidates: candidates, parent: parent),
+  );
+}
+
+/// Below this width *New item* is a full page; the phone layout of the board
+/// starts at the same width.
+const newItemPageBelow = 600.0;
 
 class _NewItemDialog extends StatefulWidget {
-  const _NewItemDialog(this.workflow, {required this.candidates, this.parent});
+  const _NewItemDialog(this.workflow, {required this.candidates, this.parent, this.page = false});
 
   final WorkflowDto workflow;
   final List<ItemDto> candidates;
   final ItemDto? parent;
+
+  /// A full page instead of a dialog.
+  final bool page;
 
   @override
   State<_NewItemDialog> createState() => _NewItemDialogState();
@@ -86,57 +104,78 @@ class _NewItemDialogState extends State<_NewItemDialog> {
       ),
     );
 
+    final page = widget.page;
+    final fields = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          key: const ValueKey('new-title'),
+          controller: _title,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Title'),
+          onSubmitted: (_) => _submit(),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            picker('Type', _type, workflow.types, (v) {
+              _type = v!;
+              _typeChosen = true;
+            }),
+            picker('Status', _status, [for (final s in workflow.statuses) s.id], (v) => _status = v!),
+            picker('Priority', _priority, workflow.priorities, (v) => _priority = v!),
+            if (workflow.milestones.isNotEmpty)
+              picker('Milestone', _milestone, [null, for (final m in workflow.milestones) m.id], (v) => _milestone = v),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _parentField(),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _labels,
+          decoration: const InputDecoration(labelText: 'Labels', hintText: 'comma separated'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          key: const ValueKey('new-body'),
+          controller: _body,
+          minLines: page ? 8 : 4,
+          maxLines: page ? null : 12,
+          decoration: const InputDecoration(labelText: 'Description (Markdown)', border: OutlineInputBorder()),
+        ),
+      ],
+    );
+
+    if (page) {
+      // The page shrinks above the keyboard and the focused field scrolls
+      // into view, so what is typed in the description stays visible.
+      return Scaffold(
+        key: const ValueKey('new-item-page'),
+        appBar: AppBar(
+          leading: IconButton(
+            tooltip: 'Cancel',
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: const Text('New item'),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: PrimaryButton(label: 'Create', onPressed: _submit),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: SingleChildScrollView(padding: const EdgeInsets.all(16), child: fields),
+        ),
+      );
+    }
     return AlertDialog(
       title: const Text('New item'),
-      content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                key: const ValueKey('new-title'),
-                controller: _title,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Title'),
-                onSubmitted: (_) => _submit(),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  picker('Type', _type, workflow.types, (v) {
-                    _type = v!;
-                    _typeChosen = true;
-                  }),
-                  picker('Status', _status, [for (final s in workflow.statuses) s.id], (v) => _status = v!),
-                  picker('Priority', _priority, workflow.priorities, (v) => _priority = v!),
-                  if (workflow.milestones.isNotEmpty)
-                    picker('Milestone', _milestone, [
-                      null,
-                      for (final m in workflow.milestones) m.id,
-                    ], (v) => _milestone = v),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _parentField(),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _labels,
-                decoration: const InputDecoration(labelText: 'Labels', hintText: 'comma separated'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _body,
-                minLines: 4,
-                maxLines: 12,
-                decoration: const InputDecoration(labelText: 'Description (Markdown)', border: OutlineInputBorder()),
-              ),
-            ],
-          ),
-        ),
-      ),
+      content: SizedBox(width: 560, child: SingleChildScrollView(child: fields)),
       actions: [
         LinkButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
         PrimaryButton(label: 'Create', onPressed: _submit),
