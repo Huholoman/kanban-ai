@@ -67,7 +67,7 @@ final class MergeAction implements BuiltInAction {
       await _report(context, failure, branch, back);
       return BuiltInActionResult(
         ok: false,
-        summary: '${failure.reason}${back == null ? '' : '; $id went back to $back'}',
+        summary: '${_sentence(failure.reason)}${back == null ? '' : '; $id went back to $back'}',
       );
     }
     await context.backlog.claims.complete(id.value, force: true);
@@ -263,8 +263,9 @@ final class MergeAction implements BuiltInAction {
   // ---------------------------------------------------------------- failure
 
   /// Moves the item back to the status it came from when it entered the
-  /// action's `on_enter` status (a hook), else the closest active status
-  /// before that one; a button leaves it where it is. Returns the new status.
+  /// action's `on_enter` status (a hook) if that is an active one, else to
+  /// the closest active status before the hook's; a button leaves it where
+  /// it is. Returns the new status.
   Future<String?> _sendBack(BuiltInActionContext context) async {
     final hook = context.action.onEnter;
     if (context.trigger != ActionTrigger.onEnter || hook == null) return null;
@@ -273,7 +274,9 @@ final class MergeAction implements BuiltInAction {
     if (item.status != hook) return null;
     final workflow = context.backlog.workflow;
     var target = context.from;
-    if (target == null || workflow.status(target) == null || target == hook) {
+    // The dispatcher may have seen the item last before it got there (e.g.
+    // in todo, when its agent set review just before a person moved it on).
+    if (target == null || target == hook || workflow.categoryOf(target) != StatusCategory.active) {
       final statuses = workflow.statuses.map((s) => s.id).toList();
       final index = statuses.indexOf(hook);
       target = null;
@@ -393,6 +396,8 @@ final class MergeAction implements BuiltInAction {
 
     return p.equals(real(a), real(b));
   }
+
+  static String _sentence(String text) => text.endsWith('.') ? text.substring(0, text.length - 1) : text;
 
   static String _tail(String text, int count, {String join = ' | '}) {
     final lines = LineSplitter.split(text.trim()).where((line) => line.trim().isNotEmpty).toList();

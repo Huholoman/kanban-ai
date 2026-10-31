@@ -210,7 +210,7 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
 
       final result = await merge();
       expect(result.ok, isFalse);
-      expect(result.summary, 'rebasing agent/T-0001 onto main conflicts in README.md.; T-0001 went back to review');
+      expect(result.summary, 'rebasing agent/T-0001 onto main conflicts in README.md; T-0001 went back to review');
       expect((await current()).status, 'review');
       final comment = (await comments()).single;
       expect((comment.author, comment.note), ('kanban-ai', false), reason: 'the agent is to fix it');
@@ -250,6 +250,14 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       expect((await current()).status, 'review');
       expect((await comments()).single.note, isTrue, reason: 'for a person, not the agent');
       expect(await git(path('wt-1'), ['rev-parse', 'HEAD']), tip);
+    });
+
+    test('a hook whose item was last seen in an open status sends it back to the active status before', () async {
+      await item(file: 'README.md', text: 'x\n');
+      await commit(path('repo'), 'README.md', 'y\n', 'Conflicting change');
+      final result = await merge(from: 'todo');
+      expect(result.summary, endsWith('T-0001 went back to review'));
+      expect((await current()).status, 'review');
     });
 
     test('a button (not the hook) leaves a failed item where it is', () async {
@@ -363,7 +371,7 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       expect(refused.ok, isFalse);
       expect(
         refused.summary,
-        'merging the pull request https://git.example/o/r/pulls/12 failed with exit code 1.; T-0001 went back to review',
+        'merging the pull request https://git.example/o/r/pulls/12 failed with exit code 1; T-0001 went back to review',
       );
       final comment = (await comments()).last;
       expect(comment.note, isFalse);
