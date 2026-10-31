@@ -215,7 +215,7 @@ backlog-server --allow 127.0.0.1,10.77.11.22,10.77.0.0/16  # answer only these c
 | `-p`, `--port` | `8640` | |
 | `--token` | `BACKLOG_TOKEN` | when set, `/api/` requires it |
 | `--generate-token` | | require a random token; it is printed at start, inside the URLs |
-| `--web` | `BACKLOG_WEB`, else `packages/backlog_app/build/web` | the built web app (served with ETags and `no-cache`, so browsers pick up a new build at once) |
+| `--web` | `BACKLOG_WEB`, else `packages/backlog_app/build/web` | the built web app (served with ETags and `no-cache`, so browsers pick up a new build at once; Brotli or gzip copies made by the build are sent to browsers that accept them) |
 | `-q` | | do not log requests |
 
 API responses (1 kB and more) are gzip-compressed for clients that accept it.

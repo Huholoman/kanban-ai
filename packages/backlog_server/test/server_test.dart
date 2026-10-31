@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:backlog_api/backlog_api.dart';
@@ -177,6 +178,48 @@ void main() {
       expect(rebuilt.body, contains('new app build'));
       expect(rebuilt.headers['etag'], isNot(tag));
       expect((await http.get(server.uri.replace(path: '/'))).headers['etag'], rebuilt.headers['etag']);
+    });
+
+    test('serves files compressed at build time to clients that accept them', () async {
+      final web = p.join(dir.path, '_web');
+      final script = 'console.log("board");\n' * 100;
+      File(p.join(web, 'main.dart.js')).writeAsStringSync(script);
+      File(p.join(web, 'main.dart.js.br')).writeAsStringSync('brotli bytes');
+      File(p.join(web, 'main.dart.js.gz')).writeAsBytesSync(gzip.encode(utf8.encode(script)));
+      final client = HttpClient()..autoUncompress = false;
+      addTearDown(client.close);
+      Future<(HttpClientResponse, String)> get(String? accept, {String? tag}) async {
+        final request = await client.getUrl(server.uri.replace(path: '/main.dart.js'));
+        request.headers.removeAll('accept-encoding');
+        if (accept != null) request.headers.set('accept-encoding', accept);
+        if (tag != null) request.headers.set('if-none-match', tag);
+        final response = await request.close();
+        return (response, latin1.decode(await response.expand((chunk) => chunk).toList()));
+      }
+
+      final (br, brBody) = await get('gzip, deflate, br');
+      expect(br.headers.value('content-encoding'), 'br');
+      expect(br.headers.contentType?.mimeType, 'text/javascript');
+      expect(br.headers.value('vary'), 'Accept-Encoding');
+      expect(brBody, 'brotli bytes');
+      final (gz, gzBody) = await get('gzip');
+      expect(gz.headers.value('content-encoding'), 'gzip');
+      expect(utf8.decode(gzip.decode(latin1.encode(gzBody))), script);
+      final (plain, plainBody) = await get(null);
+      expect(plain.headers.value('content-encoding'), isNull);
+      expect(plainBody, script);
+
+      final tags = {
+        for (final response in [br, gz, plain]) response.headers.value('etag'),
+      };
+      expect(tags, hasLength(3));
+      expect((await get('br', tag: br.headers.value('etag'))).$1.statusCode, 304);
+      expect((await get(null, tag: br.headers.value('etag'))).$1.statusCode, 200);
+
+      // A compressed leftover of an older build is not used.
+      File(p.join(web, 'main.dart.js.br')).setLastModifiedSync(DateTime(2000));
+      final (stale, _) = await get('br, gzip');
+      expect(stale.headers.value('content-encoding'), 'gzip');
     });
 
     test('pushes changes made by anyone — the API or an agent on disk', () async {

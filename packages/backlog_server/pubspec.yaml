@@ -13,6 +13,7 @@ dependencies:
     path: ../backlog_api
   backlog_core:
     path: ../backlog_core
+  mime: ^2.0.0
   path: ^1.9.0
   shelf: ^1.4.2
   shelf_router: ^1.1.4
