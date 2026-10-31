@@ -26,17 +26,23 @@ class DispatchOverview extends StatelessWidget {
       key: const ValueKey('dispatch-overview'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionLabel('Agents · ${plan.mode} · ${plan.running}/${plan.maxAgents}'),
+        SectionLabel(
+          'Agents · ${plan.mode} · ${plan.running}/${plan.maxAgents}'
+          '${plan.maxWorktrees == null ? '' : ' · ${plan.worktrees.where((w) => !w.isNew).length}/${plan.maxWorktrees} worktrees'}',
+        ),
         for (final worktree in plan.worktrees) _WorktreeRow(worktree: worktree, onOpenItem: onOpenItem),
         for (final assignment in plan.assignments)
           _Row(
             key: ValueKey('proposal-${assignment.item}'),
             icon: Icons.play_circle_outline,
             color: tokens.accent,
-            text: '${assignment.item} → ${assignment.worktree}${assignment.resume == null ? '' : ' ↻'}',
+            text:
+                '${assignment.item} → ${assignment.worktree}'
+                '${assignment.newWorktree ? ' (new)' : ''}${assignment.resume == null ? '' : ' ↻'}',
             tooltip:
                 '${plan.isManual ? 'Proposed' : 'Starting'}: ${assignment.title}'
-                '${assignment.resume == null ? '' : ' (continues its last session)'}',
+                '${assignment.resume == null ? '' : ' (continues its last session)'}'
+                '${assignment.newWorktree ? ' (creates worktree ${assignment.worktree})' : ''}',
             onTap: () => onOpenItem(assignment.item),
             trailing: plan.isManual
                 ? IconActionButton(
@@ -85,6 +91,7 @@ class _WorktreeRow extends StatelessWidget {
       _ when run != null => (Icons.smart_toy, tokens.success, run.item),
       _ when worktree.busy => (Icons.lock_outline, tokens.muted, item ?? 'busy'),
       _ when worktree.unavailable != null => (Icons.block, tokens.warning, 'unavailable'),
+      _ when worktree.isNew => (Icons.add_circle_outline, tokens.faint, 'new'),
       _ => (Icons.check_circle_outline, tokens.faint, 'free'),
     };
     return _Row(
@@ -92,7 +99,13 @@ class _WorktreeRow extends StatelessWidget {
       icon: icon,
       color: color,
       text: '${worktree.name} · $state',
-      tooltip: worktree.unavailable ?? (run == null ? worktree.path : '${run.agent} on ${run.branch ?? run.item}'),
+      tooltip:
+          worktree.unavailable ??
+          (run != null
+              ? '${run.agent} on ${run.branch ?? run.item}'
+              : worktree.isNew
+              ? 'Created at ${worktree.path} when its agent starts'
+              : '${worktree.path}${worktree.created ? ' (created by the dispatcher)' : ''}'),
       onTap: item == null ? null : () => onOpenItem(item),
     );
   }

@@ -161,6 +161,9 @@ dispatcher:
       ),
     );
 
+    final source = (await launcher.agentLogSource(ItemId('T-0001')))!;
+    expect((source.path, source.running, source.output), (record['log'], true, AgentOutput.claudeStreamJson));
+
     final busy = await plan();
     expect(busy.worktrees.first.run!.item, ItemId('T-0001'));
     expect(busy.worktrees.first.isBusy, isTrue);
@@ -181,6 +184,9 @@ dispatcher:
     final last = (await launcher.agentLog(ItemId('T-0001')))!;
     expect(last.running, isFalse);
     expect(last.last, containsPair('exit_code', 0));
+    final ended = (await launcher.agentLogSource(ItemId('T-0001')))!;
+    expect((ended.path, ended.running, ended.last?['exit_code']), (record['log'], false, 0));
+    expect(await launcher.agentLogSource(ItemId('T-0009')), isNull);
     expect((await plan()).worktrees.first.isFree, isTrue, reason: 'committed work leaves the worktree clean');
   });
 

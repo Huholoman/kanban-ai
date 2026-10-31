@@ -7,6 +7,7 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
 import '../backlog_host.dart';
+import '../events/agent_log_socket.dart';
 import 'dto_mapper.dart';
 
 /// REST endpoints of [ApiPaths] for one project. A driving adapter: it parses requests, calls
@@ -16,6 +17,7 @@ final class ApiHandler {
     this._host, {
     this.defaultAgent = 'web',
     String? defaultAuthor,
+    this.agentLogInterval = const Duration(milliseconds: 500),
     Dispatcher? Function()? dispatcher,
     AgentLauncher? Function()? launcher,
   }) : defaultAuthor = defaultAuthor ?? Platform.environment['USER'] ?? defaultAgent,
@@ -35,6 +37,9 @@ final class ApiHandler {
   /// Who comments when a request does not name an author: the server's user
   /// (`$USER`), else [defaultAgent].
   final String defaultAuthor;
+
+  /// How often a followed agent log is checked for new lines.
+  final Duration agentLogInterval;
 
   /// Routes relative to the project's prefix (`/api` or `/api/p/<id>`): the
   /// request's `url` is `items`, `views/board`, … (see `ProjectHub`).
@@ -61,7 +66,8 @@ final class ApiHandler {
           ..get(local(ApiPaths.dispatch), _dispatch)
           ..post(local(ApiPaths.dispatchStart), _startAgent)
           ..post(local(ApiPaths.dispatchStop), _stopAgent)
-          ..get('${local(ApiPaths.dispatch)}/log/<ref>', _agentLog);
+          ..get('${local(ApiPaths.dispatch)}/log/<ref>', _agentLog)
+          ..get('${local(ApiPaths.dispatch)}/log/<ref>/live', _agentLogLive);
     return _guard(router.call);
   }
 
@@ -219,6 +225,16 @@ final class ApiHandler {
         last: log.last == null ? null : AgentRunEndDto.fromJson(log.last!),
       ).toJson(),
     );
+  }
+
+  /// Upgrades to a WebSocket that follows the agent log of [ref].
+  Future<Response> _agentLogLive(Request request, String ref) async {
+    final snapshot = await (await _host.backlog).planning.snapshot();
+    final id = ItemReference.resolve(ref, snapshot.ids);
+    final launcher = _launcher() ?? (throw const NotFoundException('No dispatcher runs for this project.'));
+    final lines = int.tryParse(request.url.queryParameters['lines'] ?? '') ?? 200;
+    final follower = AgentLogFollower(() => launcher.agentLogSource(id), item: id.value, lines: lines.clamp(1, 2000));
+    return agentLogSocketHandler(follower, interval: agentLogInterval)(request);
   }
 
   Future<Response> _detailOf(Backlog backlog, String ref, {int status = 200}) async {

@@ -187,6 +187,34 @@ dispatcher:
       expect(dispatcher.command.arguments, ['run', '{id}', '{prompt}']);
     });
 
+    test('parses worktrees on demand: repo, name pattern, limit, cleanup', () {
+      final dispatcher = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [app-9]
+  repo: ../src/app
+  max_worktrees: 3
+  cleanup_after_days: 7
+''').dispatcher!;
+      final added = dispatcher.newWorktrees!;
+      expect(dispatcher.maxAgents, 3, reason: 'max_agents defaults to max_worktrees');
+      expect(added.maxWorktrees, 3);
+      expect(added.cleanupAfter, const Duration(days: 7));
+      expect(added.resolveRepo('/work/backlog'), '/work/src/app');
+      expect(added.nameFor(2), 'app-2');
+      expect(added.worktree('app-2', '/work/backlog').path, '/work/src/app-2');
+
+      final own = parseWorkflowYaml('''
+dispatcher:
+  repo: /x/mono
+  worktree_name: "agent{n}"
+  max_agents: 2
+''').dispatcher!;
+      expect(own.worktrees, isEmpty);
+      expect(own.newWorktrees!.maxWorktrees, 2);
+      expect(own.newWorktrees!.cleanupAfter, isNull);
+      expect(own.newWorktrees!.nameFor(4), 'agent4');
+    });
+
     test('splits a command string like a shell, without running one', () {
       expect(CommandTemplate.splitWords(r"""a  'b c' "d \"e\" \$f" g\ h ''"""), ['a', 'b c', r'd "e" $f', 'g h', '']);
       expect(() => CommandTemplate.splitWords('a "b'), throwsA(isA<ConfigurationException>()));
@@ -223,7 +251,14 @@ dispatcher:
         'dispatcher: {prompt: "do {prompt}", worktrees: [a]}',
         'dispatcher.prompt: unknown placeholder "{prompt}"',
       );
-      rejects('dispatcher: {command: x}', 'dispatcher.worktrees is required');
+      rejects('dispatcher: {command: x}', 'dispatcher.worktrees (or dispatcher.repo) is required');
+      rejects('dispatcher: {repo: ../r}', 'needs dispatcher.max_worktrees');
+      rejects('dispatcher: {repo: ../r, max_worktrees: 2, worktree_name: "{repo}"}', 'must contain {n}');
+      rejects('dispatcher: {repo: ../r, max_worktrees: 2, worktree_name: "a/{n}"}', 'not a worktree name');
+      rejects('dispatcher: {repo: ../r, max_worktrees: 2, worktree_name: "{x}-{n}"}', 'unknown placeholder "{x}"');
+      rejects('dispatcher: {repo: ../r, max_worktrees: 1, worktrees: [a, b]}', 'less than the 2 listed');
+      rejects('dispatcher: {repo: ../r, max_worktrees: 2, cleanup_after_days: 0}', 'at least 1');
+      rejects('dispatcher: {worktrees: [a], max_worktrees: 2}', 'dispatcher.max_worktrees needs dispatcher.repo');
       rejects('dispatcher: {command: x, worktrees: []}', 'at least one worktree');
       rejects('dispatcher: {command: x, worktrees: [a, a]}', 'Duplicate dispatcher worktree "a"');
       rejects('dispatcher: {command: x, worktrees: ["a b"]}', 'Worktree name "a b"');

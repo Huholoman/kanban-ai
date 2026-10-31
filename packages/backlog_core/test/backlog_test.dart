@@ -354,6 +354,12 @@ void main() {
       expect(issues.single.message, contains('"gone"'));
     });
 
+    test('warns about a dispatcher repo that is not a folder', () async {
+      final (backlog, _) = await tempBacklog(config: 'dispatcher: {command: sh, repo: ../nowhere, max_worktrees: 2}\n');
+      final issues = await backlog.linter.run();
+      expect(issues.map((i) => (i.severity, i.code)), [(Severity.warning, 'dispatcher-repo')]);
+    });
+
     test('warns about a dispatcher agent that is not on the PATH or an unverified preset', () async {
       final (backlog, _) = await tempBacklog(
         config:

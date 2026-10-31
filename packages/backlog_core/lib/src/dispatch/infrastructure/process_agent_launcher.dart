@@ -11,6 +11,7 @@ import '../../planning/domain/backlog_snapshot.dart';
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+import '../domain/agent_log_format.dart';
 import '../domain/agent_session.dart';
 import '../domain/dispatch_plan.dart';
 
@@ -268,6 +269,24 @@ final class ProcessAgentLauncher extends AgentLauncher {
       path: path,
       lines: all.length <= lines ? all : all.sublist(all.length - lines),
       running: record != null,
+      last: last,
+    );
+  }
+
+  @override
+  Future<AgentLogSource?> agentLogSource(ItemId item) async {
+    if (await _record(item) case final record?) {
+      return AgentLogSource(path: record.run.log, running: true, output: record.output);
+    }
+    final text = await _read(_lastFile(item));
+    if (text == null) return null;
+    final last = (jsonDecode(text) as Map).cast<String, Object?>();
+    final path = last['log'];
+    if (path is! String) return null;
+    return AgentLogSource(
+      path: path,
+      running: false,
+      output: AgentOutput.values.firstWhere((o) => o.id == last['output'], orElse: () => AgentOutput.text),
       last: last,
     );
   }

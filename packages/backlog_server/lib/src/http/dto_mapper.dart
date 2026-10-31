@@ -168,6 +168,8 @@ abstract final class DtoMapper {
           busy: worktree.isBusy,
           claims: [for (final claim in worktree.claims) claim.itemId.value],
           unavailable: worktree.unavailable,
+          created: worktree.created,
+          isNew: worktree.isNew,
           run: switch (worktree.run) {
             final run? => AgentRunDto(
               item: run.item.value,
@@ -189,6 +191,7 @@ abstract final class DtoMapper {
           title: assignment.item.item.title,
           worktree: assignment.agent,
           resume: assignment.resume?.id,
+          newWorktree: assignment.createFrom != null,
         ),
     ],
     waiting: [for (final item in plan.waiting) item.id.value],
@@ -207,6 +210,8 @@ abstract final class DtoMapper {
             reason: session.reason,
           ),
     ],
+    maxWorktrees: plan.config.newWorktrees?.maxWorktrees,
+    spareWorktrees: plan.spare.length,
   );
 
   static ItemLinkDto _link(ItemId id, BacklogSnapshot snapshot) {

@@ -185,7 +185,9 @@ final class HostedProject {
   static String describePlan(DispatchPlan? plan) {
     if (plan == null) return 'Dispatcher: off (no dispatcher section in backlog.yaml).';
     final verb = plan.mode == DispatchMode.auto ? 'starts' : 'proposes';
-    final assignments = plan.assignments.map((a) => '${a.id} → ${a.agent}').join(', ');
+    final assignments = plan.assignments
+        .map((a) => '${a.id} → ${a.agent}${a.createFrom == null ? '' : ' (new worktree)'}')
+        .join(', ');
     return 'Dispatcher (${plan.mode.name}): ${plan.running}/${plan.config.maxAgents} running; '
         '${assignments.isEmpty ? 'nothing to start' : '$verb $assignments'}'
         '${plan.waiting.isEmpty ? '' : '; ${plan.waiting.length} ready item(s) waiting'}'

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../model/agent_log_update_dto.dart';
 import '../model/discussion_dto.dart';
 import '../model/dispatch_dto.dart';
 import '../model/item_dto.dart';
@@ -109,19 +110,30 @@ final class HttpBacklogApi implements BacklogApi {
       AgentLogDto.fromJson(asJson(await _get(ApiPaths.agentLog(reference), query: {'lines': '$lines'})));
 
   @override
-  Stream<BacklogChangeEvent> changes() {
-    late final StreamController<BacklogChangeEvent> controller;
+  Stream<BacklogChangeEvent> changes() => _socket(ApiPaths.events, const {}, (json, add) {
+    if (json['type'] case 'changed' || 'dispatch') add(BacklogChangeEvent.fromJson(json));
+  });
+
+  @override
+  Stream<AgentLogUpdateDto> followAgentLog(String reference, {int lines = 200}) =>
+      _socket(ApiPaths.agentLogLive(reference), {'lines': '$lines'}, (json, add) {
+        if (json['type'] == AgentLogUpdateDto.type) add(AgentLogUpdateDto.fromJson(json));
+      });
+
+  /// JSON messages of the WebSocket at [path], handed to [handle];
+  /// reconnects after [reconnectDelay] while listened to.
+  Stream<T> _socket<T>(String path, Map<String, String> query, void Function(Json json, void Function(T) add) handle) {
+    late final StreamController<T> controller;
     WebSocketChannel? channel;
     var active = true;
 
     Future<void> run() async {
       while (active) {
         try {
-          final socket = channel = _connectSocket(_socketUri());
+          final socket = channel = _connectSocket(_socketUri(path, query));
           await socket.ready;
           await for (final message in socket.stream) {
-            final json = asJson(jsonDecode(message as String));
-            if (json['type'] case 'changed' || 'dispatch') controller.add(BacklogChangeEvent.fromJson(json));
+            handle(asJson(jsonDecode(message as String)), controller.add);
           }
         } catch (_) {
           // Server restarting or unreachable: retry below.
@@ -130,7 +142,7 @@ final class HttpBacklogApi implements BacklogApi {
       }
     }
 
-    controller = StreamController<BacklogChangeEvent>(
+    controller = StreamController<T>(
       onListen: () => unawaited(run()),
       onCancel: () async {
         active = false;
@@ -140,8 +152,8 @@ final class HttpBacklogApi implements BacklogApi {
     return controller.stream;
   }
 
-  Uri _socketUri() {
-    final uri = _uri(ApiPaths.events, {'token': ?token});
+  Uri _socketUri(String path, Map<String, String> query) {
+    final uri = _uri(path, {...query, 'token': ?token});
     return uri.replace(scheme: uri.scheme == 'https' ? 'wss' : 'ws');
   }
 

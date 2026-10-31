@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/app_scope.dart';
+import 'package:backlog_app/features/dispatch/application/agent_log_controller.dart';
 import 'package:backlog_app/features/dispatch/application/dispatch_controller.dart';
 import 'package:backlog_app/features/dispatch/presentation/dispatch_overview.dart';
 import 'package:backlog_app/features/dispatch/presentation/dispatch_scope.dart';
@@ -194,19 +195,52 @@ void main() {
     expect(find.text('w2 · unavailable'), findsOneWidget);
   });
 
+  testWidgets('a worktree the dispatcher would create shows as new; Start works without a free one', (tester) async {
+    const plan = DispatchDto(
+      configured: true,
+      mode: 'manual',
+      agent: 'claude',
+      maxAgents: 2,
+      capacity: 2,
+      maxWorktrees: 2,
+      spareWorktrees: 2,
+      worktrees: [
+        DispatchWorktreeDto(name: 'app-2', path: '/w/app-2', busy: false, unavailable: 'uncommitted changes'),
+        DispatchWorktreeDto(name: 'app-3', path: '/w/app-3', busy: false, created: true, isNew: true),
+      ],
+      assignments: [DispatchAssignmentDto(item: 'R-2', title: 'Item R-2', worktree: 'app-3', newWorktree: true)],
+    );
+    expect(DispatchDto.fromJson(plan.toJson()).toJson(), plan.toJson());
+    await _pumpDetail(tester, 'R-3', plan);
+    expect(find.text('AGENTS · MANUAL · 0/2 · 1/2 WORKTREES'), findsOneWidget);
+    expect(find.text('app-3 · new'), findsOneWidget);
+    expect(find.text('R-2 → app-3 (new)'), findsOneWidget);
+    expect(_key('start-agent'), findsOneWidget, reason: 'a worktree can be created');
+  });
+
   testWidgets('a running agent shows where and since when, its log and a Stop button', (tester) async {
     final (api, _) = await _pumpDetail(tester, 'R-1', _plan(running: true));
     expect(find.text('w1 · R-1'), findsOneWidget);
     expect(find.textContaining('Agent claude in w1 since'), findsOneWidget);
     expect(find.textContaining('agent/R-1'), findsWidgets);
 
-    api.log = const AgentLogDto(item: 'R-1', path: '/state/logs/R-1.log', running: true, lines: ['hello', 'world']);
-    await tester.tap(find.text('Log'));
+    expect(api.followedLogs, ['R-1']);
+    api.agentLogUpdates.add(
+      const AgentLogUpdateDto(item: 'R-1', path: '/state/logs/R-1.log', running: true, reset: true, lines: ['hello']),
+    );
     await tester.pump();
     await tester.pump();
-    expect(find.text('hello\nworld'), findsOneWidget);
+    expect(find.text('hello'), findsOneWidget, reason: 'the live log is open while the agent runs');
+    expect(find.text('Live · /state/logs/R-1.log'), findsOneWidget);
+    api.agentLogUpdates.add(
+      const AgentLogUpdateDto(item: 'R-1', path: '/state/logs/R-1.log', running: true, lines: ['▸ Bash git status']),
+    );
+    await tester.pump();
+    expect(find.text('hello'), findsOneWidget);
+    expect(find.text('▸ Bash git status'), findsOneWidget);
     await tester.tap(find.text('Hide log'));
     await tester.pump();
+    expect(find.text('hello'), findsNothing);
 
     api.afterStop = _plan(
       held: const [HeldItemDto(item: 'R-1', title: 'Item R-1', reason: 'stopped by a person')],
@@ -218,6 +252,105 @@ void main() {
     expect(api.stopped, ['R-1']);
     expect(find.text('Held: stopped by a person'), findsOneWidget);
     expect(find.text('R-1 held'), findsOneWidget);
+  });
+
+  testWidgets('after the run the detail keeps the Agent box with the last log and how it ended', (tester) async {
+    final (api, _) = await _pumpDetail(tester, 'R-3', _plan());
+    expect(_key('agent-panel'), findsNothing, reason: 'no agent has run');
+    api.agentLogUpdates.add(
+      const AgentLogUpdateDto(
+        item: 'R-3',
+        path: '/state/logs/R-3.log',
+        reset: true,
+        lines: ['■ done · 3 turns'],
+        last: AgentRunEndDto(
+          exitCode: 0,
+          reason: 'exited with code 0',
+          outcome: 'handed over as review',
+          sessionId: 's-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Agent · last run'), findsOneWidget);
+    expect(find.text('■ done · 3 turns'), findsNothing, reason: 'an ended run starts collapsed');
+    await tester.tap(_key('agent-log-toggle'));
+    await tester.pump();
+    expect(find.text('■ done · 3 turns'), findsOneWidget);
+    expect(find.text('Last run · exited with code 0 · handed over as review · claude --resume s-1'), findsOneWidget);
+  });
+
+  testWidgets('the live log stays at the end and pauses while the reader scrolls up', (tester) async {
+    final (api, _) = await _pumpDetail(tester, 'R-1', _plan(running: true));
+    AgentLogUpdateDto lines(int from, int count, {bool reset = false}) => AgentLogUpdateDto(
+      item: 'R-1',
+      path: '/l',
+      running: true,
+      reset: reset,
+      lines: [for (var i = from; i < from + count; i++) 'line $i'],
+    );
+    ScrollPosition position() => tester
+        .state<ScrollableState>(find.descendant(of: _key('agent-log'), matching: find.byType(Scrollable)))
+        .position;
+
+    api.agentLogUpdates.add(lines(0, 100, reset: true));
+    await tester.pumpAndSettle();
+    expect(position().pixels, position().maxScrollExtent);
+    expect(position().maxScrollExtent, greaterThan(0));
+
+    api.agentLogUpdates.add(lines(100, 20));
+    await tester.pumpAndSettle();
+    expect(position().pixels, position().maxScrollExtent, reason: 'follows new lines');
+
+    await tester.drag(_key('agent-log'), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    final paused = position().pixels;
+    expect(paused, lessThan(position().maxScrollExtent));
+    expect(_key('agent-log-follow'), findsOneWidget);
+    api.agentLogUpdates.add(lines(120, 20));
+    await tester.pumpAndSettle();
+    expect(position().pixels, paused, reason: 'paused while scrolled up');
+
+    await tester.tap(_key('agent-log-follow'));
+    await tester.pumpAndSettle();
+    expect(position().pixels, position().maxScrollExtent);
+    expect(_key('agent-log-follow'), findsNothing);
+  });
+
+  group('AgentLogController', () {
+    test('appends updates, replaces them on reset and keeps at most maxLines', () async {
+      final api = FakeBacklogApi(_items());
+      final controller = AgentLogController(api, 'R-1', maxLines: 3)..start();
+      await Future<void>.delayed(Duration.zero);
+      expect(api.followedLogs, ['R-1']);
+      expect((controller.loaded, controller.hasLog), (false, false));
+
+      api.agentLogUpdates.add(
+        const AgentLogUpdateDto(item: 'R-1', path: '/a', running: true, reset: true, lines: ['a', 'b']),
+      );
+      api.agentLogUpdates.add(const AgentLogUpdateDto(item: 'R-1', path: '/a', running: true, lines: ['c', 'd']));
+      api.agentLogUpdates.add(const AgentLogUpdateDto(item: 'R-2', path: '/x', lines: ['other item']));
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.lines, ['b', 'c', 'd']);
+      expect((controller.dropped, controller.running, controller.hasLog), (1, true, true));
+
+      api.agentLogUpdates.add(
+        const AgentLogUpdateDto(
+          item: 'R-1',
+          path: '/b',
+          reset: true,
+          lines: ['new'],
+          last: AgentRunEndDto(exitCode: 1),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.lines, ['new']);
+      expect((controller.dropped, controller.running, controller.path, controller.last!.exitCode), (0, false, '/b', 1));
+
+      controller.dispose();
+      await Future<void>.delayed(Duration.zero);
+      expect(api.followedLogs, isEmpty, reason: 'disposing stops following');
+    });
   });
 }
 

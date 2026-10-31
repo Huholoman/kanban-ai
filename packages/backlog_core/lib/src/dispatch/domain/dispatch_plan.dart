@@ -6,6 +6,7 @@ import '../../planning/domain/backlog_snapshot.dart';
 import '../../planning/domain/planned_item.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+import 'agent_log_format.dart';
 import 'agent_session.dart';
 
 /// An agent process started by the dispatcher that is still running.
@@ -61,6 +62,8 @@ final class DispatchConditions {
     this.held = const {},
     this.runs = const [],
     this.sessions = const {},
+    this.created = const [],
+    this.spare = const [],
   });
 
   static const none = DispatchConditions();
@@ -79,11 +82,27 @@ final class DispatchConditions {
 
   /// The session of the last run per item, where the agent reported one.
   final Map<ItemId, AgentSession> sessions;
+
+  /// Worktrees the dispatcher created earlier (`dispatcher.repo`) that still
+  /// exist; they join the listed ones.
+  final List<WorktreeDefinition> created;
+
+  /// Worktrees the dispatcher may create when none is free, in the order it
+  /// would create them (within `max_worktrees`).
+  final List<WorktreeDefinition> spare;
 }
 
 /// A configured worktree at the moment of planning.
 final class WorktreeState {
-  const WorktreeState(this.worktree, this.path, this.claims, {this.unavailable, this.run});
+  const WorktreeState(
+    this.worktree,
+    this.path,
+    this.claims, {
+    this.unavailable,
+    this.run,
+    this.created = false,
+    this.isNew = false,
+  });
 
   final WorktreeDefinition worktree;
 
@@ -98,6 +117,14 @@ final class WorktreeState {
 
   /// The agent process running here, if any.
   final AgentRun? run;
+
+  /// The dispatcher created it (`dispatcher.repo`) rather than finding it
+  /// in `dispatcher.worktrees`.
+  final bool created;
+
+  /// It does not exist yet: the dispatcher creates it when its assignment
+  /// starts.
+  final bool isNew;
 
   String get name => worktree.name;
 
@@ -124,6 +151,7 @@ final class DispatchAssignment {
     this.branch,
     this.base,
     this.resume,
+    this.createFrom,
   });
 
   /// Fills the [config]'s prompt, command and environment for [item] in
@@ -138,6 +166,7 @@ final class DispatchAssignment {
     required String path,
     required String backlogRoot,
     AgentSession? resume,
+    bool create = false,
   }) {
     final branch = branchFor(item);
     final values = {
@@ -169,6 +198,7 @@ final class DispatchAssignment {
       branch: branch,
       base: config.base,
       resume: session,
+      createFrom: create ? config.newWorktrees?.resolveRepo(backlogRoot) : null,
     );
   }
 
@@ -209,6 +239,10 @@ final class DispatchAssignment {
   /// The earlier session the agent continues; null for a new session.
   final AgentSession? resume;
 
+  /// The primary clone to add the worktree from (`git worktree add`) before
+  /// the agent starts; null when the worktree exists.
+  final String? createFrom;
+
   ItemId get id => item.id;
 
   /// The name the claim is taken under.
@@ -233,6 +267,7 @@ final class DispatchPlan {
     required this.assignments,
     required this.waiting,
     this.held = const [],
+    this.spare = const [],
     this.recheckAt,
     this.sessions = const {},
   });
@@ -249,9 +284,10 @@ final class DispatchPlan {
       session.resumableBy(config.agent, session.worktree) &&
       session.repliesIn(planned.item).isNotEmpty;
 
-  /// The free worktree in [free] where [config]'s agent can continue [session].
+  /// The free, existing worktree in [free] where [config]'s agent can
+  /// continue [session]; a new worktree never holds a session.
   static WorktreeState? _resumableIn(AgentSession? session, DispatcherConfig config, List<WorktreeState> free) =>
-      session == null ? null : free.firstWhereOrNull((w) => session.resumableBy(config.agent, w.name));
+      session == null ? null : free.firstWhereOrNull((w) => !w.isNew && session.resumableBy(config.agent, w.name));
 
   /// The plan for [snapshot], or null when its workflow has no dispatcher.
   /// Relative worktree paths are resolved against [backlogRoot].
@@ -267,8 +303,13 @@ final class DispatchPlan {
       for (final planned in snapshot.items)
         if (planned.isClaimed) planned.claim!,
     ];
+    final listed = {for (final worktree in config.worktrees) worktree.name};
     final worktrees = [
-      for (final worktree in config.worktrees)
+      for (final (worktree, created) in [
+        for (final worktree in config.worktrees) (worktree, false),
+        for (final worktree in conditions.created)
+          if (!listed.contains(worktree.name)) (worktree, true),
+      ])
         WorktreeState(
           worktree,
           worktree.resolvePath(backlogRoot),
@@ -278,16 +319,32 @@ final class DispatchPlan {
           ],
           unavailable: conditions.unavailable[worktree.name],
           run: conditions.runs.firstWhereOrNull((run) => run.worktree == worktree.name),
+          created: created,
         ),
     ];
+    final spare = config.newWorktrees == null
+        ? const <WorktreeState>[]
+        : [
+            for (final worktree in conditions.spare)
+              WorktreeState(worktree, worktree.resolvePath(backlogRoot), const [], created: true, isNew: true),
+          ];
+    // A session can only go on in its own worktree. When that worktree is
+    // gone (a created one removed by hand or cleaned up), the session is
+    // forgotten and the next start is a new session; a listed worktree that
+    // is missing just stays unavailable, so its sessions wait for it.
+    final existing = {for (final worktree in worktrees) worktree.name};
+    final sessions = {
+      for (final MapEntry(:key, :value) in conditions.sessions.entries)
+        if (existing.contains(value.worktree)) key: value,
+    };
     final running = worktrees.where((w) => w.isBusy).length;
-    final free = worktrees.where((w) => w.isFree).toList();
+    final free = [...worktrees.where((w) => w.isFree), ...spare];
     final slots = (config.maxAgents - running).clamp(0, free.length);
     final runningItems = {for (final run in conditions.runs) run.item};
     // A person wrote to an agent whose session can go on: first, even when held.
     final replied = [
       for (final planned in snapshot.items)
-        if (!runningItems.contains(planned.id) && hasReplies(planned, conditions.sessions[planned.id], config)) planned,
+        if (!runningItems.contains(planned.id) && hasReplies(planned, sessions[planned.id], config)) planned,
     ];
     final ready = [
       ...replied,
@@ -298,7 +355,7 @@ final class DispatchPlan {
     final assignments = <DispatchAssignment>[];
     final left = <PlannedItem>[];
     for (final (index, candidate) in ready.indexed) {
-      final session = conditions.sessions[candidate.id];
+      final session = sessions[candidate.id];
       final own = _resumableIn(session, config, free);
       if (assignments.length >= slots || free.isEmpty || (own == null && !candidate.isReady)) {
         left.add(candidate); // a reply waits for the worktree of its session
@@ -307,7 +364,7 @@ final class DispatchPlan {
       // Leave the worktrees that later items could continue their sessions in to them.
       final reserved = {
         for (final later in ready.skip(index + 1))
-          if (_resumableIn(conditions.sessions[later.id], config, free) case final w?) w.name,
+          if (_resumableIn(sessions[later.id], config, free) case final w?) w.name,
       };
       final target = own ?? free.firstWhere((w) => !reserved.contains(w.name), orElse: () => free.first);
       free.remove(target);
@@ -319,9 +376,12 @@ final class DispatchPlan {
           path: target.path,
           backlogRoot: backlogRoot,
           resume: own == null ? null : session,
+          create: target.isNew,
         ),
       );
     }
+    // New worktrees show up in the plan once something would start there.
+    worktrees.addAll(spare.where((w) => assignments.any((a) => a.worktree.name == w.name)));
 
     DateTime? recheckAt;
     for (final claim in liveClaims) {
@@ -335,11 +395,12 @@ final class DispatchPlan {
       worktrees: List.unmodifiable(worktrees),
       assignments: List.unmodifiable(assignments),
       waiting: List.unmodifiable(left),
-      sessions: conditions.sessions,
+      sessions: Map.unmodifiable(sessions),
       held: List.unmodifiable([
         for (final item in snapshot.ready)
           if (conditions.held[item.id] case final reason? when !replied.contains(item)) (item: item, reason: reason),
       ]),
+      spare: List.unmodifiable(spare),
       recheckAt: recheckAt,
     );
   }
@@ -361,11 +422,16 @@ final class DispatchPlan {
   /// Ready items the dispatcher does not start by itself, with the reason.
   final List<({PlannedItem item, String reason})> held;
 
+  /// Worktrees the dispatcher may still create (`dispatcher.repo`), in the
+  /// order it would; [WorktreeState.isNew].
+  final List<WorktreeState> spare;
+
   /// The earliest expiry of a live claim: the plan may change then without
   /// any file changing (a worktree frees up, an item becomes ready).
   final DateTime? recheckAt;
 
-  /// The session of each item's last agent run, where one is known.
+  /// The session of each item's last agent run, where one is known and its
+  /// worktree still exists.
   final Map<ItemId, AgentSession> sessions;
 
   /// The session a start of [id] would continue with the configured agent
@@ -379,8 +445,11 @@ final class DispatchPlan {
 
   DispatchMode get mode => config.mode;
 
-  /// Busy configured worktrees.
+  /// Busy worktrees.
   int get running => worktrees.where((w) => w.isBusy).length;
+
+  /// Worktrees an agent could start in now: free ones, then new ones.
+  List<WorktreeState> get available => [...worktrees.where((w) => w.isFree && !w.isNew), ...spare];
 
   /// How many more agents may start (limit minus running, at least zero).
   int get capacity => (config.maxAgents - running).clamp(0, config.maxAgents);
@@ -398,11 +467,13 @@ final class DispatchPlan {
     final planned = snapshot[ItemReference.resolve(reference, snapshot.ids)]!;
     final replied = !fresh && hasReplies(planned, sessions[planned.id], config);
     if (!planned.isReady && !replied) throw _notReady(planned);
-    final free = worktrees.where((w) => w.isFree).toList();
+    final free = available;
     if (free.isEmpty || capacity == 0) {
       final reasons = [
         for (final worktree in worktrees)
           '${worktree.name}: ${worktree.isBusy ? 'busy' : worktree.unavailable ?? 'free'}',
+        if (config.newWorktrees case final added? when spare.isEmpty)
+          'no new worktree (max_worktrees ${added.maxWorktrees})',
       ];
       throw UnavailableException(
         'No free worktree for ${planned.id} ($running/${config.maxAgents} running; ${reasons.join('; ')}).',
@@ -424,6 +495,7 @@ final class DispatchPlan {
       path: target.path,
       backlogRoot: backlogRoot,
       resume: own == null ? null : session,
+      create: target.isNew,
     );
   }
 
@@ -460,7 +532,8 @@ final class DispatchPlan {
       _sameList(other.held.map((h) => '${h.item.id}:${h.reason}'), held.map((h) => '${h.item.id}:${h.reason}')) &&
       _sameList(other.worktrees.map(_worktreeKey), worktrees.map(_worktreeKey));
 
-  static String _worktreeKey(WorktreeState w) => '${w.name}:${w.isBusy}:${w.unavailable}:${w.run?.item}:${w.run?.pid}';
+  static String _worktreeKey(WorktreeState w) =>
+      '${w.name}:${w.isBusy}:${w.unavailable}:${w.run?.item}:${w.run?.pid}:${w.isNew}';
 
   static bool _sameList(Iterable<Object> a, Iterable<Object> b) =>
       const ListEquality<Object>().equals(a.toList(), b.toList());
@@ -486,6 +559,10 @@ abstract class AgentLauncher {
   /// The last [lines] lines of the log of the agent running for [item], or
   /// of its last run; null when there is none.
   Future<AgentLog?> agentLog(ItemId item, {int lines = 100}) async => null;
+
+  /// Where the log of the agent running for [item] is, else that of its
+  /// last run; null when there is none. For following a log as it grows.
+  Future<AgentLogSource?> agentLogSource(ItemId item) async => null;
 
   /// Starts background work (watching processes); [onChange] is called when
   /// something the plan depends on changed outside the backlog files.

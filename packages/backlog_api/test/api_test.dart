@@ -33,7 +33,12 @@ void main() {
           ),
           const DispatchWorktreeDto(name: 'w2', path: '/w/w2', busy: false, unavailable: 'uncommitted changes'),
         ],
-        assignments: const [DispatchAssignmentDto(item: 'X-2', title: 'Two', worktree: 'w2', resume: 'sess-2')],
+        assignments: const [
+          DispatchAssignmentDto(item: 'X-2', title: 'Two', worktree: 'w2', resume: 'sess-2'),
+          DispatchAssignmentDto(item: 'X-5', title: 'Five', worktree: 'app-3', newWorktree: true),
+        ],
+        maxWorktrees: 3,
+        spareWorktrees: 0,
         waiting: const ['X-3'],
         held: const [HeldItemDto(item: 'X-4', title: 'Four', reason: 'stopped')],
         sessions: [
@@ -46,8 +51,9 @@ void main() {
       expect(copy.heldReason('X-4'), 'stopped');
       expect(copy.sessionFor('X-4')!.session, 'sess-4');
       expect(copy.sessionFor('X-2'), isNull);
-      expect(copy.assignments.single.resume, 'sess-2');
-      expect(copy.canStart, isFalse, reason: 'w2 is unavailable');
+      expect(copy.assignments.map((a) => (a.resume, a.newWorktree)), [('sess-2', false), (null, true)]);
+      expect((copy.maxWorktrees, copy.spareWorktrees), (3, 0));
+      expect(copy.canStart, isFalse, reason: 'w2 is unavailable, no worktree may be created');
       expect(DispatchDto.fromJson(DispatchDto.off.toJson()).configured, isFalse);
 
       final log = AgentLogDto(
