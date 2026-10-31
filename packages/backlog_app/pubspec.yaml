@@ -23,3 +23,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # Bundled so that the web board fetches no fonts from fonts.gstatic.com:
+  # Roboto is the engine's default font, BoardSymbols (tool/symbols_font.sh)
+  # the theme's fallback for arrows, ticks, shapes and box lines.
+  fonts:
+    - family: Roboto
+      fonts:
+        - asset: fonts/Roboto-Regular.ttf
+    - family: BoardSymbols
+      fonts:
+        - asset: fonts/BoardSymbols.ttf

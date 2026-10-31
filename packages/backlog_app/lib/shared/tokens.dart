@@ -166,7 +166,13 @@ class BoardTokens extends ThemeExtension<BoardTokens> {
       surfaceContainerHighest: chip,
       error: danger,
     );
-    final base = ThemeData(colorScheme: scheme, brightness: brightness, visualDensity: VisualDensity.compact);
+    final base = ThemeData(
+      colorScheme: scheme,
+      brightness: brightness,
+      visualDensity: VisualDensity.compact,
+      // Bundled symbols (see pubspec.yaml): the web engine would fetch them.
+      fontFamilyFallback: const ['BoardSymbols'],
+    );
     final textTheme = base.textTheme
         .apply(bodyColor: text, displayColor: text)
         .copyWith(

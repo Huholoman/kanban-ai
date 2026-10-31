@@ -33,9 +33,12 @@ run = ["dart format --output=none --set-exit-if-changed packages"]
 depends = ["analyze", "test"]
 
 [tasks.build-web]
-description = "Build the web app into packages/backlog_app/build/web"
+description = "Build the web app into packages/backlog_app/build/web (CanvasKit bundled, .br/.gz copies)"
 dir = "packages/backlog_app"
-run = "flutter build web --release"
+run = [
+  "flutter build web --release --no-web-resources-cdn --pwa-strategy=none",
+  "tool/precompress.sh build/web",
+]
 
 [tasks.build]
 description = "Compile `backlog` and `backlog-server` into build/"

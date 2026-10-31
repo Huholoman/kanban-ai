@@ -122,7 +122,7 @@ git clone https://github.com/Huholoman/kanban-ai && cd kanban-ai
 dart pub get
 dart compile exe packages/backlog_cli/bin/backlog.dart -o ~/.local/bin/backlog
 dart compile exe packages/backlog_server/bin/backlog_server.dart -o ~/.local/bin/backlog-server
-(cd packages/backlog_app && flutter pub get && flutter build web)
+(cd packages/backlog_app && flutter pub get && flutter build web --no-web-resources-cdn --pwa-strategy=none && tool/precompress.sh)
 # the server looks for the app in packages/backlog_app/build/web; otherwise --web <dir> or BACKLOG_WEB
 ```
 
@@ -220,8 +220,10 @@ backlog-server --allow 127.0.0.1,10.77.11.22,10.77.0.0/16  # answer only these c
 | `-p`, `--port` | `8640` | |
 | `--token` | `BACKLOG_TOKEN` | when set, `/api/` requires it |
 | `--generate-token` | | require a random token; it is printed at start, inside the URLs |
-| `--web` | `BACKLOG_WEB`, else `packages/backlog_app/build/web` | the built web app (served with ETags and `no-cache`, so browsers pick up a new build at once) |
+| `--web` | `BACKLOG_WEB`, else `packages/backlog_app/build/web` | the built web app (served with ETags and `no-cache`, so browsers pick up a new build at once; Brotli or gzip copies made by the build are sent to browsers that accept them) |
 | `-q` | | do not log requests |
+
+API responses (1 kB and more) are gzip-compressed for clients that accept it.
 
 URL parameters of the app: `?token=…`, `&as=name` (who claims items from the UI) and `&server=http://…` (another API server, handy with `flutter run -d web-server`).
 
@@ -235,6 +237,7 @@ The open project is in the URL after `#`: `http://host:8640/?token=…#/p/kanban
 - **Ids:** clicking an item id (on a card or in the detail) copies it to the clipboard.
 - **Discussion:** under the description the detail shows the item's comments (questions of agents highlighted while open, *Waits for you* under the title) and a reply field. *Send* adds a comment; when the item's last agent session can be continued, the dispatcher resumes the agent with your reply by itself (in `manual` mode too). **Note only** (shown with such a session or an open question) saves a note that wakes nobody and answers nothing. Editing the description leaves the discussion as it is.
 - **Actions:** the actions of an item's status are buttons in its detail and a small ⋯ menu on its card (icons: agent, command, built-in); the detail's agent box shows a running action with its live log and *Stop*, and hooks waiting to run (*Queued: the action "AI review"*). The result lands as a note in the discussion.
+- **Offline:** the board loads nothing from other hosts — CanvasKit, Roboto and a symbol font (arrows, ticks, shapes, box lines) come from the server, compressed. Only emoji and scripts outside these fonts (CJK, …) are fetched from Google Fonts when they appear.
 - **Pull requests:** an item's `pr` link shows as a "PR #42" tag that opens it in a new tab; it can be set in the detail or by an agent (`backlog set <id> pr=<url>`).
 - **Kanban:** the board scrolls as one page, columns grow with their cards and share the width. On a phone you see one column at a time and swipe (or tap the column switcher on top) to the others; a long press on a card moves it to another column. Dragging a card to another column sets the field the view is grouped by (status, priority, …). A parent with nested items in a column (an epic, a story) has a fold toggle that hides them and shows how many are hidden. Within a column, children are indented under their parent. When the parent (an epic, say) sits in another column, it appears as a muted "↑ Epic title" line above its children, so you can see which epic a story in progress belongs to.
 - **Filter bar:** search (id, title, branch) and a Filters popover (long sections show the six most used values, *Show all* and a search box) for labels, epic (everything under the chosen epic, at any depth), type, priority, milestone, people (assignee or claim holder) and AI review (running, changes, outdated, OK), plus the segments *Needs you* (an agent's question waits for an answer), *Ready* (pickable status, dependencies done, no open children, nobody holds it), *Blocked* (waits for an unfinished dependency), *Waiting* (its touches overlap an item in progress) and *Claimed* (someone holds it, i.e. it is being worked on). Values within one section are alternatives; everything else must match. The filter works on any view and is kept when switching views; status is left out because views show it already. **Save as view** stores the current view plus the filter as a new view (name and optional section; the new file in `views/` keeps the layout, grouping, columns and sorting of the current view and ANDs its filter with yours).
@@ -590,6 +593,7 @@ mise tasks                      # analyze, test, format, build, build-web, playg
 
 | Task | What it does |
 |---|---|
+| `mise run build-web` | the web app in `packages/backlog_app/build/web`: CanvasKit bundled (nothing from Google's CDN), no service worker, Brotli/gzip copies for the server (`brotli` optional) |
 | `mise run build` | the web app plus `build/backlog` and `build/backlog-server` |
 | `mise run playground` | regenerate `playground/` with demo data |
 | `mise run serve` | serve the playground (or `BACKLOG_DIR`) with the built web app |

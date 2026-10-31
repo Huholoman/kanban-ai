@@ -42,6 +42,16 @@
             sourceRoot = "${src.name}/packages/backlog_app";
             autoPubspecLock = ./packages/backlog_app/pubspec.lock;
             targetFlutterPlatform = "web";
+            # CanvasKit from the build instead of Google's CDN, no service
+            # worker (backlog-server revalidates by ETag).
+            flutterBuildFlags = [
+              "--no-web-resources-cdn"
+              "--pwa-strategy=none"
+            ];
+            # Brotli and gzip copies that backlog-server sends to browsers
+            # accepting them.
+            nativeBuildInputs = [ pkgs.brotli ];
+            postInstall = "bash tool/precompress.sh $out";
             meta.description = "Web board of kanban-ai (static files, served by backlog-server)";
           };
 
