@@ -407,6 +407,8 @@ final class DispatchPlan {
       why = 'it is blocked by ${[...planned.openDependencies, ...planned.missingDependencies].join(', ')}';
     } else if (planned.isConflicting) {
       why = 'it waits for ${planned.conflictsWith.join(', ')} (overlapping touches)';
+    } else if (planned.needsHuman) {
+      why = 'it waits for a person to answer the question of ${planned.item.discussion.openQuestion!.author}';
     } else if (planned.openChildCount > 0) {
       why = 'it has ${planned.openChildCount} open child item(s)';
     } else {

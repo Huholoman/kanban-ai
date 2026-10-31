@@ -234,6 +234,28 @@ dispatcher:
     await finish('T-0001', 0);
   });
 
+  test('an agent that asked a question releases its item without a hold; it waits for a person', () async {
+    await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
+    await launcher.launch((await plan()).assignmentFor('T-0001'));
+    await backlog.items.comment('T-0001', author: 'wt-1', text: 'CSV or JSON?', question: true);
+    await finish('T-0001', 0);
+
+    final item = await planned('T-0001');
+    expect(item.item.status, 'todo');
+    expect(item.claim, isNull);
+    expect(item.needsHuman, isTrue);
+    expect(logs.last, contains('it asked a question; released, waits for a person to answer'));
+    var next = await plan();
+    expect(next.held, isEmpty);
+    expect(next.assignments, isEmpty, reason: 'it is not ready while it needs a person');
+    expect(() => next.assignmentFor('T-0001'), throwsA(isA<InvalidInputException>()));
+
+    clock.advance(const Duration(minutes: 5));
+    await backlog.items.comment('T-0001', author: 'tobik', text: 'CSV.');
+    next = await plan();
+    expect(next.assignments.single.key, 'T-0001@wt-1+resume');
+  });
+
   test('worktrees with uncommitted changes or without git are not free', () async {
     await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
     File(path('wt-1/scratch.txt')).writeAsStringSync('x');

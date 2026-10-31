@@ -32,7 +32,9 @@ import '../domain/dispatch_plan.dart';
 ///
 /// **When it ended:** an item still in the first active status and claimed
 /// by the worktree is released (back to the pickable status) and *held*, so
-/// that the dispatcher does not start it again by itself; an item the agent
+/// that the dispatcher does not start it again by itself — unless it waits
+/// for a person to answer its question ([PlannedItem.needsHuman]), which
+/// keeps it from starting until the answer; an item the agent
 /// handed over (e.g. `review`) keeps its status and loses only the claim.
 /// The outcome is logged, appended to the log and kept in
 /// `agents/<project>/<id>.last.json`, with the agent's session id, which a
@@ -367,7 +369,11 @@ final class ProcessAgentLauncher extends AgentLauncher {
     if (planned == null) {
       outcome = 'the item is gone';
     } else if (planned.claim?.agent == run.worktree) {
-      if (planned.item.status == backlog.workflow.activeStatus) {
+      if (planned.item.status == backlog.workflow.activeStatus && planned.needsHuman) {
+        // It asked a question: back to the queue, not ready until a person answers.
+        await backlog.claims.release(id.value, agent: run.worktree, force: true);
+        outcome = 'it asked a question; released, waits for a person to answer';
+      } else if (planned.item.status == backlog.workflow.activeStatus) {
         await backlog.claims.release(id.value, agent: run.worktree, force: true);
         await _write(_holdFile(id), {
           'reason': 'The last agent ($reason) left it unfinished.',

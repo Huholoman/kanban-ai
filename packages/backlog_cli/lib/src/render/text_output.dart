@@ -32,6 +32,7 @@ abstract final class TextOutput {
       if (planned.isClaimExpired) '@${planned.claim!.agent} (claim expired)',
       if (planned.isBlocked) 'blocked by ${[...planned.openDependencies, ...planned.missingDependencies].join(',')}',
       if (planned.isConflicting) 'waits for ${planned.conflictsWith.join(',')} (touches overlap)',
+      if (planned.needsHuman) 'needs a person (question by ${planned.item.discussion.openQuestion!.author})',
       if (planned.childCount > 0) 'children ${planned.childCount - planned.openChildCount}/${planned.childCount}',
       if (!checklist.isEmpty) 'checklist $checklist',
     ];
@@ -60,6 +61,7 @@ abstract final class TextOutput {
       for (final other in snapshot.waitingOn(item.id)) 'holds up: ${describe(other.id)}, touches overlap',
       if (planned.isBlocked) 'BLOCKED',
       if (planned.isConflicting) 'WAITING',
+      if (planned.needsHuman) 'NEEDS A PERSON: ${planned.item.discussion.openQuestion!.author} asked a question',
       if (planned.isReady) 'READY',
       if (planned.claim != null)
         'claim: ${planned.claim!.agent} '

@@ -362,8 +362,11 @@ final class DispatcherConfig {
       'Make small commits; every commit message contains {id}.\n'
       '3. When the work is finished, run `backlog set {id} status=review`.\n'
       '4. Never push and never open pull requests.\n'
-      '5. If something is unclear or blocks you, write your question into the body of the item (its file is shown '
-      'by `backlog show {id}`), leave its status as it is and stop.';
+      '5. If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"`, leave the status as '
+      'it is and stop; you will be resumed with the answer. Use `backlog comment {id} "…"` for notes a person '
+      'should read.\n'
+      '6. If a discussion in the item changes what it asks for, update its description or acceptance criteria in '
+      'the body above the `## Discussion` section (never edit the comments) and say so in a comment.';
 
   /// The prompt for continuing an agent's earlier session on the same item
   /// (unless `dispatcher.resume_prompt` replaces it).
@@ -373,8 +376,7 @@ final class DispatcherConfig {
       'Since your last run: {news}\n'
       'Run `backlog show {id}` to see the item as it is now, then continue the work under the same rules as before: '
       'small commits containing {id} on {branch}, `backlog set {id} status=review` when finished, never push. '
-      'If something is unclear or blocks you, write your question into the body of the item, leave its status as '
-      'it is and stop.';
+      'If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"` and stop.';
 
   /// In order of preference: free work goes to the first free worktree.
   final List<WorktreeDefinition> worktrees;

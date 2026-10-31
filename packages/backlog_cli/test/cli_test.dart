@@ -24,12 +24,19 @@ void main() {
   late String backlogDir;
   final clock = FixedClock(DateTime.utc(2026, 10, 29, 12));
 
-  Future<Run> backlog(List<String> args, {String? cwd, Map<String, String> env = const {}}) async {
+  Future<Run> backlog(List<String> args, {String? cwd, Map<String, String> env = const {}, String? input}) async {
     final out = StringBuffer();
     final err = StringBuffer();
     final code = await runBacklogCli(
       args,
-      CliContext(out: out, err: err, cwd: cwd ?? workspace.path, environment: env, clock: clock),
+      CliContext(
+        out: out,
+        err: err,
+        cwd: cwd ?? workspace.path,
+        environment: env,
+        clock: clock,
+        readInput: input == null ? null : () async => input,
+      ),
     );
     return Run(code, out.toString(), err.toString());
   }
@@ -289,5 +296,39 @@ void main() {
     final warned = await backlog(['init', 'more'], env: env);
     expect(warned.exitCode, 0);
     expect(warned.err, contains('warning: not registered'));
+  });
+
+  test('comment and ask write the discussion; a question makes the item need a person', () async {
+    final id = await create('Export', ['-s', 'todo', '--body', '## Context\n\nExport it.\n']);
+    final agent = {'BACKLOG_AGENT': 'monorepo-2'};
+    final asked = await backlog(['ask', id, 'CSV', 'or JSON?'], env: agent);
+    expect(asked.exitCode, 0, reason: '$asked');
+    expect(asked.out, contains('it waits for a person now'));
+    expect(asked.out, contains('needs a person (question by monorepo-2)'));
+    expect((await backlog(['--json', 'ready'])).json, isEmpty);
+    expect((await backlog(['--json', 'list', '-w', 'needs_human=true'])).json, hasLength(1));
+    expect((await backlog(['show', id])).out, contains('NEEDS A PERSON: monorepo-2 asked a question'));
+
+    final answered = await backlog(['--json', 'comment', id, '-', '--as', 'tobik'], input: 'CSV.\nWith a header.\n');
+    expect(answered.exitCode, 0, reason: '$answered');
+    final json = answered.json! as Map;
+    expect(json['needs_human'], isFalse);
+    expect(json['ready'], isTrue);
+    expect(json['discussion'], [
+      {'author': 'monorepo-2', 'at': '2026-10-29T12:00:00.000Z', 'text': 'CSV or JSON?', 'question': true},
+      {'author': 'tobik', 'at': '2026-10-29T12:00:00.000Z', 'text': 'CSV.\nWith a header.', 'question': false},
+    ]);
+    expect(
+      File((json['path'] as String)).readAsStringSync(),
+      endsWith(
+        '## Context\n\nExport it.\n\n## Discussion\n\n'
+        '### monorepo-2 · 2026-10-29 12:00:00 UTC · question\n\nCSV or JSON?\n\n'
+        '### tobik · 2026-10-29 12:00:00 UTC\n\nCSV.\nWith a header.\n',
+      ),
+    );
+
+    expect((await backlog(['comment', id, 'x'])).exitCode, ExitCode.usage, reason: 'no author');
+    expect((await backlog(['comment', id], env: agent)).exitCode, ExitCode.usage, reason: 'no text');
+    expect((await backlog(['comment', id, 'x'], env: {'USER': 'tobik'})).exitCode, 0);
   });
 }

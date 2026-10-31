@@ -7,6 +7,7 @@ import 'package:args/command_runner.dart';
 import 'package:backlog_core/backlog_core.dart';
 
 import 'src/cli_context.dart';
+import 'src/commands/discussion_commands.dart';
 import 'src/commands/item_commands.dart';
 import 'src/commands/project_commands.dart';
 import 'src/commands/view_commands.dart';
@@ -47,6 +48,8 @@ Future<int> runBacklogCli(List<String> arguments, CliContext context) async {
     HeartbeatCommand(context),
     ReleaseCommand(context),
     DoneCommand(context),
+    CommentCommand(context),
+    AskCommand(context),
     ClaimsCommand(context),
     ViewCommand(context),
     LintCommand(context),
