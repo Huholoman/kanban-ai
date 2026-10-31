@@ -404,6 +404,24 @@ void main() {
       expect(issues.map((i) => i.code), ['dispatcher-pr']);
       expect(issues.single.message, contains('"no-such-tea-xyz", which is not on the PATH'));
     });
+
+    test('warns about merge commands that are not on the PATH', () async {
+      final (backlog, _) = await tempBacklog(
+        config:
+            'dispatcher: {command: sh, worktrees: [{name: here, path: .}], '
+            'pr: {create: sh, merge: no-such-merge-xyz, state: no-such-state-xyz}, '
+            'merge: {strategy: local, check: no-such-check-xyz}}\n',
+      );
+      final issues = await backlog.linter.run();
+      expect(issues.map((i) => i.code), unorderedEquals(['dispatcher-pr', 'dispatcher-pr', 'dispatcher-merge']));
+      expect(
+        issues.map((i) => i.message),
+        containsAll([
+          'dispatcher.pr runs "no-such-merge-xyz", which is not on the PATH.',
+          'dispatcher.merge runs "no-such-check-xyz", which is not on the PATH.',
+        ]),
+      );
+    });
   });
 
   group('views', () {

@@ -192,17 +192,31 @@ final class Linter {
         );
       }
       if (dispatcher.pr case final pr?) {
-        for (final command in [pr.create, ?pr.find]) {
+        for (final command in [pr.create, ?pr.find, ?pr.merge, ?pr.state]) {
           if (!await programExists(command.executable)) {
             issues.add(
               LintIssue(
                 Severity.warning,
                 'dispatcher-pr',
-                'dispatcher.pr runs "${command.executable}", which is not on the PATH; pull requests cannot be opened.',
+                'dispatcher.pr runs "${command.executable}", which is not on the PATH'
+                    '${command == pr.create ? '; pull requests cannot be opened' : ''}.',
                 location: 'backlog.yaml',
               ),
             );
           }
+        }
+      }
+      for (final command in [?dispatcher.merge.check, ?dispatcher.merge.command]) {
+        final program = command.executable;
+        if (!program.contains('{') && !await programExists(program)) {
+          issues.add(
+            LintIssue(
+              Severity.warning,
+              'dispatcher-merge',
+              'dispatcher.merge runs "$program", which is not on the PATH.',
+              location: 'backlog.yaml',
+            ),
+          );
         }
       }
       if (!agent.verified) {

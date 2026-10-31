@@ -95,6 +95,7 @@ appearance:
         'AI review',
         'Tests',
       ]);
+      expect(parseWorkflowYaml(uncommented).dispatcher!.merge.check!.arguments, ['mise', 'run', 'check']);
     });
 
     test('the dispatcher is off without its section', () {
@@ -190,11 +191,76 @@ dispatcher:
         throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
       );
       rejects('{remote: origin}', 'dispatcher.pr.create is required');
-      rejects('{create: x, merge: y}', 'unknown key "dispatcher.pr.merge"');
+      rejects('{create: x, merged: y}', 'unknown key "dispatcher.pr.merged"');
+      rejects('{create: x, merge: "tea {description}"}', 'dispatcher.pr.merge: unknown placeholder "{description}"');
+      rejects('{create: x, state_every: 0}', 'state_every must be at least 1');
       rejects('{create: "tea {worktree}"}', 'unknown placeholder "{worktree}"');
       rejects('{create: x, remote: --force}', 'not a remote name');
       rejects('{create: x, url_pattern: "("}', 'url_pattern is not a regular expression');
       rejects('{create: ""}', 'must not be empty');
+    });
+
+    test('dispatcher.pr.merge and state: {pr} is the URL, {pr_number} its number', () {
+      final pr = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  pr:
+    create: x
+    merge: tea pulls merge --style rebase {pr_number}
+    state: [gh, pr, view, "{pr}", --json, state, --jq, .state]
+    state_every: 5
+''').dispatcher!.pr!;
+      expect(pr.merge!.render({'pr_number': '12'}), ['tea', 'pulls', 'merge', '--style', 'rebase', '12']);
+      expect(pr.state!.arguments, contains('{pr}'));
+      expect(pr.stateEvery, const Duration(minutes: 5));
+      expect(
+        parseWorkflowYaml('dispatcher: {worktrees: [a], pr: {create: x}}').dispatcher!.pr!.stateEvery.inMinutes,
+        2,
+      );
+      expect(PullRequestConfig.numberOf('https://git.example/o/r/pulls/12'), '12');
+      expect(PullRequestConfig.numberOf('https://github.com/o/r/pull/7/'), '7');
+      expect(PullRequestConfig.numberOf('https://gitlab.example/o/r/-/merge_requests/3#note'), '3');
+      expect(PullRequestConfig.numberOf('https://git.example/o/r'), isNull);
+    });
+
+    test('dispatcher.merge: strategy pr with dispatcher.pr, else local; validation', () {
+      DispatcherConfig parse(String rest) => parseWorkflowYaml('dispatcher:\n  worktrees: [a]\n$rest').dispatcher!;
+      final plain = parse('');
+      expect(
+        (plain.merge.strategy, plain.merge.remote, plain.merge.cleanup, plain.merge.push),
+        (MergeStrategy.local, 'origin', true, false),
+      );
+      expect(parse('  pr: {create: x, remote: up}\n').merge.strategy, MergeStrategy.pr);
+      expect(parse('  pr: {create: x, remote: up}\n').merge.remote, 'up');
+
+      final local = parse('''
+  merge:
+    strategy: local
+    check: mise run check
+    push: true
+    remote: upstream
+    cleanup: false
+''').merge;
+      expect(local.check!.arguments, ['mise', 'run', 'check']);
+      expect((local.push, local.remote, local.cleanup), (true, 'upstream', false));
+      final command = parse('  merge: {strategy: command, command: [./ship.sh, "{branch}", "{pr_number}"]}\n').merge;
+      expect(command.command!.render({'branch': 'b', 'pr_number': '3'}), ['./ship.sh', 'b', '3']);
+
+      void rejects(String rest, String message) => expect(
+        () => parse(rest),
+        throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
+      );
+      rejects('  merge: {strategy: squash}\n', 'must be pr, local or command');
+      rejects('  merge: {strategy: command}\n', 'strategy command needs dispatcher.merge.command');
+      rejects('  merge: {command: x}\n', 'merge.command only applies to strategy command');
+      rejects('  merge: {strategy: command, command: x, check: y}\n', 'check and push only apply to strategy local');
+      rejects('  pr: {create: x, merge: y}\n  merge: {push: true}\n', 'only apply to strategy local');
+      rejects('  merge: {push: yes please}\n', 'merge.push must be true or false');
+      rejects('  merge: {squash: true}\n', 'unknown key "dispatcher.merge.squash"');
+      rejects('  merge: {check: "x {description}"}\n', 'unknown placeholder "{description}"');
+      rejects('  merge: {remote: -f}\n', 'not a remote name');
+      rejects('  pr: {create: x}\n  merge: {cleanup: true}\n', 'strategy pr needs dispatcher.pr.merge');
+      rejects('  merge: {strategy: pr}\n', 'needs dispatcher.pr with dispatcher.pr.merge');
     });
 
     test('agent profiles: claude by default, built-in by name, own ones in agents', () {

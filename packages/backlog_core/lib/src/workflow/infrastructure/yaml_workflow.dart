@@ -4,6 +4,7 @@ import '../../shared/errors.dart';
 import '../domain/action_definition.dart';
 import '../domain/appearance.dart';
 import '../domain/dispatcher_config.dart';
+import '../domain/merge_config.dart';
 import '../domain/workflow.dart';
 
 /// Parses the `backlog.yaml` format into a [Workflow].
@@ -96,6 +97,7 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     'command',
     'actions',
     'pr',
+    'merge',
   };
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
@@ -114,6 +116,7 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     }
     final prompt = yaml['prompt'];
     final resumePrompt = yaml['resume_prompt'];
+    final pr = _pullRequest(yaml['pr'], origin);
     return DispatcherConfig(
       mode: DispatchMode.parse('${yaml['mode'] ?? 'manual'}'.trim()),
       maxAgents: maxAgents as int?,
@@ -124,7 +127,8 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
       actions: [
         for (final entry in _list(yaml['actions'] ?? const [], 'dispatcher.actions', origin)) _action(entry, origin),
       ],
-      pr: _pullRequest(yaml['pr'], origin),
+      pr: pr,
+      merge: _merge(yaml['merge'], pr, origin),
       prompt: prompt == null
           ? null
           : TextTemplate(
@@ -193,30 +197,64 @@ NewWorktrees? _newWorktrees(YamlMap yaml, String origin) {
 PullRequestConfig? _pullRequest(Object? node, String origin) {
   if (node == null) return null;
   final yaml = _map(node, 'dispatcher.pr', origin);
-  const known = {'remote', 'create', 'find', 'url_pattern'};
+  const known = {'remote', 'create', 'find', 'url_pattern', 'merge', 'state', 'state_every'};
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
       throw ConfigurationException('unknown key "dispatcher.pr.$key" (expected ${known.join(', ')}).');
     }
   }
-  CommandTemplate? command(String key) => switch (yaml[key]) {
-    null => null,
-    final List<Object?> list => CommandTemplate(
-      _strings(list, 'dispatcher.pr.$key', origin),
-      label: 'dispatcher.pr.$key',
-      known: PullRequestConfig.placeholders,
-    ),
-    final Object text => CommandTemplate.parse(
-      _string(text, 'dispatcher.pr.$key', origin),
-      label: 'dispatcher.pr.$key',
-      known: PullRequestConfig.placeholders,
-    ),
-  };
+  CommandTemplate? command(String key, [List<String> known = PullRequestConfig.placeholders]) =>
+      _template(yaml[key], 'dispatcher.pr.$key', known, origin);
+  final every = yaml['state_every'];
+  if (every != null && every is! int) {
+    throw const ConfigurationException('dispatcher.pr.state_every must be an integer.');
+  }
   return PullRequestConfig(
     remote: yaml['remote'] == null ? 'origin' : _string(yaml['remote'], 'dispatcher.pr.remote', origin),
     create: command('create') ?? (throw const ConfigurationException('dispatcher.pr.create is required.')),
     find: command('find'),
     urlPattern: yaml['url_pattern'] == null ? null : _string(yaml['url_pattern'], 'dispatcher.pr.url_pattern', origin),
+    merge: command('merge', PullRequestConfig.mergePlaceholders),
+    state: command('state', PullRequestConfig.mergePlaceholders),
+    stateEvery: Duration(minutes: (every as int?) ?? 2),
+  );
+}
+
+/// A command given as a list or as one string (split like a shell); null
+/// when [node] is null.
+CommandTemplate? _template(Object? node, String path, List<String> known, String origin) => switch (node) {
+  null => null,
+  final List<Object?> list => CommandTemplate(_strings(list, path, origin), label: path, known: known),
+  final Object text => CommandTemplate.parse(_string(text, path, origin), label: path, known: known),
+};
+
+/// `dispatcher.merge`: strategy (default pr with dispatcher.pr, else
+/// local), check, push, remote, command and cleanup; null without it.
+MergeConfig? _merge(Object? node, PullRequestConfig? pr, String origin) {
+  if (node == null) return null;
+  final yaml = _map(node, 'dispatcher.merge', origin);
+  const known = {'strategy', 'check', 'push', 'remote', 'command', 'cleanup'};
+  for (final key in yaml.keys) {
+    if (!known.contains('$key')) {
+      throw ConfigurationException('unknown key "dispatcher.merge.$key" (expected ${known.join(', ')}).');
+    }
+  }
+  bool flag(String key, bool fallback) => switch (yaml[key]) {
+    null => fallback,
+    final bool value => value,
+    _ => throw ConfigurationException('dispatcher.merge.$key must be true or false.'),
+  };
+  return MergeConfig(
+    strategy: yaml['strategy'] == null
+        ? (pr == null ? MergeStrategy.local : MergeStrategy.pr)
+        : MergeStrategy.parse(_string(yaml['strategy'], 'dispatcher.merge.strategy', origin)),
+    check: _template(yaml['check'], 'dispatcher.merge.check', MergeConfig.placeholders, origin),
+    push: flag('push', false),
+    remote: yaml['remote'] == null
+        ? pr?.remote ?? 'origin'
+        : _string(yaml['remote'], 'dispatcher.merge.remote', origin),
+    command: _template(yaml['command'], 'dispatcher.merge.command', MergeConfig.placeholders, origin),
+    cleanup: flag('cleanup', true),
   );
 }
 
@@ -515,6 +553,11 @@ claims:
 #     - name: Tests
 #       statuses: [review]
 #       run: [sh, -c, "mise run check"]   # in the item's worktree; result as a note in the discussion
+#     # With a deploy status (category active) after review:
+#     # - name: Merge
+#     #   on_enter: deploy  # merges when an item is moved to deploy
+#     #   statuses: [review]   # and is a button in review
+#     #   run: merge        # built-in, see merge below
 #   # Pull requests: the agent finishes with `backlog pr <id>`, which pushes
 #   # its branch to remote and runs create (no shell; the description on
 #   # stdin) unless the item's pr field is set; the URL goes into pr. Without
@@ -526,4 +569,24 @@ claims:
 #     # create: 'gh pr create --head {branch} --base {base} --title "{id}: {title}" --body-file -'
 #     # find: 'gh pr list --head {branch} --json url --jq ".[0].url"'   # an open PR made elsewhere
 #     # url_pattern: 'https://\\S+/pulls/\\d+'   # default: the first URL in the output
+#     # Merging (the built-in action merge, strategy pr): {pr} is the URL,
+#     # {pr_number} its number; also {id} {title} {branch} {base} {remote}.
+#     # merge: tea pulls merge --style rebase {pr_number}
+#     # merge: gh pr merge --rebase {pr}
+#     # state prints merged / closed / open (a word or JSON with state and
+#     # merged); items in an active status with a pr are asked every
+#     # state_every minutes, a PR merged elsewhere makes them done.
+#     # state: gh pr view {pr} --json state --jq .state
+#     # state_every: 2
+#   # How the built-in action merge merges (run: merge, typically
+#   # on_enter: deploy). Success: the item is done, its branch, created
+#   # worktree and session are cleaned up. Failure: the item goes back to
+#   # the status it came from, with a comment saying why.
+#   merge:
+#     strategy: local       # pr (default with pr above) | local (default) | command
+#     check: [mise, run, check]   # local: runs after the rebase onto base
+#     push: false           # local: push the merged base to remote
+#     # remote: origin      # default: pr.remote, else origin
+#     # command: [./ship.sh, "{branch}"]   # strategy command; exit 0 = merged
+#     cleanup: true         # remove branch and created worktree afterwards
 ''';

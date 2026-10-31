@@ -381,6 +381,14 @@ dispatcher:
     # create: 'gh pr create --head {branch} --base {base} --title "{id}: {title}" --body-file -'
     # find: 'gh pr list --head {branch} --json url --jq ".[0].url"'   # optional: a PR opened elsewhere
     # url_pattern: 'https://\S+/pulls/\d+'   # optional; default: the first URL in the output
+    # merge: tea pulls merge --style rebase {pr_number}   # how `run: merge` merges ({pr} = URL)
+    # merge: gh pr merge --rebase {pr}
+    # state: gh pr view {pr} --json state --jq .state      # merged/closed/open: notices PRs merged elsewhere
+  merge:                # optional: how the built-in action merge merges (see Merging below)
+    strategy: local     # pr (default with pr) | local (default without) | command
+    check: mise run check   # local: after the rebase onto base
+    push: false         # local: push the merged base
+    cleanup: true       # remove branch, created worktree and session afterwards (default)
 ```
 
 **Agent profiles.** A profile is a command template, extra environment (`env`) and the format of its output. Built in:

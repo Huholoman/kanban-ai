@@ -2,6 +2,7 @@ import 'package:path/path.dart' as p;
 
 import '../../shared/errors.dart';
 import 'action_definition.dart';
+import 'merge_config.dart';
 
 /// Whether the dispatcher starts agents by itself or waits for a person.
 enum DispatchMode {
@@ -336,6 +337,7 @@ final class DispatcherConfig {
     List<ActionDefinition> actions = const [],
     Map<String, AgentProfile>? profiles,
     PullRequestConfig? pr,
+    MergeConfig? merge,
   }) {
     if (worktrees.isEmpty && newWorktrees == null) {
       throw const ConfigurationException(
@@ -366,6 +368,18 @@ final class DispatcherConfig {
         );
       }
     }
+    final merging = merge != null || actions.any((action) => action.builtIn == 'merge');
+    final mergeConfig =
+        merge ??
+        MergeConfig(strategy: pr == null ? MergeStrategy.local : MergeStrategy.pr, remote: pr?.remote ?? 'origin');
+    if (merging && mergeConfig.strategy == MergeStrategy.pr && pr?.merge == null) {
+      throw ConfigurationException(
+        'dispatcher.merge: strategy pr${merge == null ? ' (the default with dispatcher.pr)' : ''} needs '
+        '${pr == null ? 'dispatcher.pr with ' : ''}dispatcher.pr.merge, e.g. '
+        '"tea pulls merge --style rebase {pr_number}" or "gh pr merge --rebase {pr}"; '
+        'or set dispatcher.merge.strategy to local or command.',
+      );
+    }
     return DispatcherConfig._(
       List.unmodifiable(worktrees),
       agent,
@@ -388,6 +402,7 @@ final class DispatcherConfig {
       List.unmodifiable(actions),
       Map.unmodifiable(usable),
       pr,
+      mergeConfig,
     );
   }
 
@@ -403,6 +418,7 @@ final class DispatcherConfig {
     this.actions,
     this.profiles,
     this.pr,
+    this.merge,
   );
 
   /// What the prompt may refer to: the item id and title, the worktree name,
@@ -522,6 +538,10 @@ final class DispatcherConfig {
   /// the project opens none (the default prompt then forbids pushing).
   final PullRequestConfig? pr;
 
+  /// How the built-in action `merge` merges (`dispatcher.merge`; defaults
+  /// to strategy `pr` with [pr], else `local`).
+  final MergeConfig merge;
+
   /// The command of [agent].
   CommandTemplate get command => agent.command;
 
@@ -550,6 +570,7 @@ final class DispatcherConfig {
     actions,
     profiles,
     pr,
+    merge,
   );
 
   WorktreeDefinition? worktree(String name) {
@@ -621,10 +642,20 @@ final class NewWorktrees {
 /// when there is none), so that one made outside the board is not made
 /// twice.
 final class PullRequestConfig {
-  PullRequestConfig({this.remote = 'origin', required this.create, this.find, String? urlPattern})
-    : urlPattern = _pattern(urlPattern) {
+  PullRequestConfig({
+    this.remote = 'origin',
+    required this.create,
+    this.find,
+    String? urlPattern,
+    this.merge,
+    this.state,
+    this.stateEvery = const Duration(minutes: 2),
+  }) : urlPattern = _pattern(urlPattern) {
     if (remote.isEmpty || remote.startsWith('-') || remote.contains(RegExp(r'\s'))) {
       throw ConfigurationException('dispatcher.pr.remote "$remote" is not a remote name.');
+    }
+    if (stateEvery < const Duration(minutes: 1)) {
+      throw const ConfigurationException('dispatcher.pr.state_every must be at least 1 (minutes).');
     }
   }
 
@@ -642,6 +673,16 @@ final class PullRequestConfig {
   /// [create] also gets on its standard input).
   static const placeholders = ['id', 'title', 'branch', 'base', 'remote', 'description'];
 
+  /// What [merge] and [state] may refer to: the item id and title, the
+  /// branch, the base, the remote, the pull request's URL `{pr}` and its
+  /// number `{pr_number}` (the last number in the URL).
+  static const mergePlaceholders = ['id', 'title', 'branch', 'base', 'remote', 'pr', 'pr_number'];
+
+  /// The number of the pull request at [url] (`…/pulls/12`, `…/pull/12`,
+  /// `…/merge_requests/12`): its last path segment made of digits; null
+  /// when there is none.
+  static String? numberOf(String url) => RegExp(r'/(\d+)/?(?:[?#].*)?$').firstMatch(url.trim())?.group(1);
+
   /// The first http(s) URL.
   static final defaultUrlPattern = RegExp(r'https?://[^\s<>"`)\]]+');
 
@@ -654,6 +695,19 @@ final class PullRequestConfig {
   /// Prints the URL of an open pull request of the branch
   /// (`dispatcher.pr.find`); null when not configured.
   final CommandTemplate? find;
+
+  /// Merges the item's pull request (`dispatcher.pr.merge`, used by the
+  /// built-in action `merge` with strategy `pr`); null when not configured.
+  final CommandTemplate? merge;
+
+  /// Prints the state of the item's pull request (`dispatcher.pr.state`):
+  /// `merged`, `closed` or `open`, as a word or as JSON (`state`, `merged`).
+  /// With it the dispatcher notices pull requests merged outside the board.
+  final CommandTemplate? state;
+
+  /// How often [state] is asked per item at most (`state_every`, minutes;
+  /// default 2).
+  final Duration stateEvery;
 
   /// Finds the URL in the output of [create] or [find]: its first group,
   /// else the whole match.

@@ -43,5 +43,6 @@ export 'src/views/infrastructure/yaml_views.dart' show parseFilter, parseViewYam
 export 'src/workflow/domain/action_definition.dart';
 export 'src/workflow/domain/appearance.dart';
 export 'src/workflow/domain/dispatcher_config.dart';
+export 'src/workflow/domain/merge_config.dart';
 export 'src/workflow/domain/workflow.dart';
 export 'src/workflow/infrastructure/yaml_workflow.dart' show parseWorkflowYaml;
