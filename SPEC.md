@@ -42,7 +42,7 @@ projects:
 - **Project folder** is the backlog folder itself, or its parent when the folder is called `backlog` (`~/p/hobbyo/backlog` → `hobbyo`).
 - **id** — lower-case letters, digits, `-`, `_`, starting with a letter or digit; unique within the registry (a repeated or invalid id makes the whole file invalid). It appears in URLs (`/api/p/<id>/…`).
 - **Order** matters: the first project is the *default project*.
-- **pinned** — optional `true`/`false` (default false), read and written back; meant for clients that offer pinned projects first. Set with `backlog projects pin|unpin <id>` or `PATCH /api/projects/<id>`; unpinning removes the key.
+- **pinned** — optional `true`/`false` (default false), read and written back; the board's project switcher offers pinned projects first (§9). Set with `backlog projects pin|unpin <id>` or `PATCH /api/projects/<id>`; unpinning removes the key.
 - Unknown keys and comments are kept; `backlog init` and `backlog projects add/remove` edit the file in place. A missing file is an empty registry.
 
 ## 2. Configuration — `backlog.yaml`
@@ -472,7 +472,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 **Layout** (responsive): from 1200 px a left panel with views (208 px, 240 px from 2000 px) and the open item as a panel on the right; 840–1199 px view tabs under the header (☰ opens a drawer with the full navigation) and the open item as a bottom sheet; below 840 px the open item is a full page; below 600 px the header has ☰ and a view dropdown and a bottom bar shows the pinned views (up to three; the first two views when none are pinned) plus *More* (the drawer). *New item* is a floating button outside the left panel. From 2000 px wide (27" 4K and similar) text is 15 % larger.
 
 **Left panel**
-- On top the open project's name; with more than one project it opens a menu of all registered projects (the open one ticked; one the server cannot open greyed out with its error and not selectable). The drawer has the same switcher on narrower windows and phones.
+- On top the open project's name; with more than one project it opens a menu: the pinned projects under *Pinned* (plus the open project under *Open* when it is not pinned), or all registered projects when none is pinned — the open one ticked; one the server cannot open greyed out with its error and not selectable — and at the bottom *All projects (N)…*, a dialog listing every project (path or error) with a search box from 8 projects; a click opens one, the pin button pins or unpins it for everybody (`PATCH /api/projects/<id>`). The drawer has the same switcher on narrower windows and phones.
 - *New item* button (dialog: title, type, status, priority, milestone, parent, labels, body). The parent is optional and searched by id or title among unfinished items (epics and stories first); choosing one sets the type to its child type unless the type was picked by hand: epic → story → task → subtask, each only when the workflow has that type (a task without `subtask` gets a task; other types and missing levels the default type). The detail's *Add child* opens the same dialog under the shown item and opens the new item.
 - Saved views with their item count; views with `section` grouped under foldable section headings; the ⋮ menu of a view moves it to an existing or new section (persisted to the YAML) or pins it to the phone's bottom bar.
 - *People*: agents holding a live claim with how many items each holds (busiest first); a click narrows the board to that agent's items (the People filter).

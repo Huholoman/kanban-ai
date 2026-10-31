@@ -313,6 +313,57 @@ void main() {
         expect(find.byKey(const ValueKey('project-switcher')), findsNothing);
       });
 
+      testWidgets('pinned projects come first; the rest is in All projects with search and pins', (tester) async {
+        final ids = [for (var i = 1; i <= 10; i++) 'p$i'];
+        final api = FakeProjectsApi(
+          {
+            for (final id in ids) id: FakeBacklogApi([item('${id.toUpperCase()}-1')]),
+          },
+          list: [for (final id in ids) fakeProject(id, pinned: id == 'p2' || id == 'p3')],
+        );
+        await pumpApp(tester, projects: api, route: '/p/p5');
+        await tester.tap(find.byKey(const ValueKey('project-switcher')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('project-section-Pinned')), findsOneWidget);
+        expect(find.byKey(const ValueKey('project-p2')), findsOneWidget);
+        expect(find.byKey(const ValueKey('project-p3')), findsOneWidget);
+        expect(find.byKey(const ValueKey('project-section-Open')), findsOneWidget, reason: 'the open one is unpinned');
+        expect(find.byKey(const ValueKey('project-p5')), findsOneWidget);
+        expect(find.byKey(const ValueKey('project-p7')), findsNothing);
+
+        await tester.tap(find.byKey(const ValueKey('project-all')));
+        await tester.pumpAndSettle();
+        expect(find.text('All projects'), findsOneWidget);
+        await tester.enterText(find.byKey(const ValueKey('project-search')), 'p7');
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('all-project-p7')), findsOneWidget);
+        expect(find.byKey(const ValueKey('all-project-p2')), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('pin-project-p7')));
+        await tester.pumpAndSettle();
+        expect(api.list.where((p) => p.pinned).map((p) => p.id), ['p2', 'p3', 'p7']);
+        await tester.tap(find.byKey(const ValueKey('all-project-p7')));
+        await tester.pumpAndSettle();
+        expect(find.text('Item P7-1'), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('project-switcher')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('project-section-Open')), findsNothing, reason: 'p7 is pinned now');
+        expect(find.byKey(const ValueKey('project-p7')), findsOneWidget);
+      });
+
+      testWidgets('without pinned projects the menu lists all of them', (tester) async {
+        await pumpApp(tester, projects: threeProjects(), route: '/p/a');
+        await tester.tap(find.byKey(const ValueKey('project-switcher')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('project-section-Pinned')), findsNothing);
+        for (final id in ['a', 'b', 'c']) {
+          expect(find.byKey(ValueKey('project-$id')), findsOneWidget);
+        }
+        await tester.tap(find.byKey(const ValueKey('project-all')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('project-search')), findsNothing, reason: 'three projects need no search');
+      });
+
       testWidgets('on a phone the switcher is in the drawer', (tester) async {
         await pumpApp(tester, projects: threeProjects(), route: '/p/a', width: 400);
         await tester.tap(find.byKey(const ValueKey('bottom-more')));
