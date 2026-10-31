@@ -31,7 +31,14 @@ have not claimed; if `claim` reports a conflict, someone else has it.
     backlog heartbeat T-7f3a     # renew the claim (expires after the lease)
     backlog set T-7f3a branch=feat/reports
     backlog set T-7f3a status=review
-    backlog set T-7f3a pr=https://github.com/org/repo/pull/42   # once the PR exists
+    backlog pr T-7f3a --description "What, why, how verified"   # push the branch, open its PR
+    backlog set T-7f3a pr=https://github.com/org/repo/pull/42   # a PR opened by hand
+
+`backlog pr` works when `backlog.yaml` configures `dispatcher.pr`: it pushes
+the item's branch (never the base branch) and opens the pull request, or only
+pushes when the item has one already. Push only this way. After rebasing the
+branch (e.g. to resolve conflicts with the base), `backlog pr T-7f3a --force`
+replaces the remote branch (with a lease; never the base branch).
 
 Edit the body of your item file directly (context, plan, checklist with
 `- [ ]` / `- [x]`, notes). Do not edit `status`, `assignee` or `id` by hand.
@@ -47,6 +54,11 @@ is not ready until someone answers with a comment. When the discussion
 changes what the item asks for, update the description or acceptance
 criteria above `## Discussion` and say so in a comment; never edit
 comments.
+
+Comments marked `· review ok` / `· review changes` are reviews of the
+work (`backlog review T-7f3a --changes "summary, then 1. … 2. …"`, by an AI
+review or a person). They wake no agent; when you are asked to fix them,
+fix the numbered findings of the latest one or say in a comment why not.
 
 ## Finishing
 

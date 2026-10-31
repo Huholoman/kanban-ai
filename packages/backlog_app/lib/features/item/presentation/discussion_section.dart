@@ -13,8 +13,8 @@ import '../application/item_controller.dart';
 /// The item's discussion (the `## Discussion` section of its body): the
 /// comments of agents and people, an open question highlighted, and a field
 /// for a reply. With a dispatcher that can continue the item's last agent
-/// session, *Send and continue* (manual mode) also resumes the agent with
-/// the reply; in auto mode it continues by itself. *Note only* (when there
+/// session, *Send* also wakes the agent: the dispatcher resumes it with the
+/// reply by itself, in either mode. *Note only* (when there
 /// is an agent session or an open question) saves a note that neither wakes
 /// the agent nor answers the question; a resumed agent sees it as context.
 class DiscussionSection extends StatefulWidget {
@@ -41,14 +41,11 @@ class _DiscussionSectionState extends State<DiscussionSection> {
     super.dispose();
   }
 
-  Future<void> _send({bool resume = false, bool note = false}) async {
+  Future<void> _send({bool note = false}) async {
     final text = _reply.text.trim();
     if (text.isEmpty) return;
-    final controller = widget.controller;
-    final dispatch = DispatchScope.maybeOf(context);
-    if (!await controller.comment(text, note: note)) return;
+    if (!await widget.controller.comment(text, note: note)) return;
     _reply.clear();
-    if (resume && dispatch != null) await dispatch.startAgent(controller.item!.id);
   }
 
   @override
@@ -102,7 +99,7 @@ class _DiscussionSectionState extends State<DiscussionSection> {
             spacing: 8,
             runSpacing: 6,
             children: [
-              if (resumable && !dispatch.plan.isManual)
+              if (resumable)
                 Text(
                   'Send: the agent continues in ${session.worktree} by itself. Note only: it is not woken.',
                   style: theme.textTheme.bodySmall?.copyWith(color: tokens.muted),
@@ -122,28 +119,12 @@ class _DiscussionSectionState extends State<DiscussionSection> {
                     onPressed: canSend ? () => unawaited(_send(note: true)) : null,
                   ),
                 ),
-              if (resumable && dispatch.plan.isManual) ...[
-                SecondaryButton(
-                  key: const ValueKey('send-comment'),
-                  label: 'Send',
-                  onPressed: canSend ? () => unawaited(_send()) : null,
-                ),
-                Tooltip(
-                  message: 'Resumes the session of its agent in ${session.worktree} with your reply',
-                  child: PrimaryButton(
-                    key: const ValueKey('send-and-continue'),
-                    label: 'Send and continue',
-                    icon: Icons.reply,
-                    onPressed: canSend ? () => unawaited(_send(resume: true)) : null,
-                  ),
-                ),
-              ] else
-                PrimaryButton(
-                  key: const ValueKey('send-comment'),
-                  label: 'Send',
-                  icon: Icons.send,
-                  onPressed: canSend ? () => unawaited(_send()) : null,
-                ),
+              PrimaryButton(
+                key: const ValueKey('send-comment'),
+                label: 'Send',
+                icon: Icons.send,
+                onPressed: canSend ? () => unawaited(_send()) : null,
+              ),
             ],
           ),
         ],
@@ -184,6 +165,24 @@ class _Comment extends StatelessWidget {
                 style: small?.copyWith(color: tokens.muted),
               ),
               if (comment.note) Tag('note', icon: Icons.sticky_note_2_outlined, color: tokens.muted),
+              if (comment.review case final review?)
+                Tag(
+                  review == 'ok'
+                      ? 'review ✓'
+                      : comment.findings == 0
+                      ? 'review: changes'
+                      : 'review: ${comment.findings} finding${comment.findings == 1 ? '' : 's'}',
+                  icon: Icons.rate_review_outlined,
+                  color: review == 'ok' ? tokens.success : tokens.warning,
+                ),
+              if (comment.commit case final commit?)
+                Tooltip(
+                  message: 'The reviewed commit',
+                  child: Text(
+                    commit.length > 7 ? commit.substring(0, 7) : commit,
+                    style: small?.copyWith(color: tokens.muted),
+                  ),
+                ),
               if (comment.question)
                 Tag(
                   open ? 'question · waits for you' : 'question',

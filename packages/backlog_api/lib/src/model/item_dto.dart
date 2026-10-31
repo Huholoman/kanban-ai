@@ -1,3 +1,4 @@
+import 'action_dto.dart';
 import 'discussion_dto.dart';
 import 'json.dart';
 import 'workflow_dto.dart';
@@ -85,6 +86,8 @@ final class ItemDto {
     this.checklist = Progress.none,
     this.claim,
     this.needsHuman = false,
+    this.review = 'none',
+    this.reviewFindings = 0,
     this.path,
     this.body,
   });
@@ -124,6 +127,8 @@ final class ItemDto {
       checklist: Progress(progress.integer('done'), progress.integer('total')),
       claim: claim == null ? null : ClaimDto.fromJson(claim),
       needsHuman: json.boolean('needs_human'),
+      review: json.optionalString('review') ?? 'none',
+      reviewFindings: json['review_findings'] == null ? 0 : json.integer('review_findings'),
       path: json.optionalString('path'),
       body: json.optionalString('body'),
     );
@@ -168,6 +173,14 @@ final class ItemDto {
   /// the item waits for a person (and is not ready).
   final bool needsHuman;
 
+  /// Where the review of the item's work stands: `none`, `running` (an AI
+  /// review runs or waits to run), `ok`, `changes` or `stale` (the branch
+  /// has commits the latest review did not see).
+  final String review;
+
+  /// Findings of the latest review when it asks for changes, else 0.
+  final int reviewFindings;
+
   /// Location of the file, relative to the backlog root.
   final String? path;
 
@@ -208,6 +221,8 @@ final class ItemDto {
     'progress': {'done': checklist.done, 'total': checklist.total},
     'claim': claim?.toJson(),
     'needs_human': needsHuman,
+    'review': review,
+    'review_findings': reviewFindings,
     'path': ?path,
     'body': ?body,
   };
@@ -251,6 +266,7 @@ final class ItemDetailDto {
     this.conflicts = const [],
     this.waiting = const [],
     this.discussion = const [],
+    this.actions = const [],
   });
 
   factory ItemDetailDto.fromJson(Json json) {
@@ -266,6 +282,7 @@ final class ItemDetailDto {
       conflicts: links('conflicts'),
       waiting: links('waiting'),
       discussion: json.objects('discussion').map(CommentDto.fromJson).toList(),
+      actions: json.objects('actions').map(ActionDto.fromJson).toList(),
     );
   }
 
@@ -287,6 +304,9 @@ final class ItemDetailDto {
   /// The comments of the `## Discussion` section of the body, oldest first.
   final List<CommentDto> discussion;
 
+  /// The actions the item's status offers as buttons (`dispatcher.actions`).
+  final List<ActionDto> actions;
+
   Json toJson() => {
     'item': item.toJson(),
     'parent': parent?.toJson(),
@@ -297,5 +317,6 @@ final class ItemDetailDto {
     'conflicts': [for (final link in conflicts) link.toJson()],
     'waiting': [for (final link in waiting) link.toJson()],
     'discussion': [for (final comment in discussion) comment.toJson()],
+    'actions': [for (final action in actions) action.toJson()],
   };
 }

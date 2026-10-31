@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../shared/copyable_id.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
+import '../../dispatch/presentation/action_buttons.dart';
 import '../../dispatch/presentation/dispatch_scope.dart';
 import '../application/item_controller.dart';
 
@@ -174,6 +175,7 @@ class DetailHeader extends StatelessWidget {
             onPressed: enabled ? () => dispatch.startAgent(item.id) : null,
           ),
       ],
+      ...actionButtons(context, item, controller.detail?.actions ?? const [], enabled: enabled),
       if (onScope case final onScope? when item.type == 'epic')
         SecondaryButton(
           key: const ValueKey('scope-board'),

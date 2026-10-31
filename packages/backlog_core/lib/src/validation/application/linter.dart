@@ -9,6 +9,7 @@ import '../../planning/domain/backlog_snapshot.dart';
 import '../../planning/domain/planned_item.dart';
 import '../../shared/clock.dart';
 import '../../views/domain/view.dart';
+import '../../workflow/domain/action_definition.dart';
 import '../../workflow/domain/workflow.dart';
 import '../domain/lint_issue.dart';
 
@@ -190,6 +191,38 @@ final class Linter {
           ),
         );
       }
+      if (dispatcher.pr case final pr?) {
+        for (final command in [pr.create, ?pr.find, ?pr.merge, ?pr.state, ?pr.review]) {
+          if (!await programExists(command.executable)) {
+            issues.add(
+              LintIssue(
+                Severity.warning,
+                'dispatcher-pr',
+                'dispatcher.pr runs "${command.executable}", which is not on the PATH'
+                    '${command == pr.create
+                        ? '; pull requests cannot be opened'
+                        : command == pr.review
+                        ? '; reviews are not posted to pull requests'
+                        : ''}.',
+                location: 'backlog.yaml',
+              ),
+            );
+          }
+        }
+      }
+      for (final command in [?dispatcher.merge.check, ?dispatcher.merge.command]) {
+        final program = command.executable;
+        if (!program.contains('{') && !await programExists(program)) {
+          issues.add(
+            LintIssue(
+              Severity.warning,
+              'dispatcher-merge',
+              'dispatcher.merge runs "$program", which is not on the PATH.',
+              location: 'backlog.yaml',
+            ),
+          );
+        }
+      }
       if (!agent.verified) {
         issues.add(
           LintIssue(
@@ -200,6 +233,30 @@ final class Linter {
             location: 'backlog.yaml',
           ),
         );
+      }
+      for (final action in dispatcher.actions) {
+        void warn(String message) => issues.add(
+          LintIssue(
+            Severity.warning,
+            'dispatcher-action',
+            'Action "${action.name}": $message',
+            location: 'backlog.yaml',
+          ),
+        );
+        final program = switch (action.kind) {
+          ActionKind.prompt => dispatcher.profileFor(action).command.executable,
+          ActionKind.command => action.command!.executable,
+          ActionKind.builtIn => null,
+        };
+        if (program != null && !program.contains('{') && !await programExists(program)) {
+          warn('it runs "$program", which is not on the PATH.');
+        }
+        if (action.kind == ActionKind.prompt && action.agent != null && !dispatcher.profileFor(action).verified) {
+          warn('its agent "${action.agent}" is an unverified preset.');
+        }
+        if (action.onEnter == null && action.statuses != null && action.statuses!.isEmpty) {
+          warn('it has no on_enter and an empty statuses list, so it can never run.');
+        }
       }
     }
 

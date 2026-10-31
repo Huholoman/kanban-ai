@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import '../../../shared/copyable_id.dart';
 import '../../../shared/item_style.dart';
 import '../../../shared/pr_link.dart';
+import '../../../shared/review_badge.dart';
 import '../../../shared/tokens.dart';
 
 /// Compact summary of an item for boards and lists: id and priority, the
 /// title and one meta line that tells the state (waits for you, ready,
 /// blocked, waiting for overlapping work, claimed, claim expired, or just
-/// labels); a card that waits for a person has a warning border.
+/// labels), the AI review and the pull request; a card that waits for a
+/// person has a warning border.
 class ItemCard extends StatelessWidget {
   const ItemCard({
     super.key,
@@ -21,6 +23,7 @@ class ItemCard extends StatelessWidget {
     this.selected = false,
     this.footer,
     this.now,
+    this.menu,
   });
 
   final ItemDto item;
@@ -41,6 +44,9 @@ class ItemCard extends StatelessWidget {
 
   /// The current time for claim countdowns; the clock when null.
   final DateTime? now;
+
+  /// A small control before the priority, e.g. the item's actions.
+  final Widget? menu;
 
   /// How long a claim lasts yet: `1h left`, `25 min left`.
   static String timeLeft(DateTime expiresAt, DateTime now) {
@@ -105,6 +111,7 @@ class ItemCard extends StatelessWidget {
                         ),
                       ],
                       const Spacer(),
+                      if (menu != null) ...[menu!, const SizedBox(width: 4)],
                       _priority(tokens, muted),
                     ],
                   ),
@@ -183,6 +190,7 @@ class ItemCard extends StatelessWidget {
       if (item.milestone != null) parts.add(Text(item.milestone!, style: base));
       if (item.assignee != null && !item.isDone) parts.add(Text('@${item.assignee}', style: base));
     }
+    if (!item.isDone && ReviewBadge.label(item) != null) parts.add(ReviewBadge(item));
     if (item.pr case final pr?) {
       parts.add(PrLink(pr));
       if (item.branch != null) parts.add(Text(item.branch!, style: base));

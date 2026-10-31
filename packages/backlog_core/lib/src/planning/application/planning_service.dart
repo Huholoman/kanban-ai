@@ -3,6 +3,7 @@ import '../../items/domain/item_repository.dart';
 import '../../shared/clock.dart';
 import '../../workflow/domain/workflow.dart';
 import '../domain/backlog_snapshot.dart';
+import '../domain/review_state.dart';
 
 /// Builds [BacklogSnapshot]s from the current state of storage.
 final class PlanningService {
@@ -11,7 +12,9 @@ final class PlanningService {
     required ClaimStore claims,
     required Workflow workflow,
     required Clock clock,
-  }) : _items = items,
+    BranchHeads? branches,
+  }) : _branches = branches,
+       _items = items,
        _claims = claims,
        _workflow = workflow,
        _clock = clock;
@@ -20,6 +23,7 @@ final class PlanningService {
   final ClaimStore _claims;
   final Workflow _workflow;
   final Clock _clock;
+  final BranchHeads? _branches;
 
   Future<BacklogSnapshot> snapshot() async {
     final catalog = await _items.load();
@@ -28,6 +32,7 @@ final class PlanningService {
       workflow: _workflow,
       claims: await _claims.all(),
       now: _clock.now(),
+      branchHeads: await _branches?.heads() ?? const {},
     );
   }
 }

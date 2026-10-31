@@ -18,6 +18,10 @@ abstract final class DtoMapper {
     defaultPriority: workflow.defaultPriority,
     defaultType: workflow.defaultType,
     appearance: _appearance(workflow.appearance),
+    actions: [
+      if (workflow.dispatcher case final dispatcher?)
+        for (final action in dispatcher.actions) DtoMapper.action(action, dispatcher),
+    ],
   );
 
   static AppearanceDto _appearance(Appearance appearance) {
@@ -38,7 +42,9 @@ abstract final class DtoMapper {
     );
   }
 
-  static ItemDto item(PlannedItem planned, {String? path, bool withBody = false}) {
+  /// [reviewing]: the items an AI review runs or waits to run for (from the
+  /// dispatcher's plan, [DispatchPlan.reviewing]).
+  static ItemDto item(PlannedItem planned, {String? path, bool withBody = false, Set<ItemId> reviewing = const {}}) {
     final item = planned.item;
     final claim = planned.claim;
     return ItemDto(
@@ -72,15 +78,46 @@ abstract final class DtoMapper {
       checklist: Progress(planned.checklist.done, planned.checklist.total),
       claim: claim == null ? null : DtoMapper.claim(claim, expired: planned.isClaimExpired),
       needsHuman: planned.needsHuman,
+      review: (reviewing.contains(planned.id) ? ReviewState.running : planned.review).name,
+      reviewFindings: planned.reviewFindings,
       path: path,
       body: withBody ? item.body : null,
     );
   }
 
-  static ItemDetailDto detail(PlannedItem planned, BacklogSnapshot snapshot, {String? path}) {
+  static ActionDto action(ActionDefinition action, DispatcherConfig config) => ActionDto(
+    name: action.name,
+    kind: action.kind.id,
+    statuses: action.statuses,
+    onEnter: action.onEnter,
+    agent: action.kind == ActionKind.prompt ? config.profileFor(action).name : null,
+    fresh: action.fresh,
+    review: action.review,
+    autoFix: action.autoFix,
+  );
+
+  static AgentRunDto run(AgentRun run) => AgentRunDto(
+    item: run.item.value,
+    worktree: run.worktree,
+    pid: run.pid,
+    startedAt: run.startedAt,
+    log: run.log,
+    agent: run.agent,
+    branch: run.branch,
+    action: run.action,
+    kind: run.kind.id,
+  );
+
+  static ItemDetailDto detail(
+    PlannedItem planned,
+    BacklogSnapshot snapshot, {
+    String? path,
+    Set<ItemId> reviewing = const {},
+  }) {
     final item = planned.item;
+    final dispatcher = snapshot.workflow.dispatcher;
     return ItemDetailDto(
-      item: DtoMapper.item(planned, path: path, withBody: true),
+      item: DtoMapper.item(planned, path: path, withBody: true, reviewing: reviewing),
       parent: item.parent == null ? null : _link(item.parent!, snapshot),
       children: [for (final child in snapshot.childrenOf(item.id)) _link(child.id, snapshot)],
       dependencies: [for (final id in item.dependsOn) _link(id, snapshot)],
@@ -96,7 +133,14 @@ abstract final class DtoMapper {
             text: comment.text,
             question: comment.question,
             note: comment.note,
+            review: comment.review?.name,
+            commit: comment.commit,
           ),
+      ],
+      actions: [
+        if (dispatcher != null)
+          for (final action in dispatcher.actions)
+            if (action.offeredIn(item.status)) DtoMapper.action(action, dispatcher),
       ],
     );
   }
@@ -120,7 +164,7 @@ abstract final class DtoMapper {
     count: count,
   );
 
-  static ViewResultDto view(ViewResult result) {
+  static ViewResultDto view(ViewResult result, {Set<ItemId> reviewing = const {}}) {
     final definition = result.definition;
     return ViewResultDto(
       id: definition.id,
@@ -131,7 +175,8 @@ abstract final class DtoMapper {
       columns: definition.columns,
       hidden: result.hidden,
       groups: [
-        for (final group in result.groups) ViewGroupDto(group.key, [for (final planned in group.items) item(planned)]),
+        for (final group in result.groups)
+          ViewGroupDto(group.key, [for (final planned in group.items) item(planned, reviewing: reviewing)]),
       ],
     );
   }
@@ -177,15 +222,7 @@ abstract final class DtoMapper {
           created: worktree.created,
           isNew: worktree.isNew,
           run: switch (worktree.run) {
-            final run? => AgentRunDto(
-              item: run.item.value,
-              worktree: run.worktree,
-              pid: run.pid,
-              startedAt: run.startedAt,
-              log: run.log,
-              agent: run.agent,
-              branch: run.branch,
-            ),
+            final run? => DtoMapper.run(run),
             null => null,
           },
         ),
@@ -201,6 +238,11 @@ abstract final class DtoMapper {
         ),
     ],
     waiting: [for (final item in plan.waiting) item.id.value],
+    waitingReasons: [
+      for (final item in plan.waiting)
+        if (plan.waitingReasons[item.id] case final reason?)
+          HeldItemDto(item: item.id.value, title: item.item.title, reason: reason),
+    ],
     held: [
       for (final (:item, :reason) in plan.held)
         HeldItemDto(item: item.id.value, title: item.item.title, reason: reason),
@@ -218,6 +260,16 @@ abstract final class DtoMapper {
     ],
     maxWorktrees: plan.config.newWorktrees?.maxWorktrees,
     spareWorktrees: plan.spare.length,
+    runs: [for (final run in plan.runs) DtoMapper.run(run)],
+    pendingActions: [
+      for (final pending in plan.pending)
+        PendingActionDto(
+          item: pending.item.value,
+          action: pending.action,
+          status: pending.status,
+          since: pending.since,
+        ),
+    ],
   );
 
   static ItemLinkDto _link(ItemId id, BacklogSnapshot snapshot) {

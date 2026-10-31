@@ -90,6 +90,12 @@ appearance:
           template.substring(start).replaceAll(RegExp(r'^# (?=\s*(- |[a-z_-]+:))', multiLine: true), '');
       expect(parseWorkflowYaml(uncommented).appearance.priorities['p0'], '#e53935');
       expect(parseWorkflowYaml(uncommented).dispatcher!.worktrees.map((w) => w.name), ['monorepo-2', 'monorepo-3']);
+      expect(parseWorkflowYaml(uncommented).dispatcher!.actions.map((a) => a.name), [
+        'Address PR comments',
+        'AI review',
+        'Tests',
+      ]);
+      expect(parseWorkflowYaml(uncommented).dispatcher!.merge.check!.arguments, ['mise', 'run', 'check']);
     });
 
     test('the dispatcher is off without its section', () {
@@ -134,6 +140,140 @@ dispatcher:
       expect(dispatcher.command.render({'id': 'X-1'}), ['sh', '-c', 'echo {literal} X-1']);
     });
 
+    test('dispatcher.pr: create, find, remote and url_pattern; the default prompts follow it', () {
+      final plain = parseWorkflowYaml('dispatcher: {worktrees: [a]}').dispatcher!;
+      expect(plain.pr, isNull);
+      expect(plain.prompt.text, contains('Never push'));
+      expect(plain.prompt.text, isNot(contains('backlog pr')));
+
+      final tea = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  pr:
+    create: 'tea pulls create --head {branch} --base {base} --title "{id}: {title}" --description-file -'
+''').dispatcher!;
+      final pr = tea.pr!;
+      expect(pr.remote, 'origin');
+      expect(pr.find, isNull);
+      expect(pr.create.render({'id': 'X-1', 'title': 'Do it', 'branch': 'agent/X-1', 'base': 'main'}), [
+        'tea', 'pulls', 'create', '--head', 'agent/X-1', '--base', 'main', '--title', 'X-1: Do it', //
+        '--description-file', '-',
+      ]);
+      expect(tea.prompt.text, DispatcherConfig.defaultPullRequestPrompt);
+      expect(tea.prompt.text, allOf(contains('backlog pr {id} --description'), contains('Never run `git push`')));
+      expect(tea.resumePrompt.text, contains('backlog pr {id}'));
+      expect(
+        pr.urlIn('\x1B[1m#12\x1B[0m Do it\nhttps://git.example/o/r/pulls/12\n'),
+        'https://git.example/o/r/pulls/12',
+      );
+      expect(pr.urlIn('no link'), isNull);
+
+      final custom = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  prompt: Mine {id}
+  pr:
+    remote: upstream
+    create: [gh, pr, create, --body-file, "-"]
+    find: [gh, pr, list, --head, "{branch}", --json, url, --jq, ".[0].url"]
+    url_pattern: 'see (\\S+) for'
+''').dispatcher!;
+      expect(custom.prompt.text, 'Mine {id}', reason: 'an own prompt wins');
+      expect(custom.pr!.remote, 'upstream');
+      expect(custom.pr!.find!.arguments, contains('{branch}'));
+      expect(
+        custom.pr!.urlIn('https://x.example/a see https://x.example/pull/1 for details'),
+        'https://x.example/pull/1',
+      );
+
+      void rejects(String pr, String message) => expect(
+        () => parseWorkflowYaml('dispatcher:\n  worktrees: [a]\n  pr: $pr\n'),
+        throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
+      );
+      rejects('{remote: origin}', 'dispatcher.pr.create is required');
+      rejects('{create: x, merged: y}', 'unknown key "dispatcher.pr.merged"');
+      rejects('{create: x, merge: "tea {description}"}', 'dispatcher.pr.merge: unknown placeholder "{description}"');
+      rejects('{create: x, state_every: 0}', 'state_every must be at least 1');
+      rejects('{create: "tea {worktree}"}', 'unknown placeholder "{worktree}"');
+      rejects('{create: "tea {pr_number}"}', 'unknown placeholder "{pr_number}"');
+      rejects('{create: x, review: "tea comment {description}"}', 'unknown placeholder "{description}"');
+      expect(
+        parseWorkflowYaml(
+          'dispatcher:\n  worktrees: [a]\n  pr: {create: x, review: "tea comment {pr_number} {body} {verdict} {pr}"}\n',
+        ).dispatcher!.pr!.review!.executable,
+        'tea',
+      );
+      rejects('{create: x, remote: --force}', 'not a remote name');
+      rejects('{create: x, url_pattern: "("}', 'url_pattern is not a regular expression');
+      rejects('{create: ""}', 'must not be empty');
+    });
+
+    test('dispatcher.pr.merge and state: {pr} is the URL, {pr_number} its number', () {
+      final pr = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  pr:
+    create: x
+    merge: tea pulls merge --style rebase {pr_number}
+    state: [gh, pr, view, "{pr}", --json, state, --jq, .state]
+    state_every: 5
+''').dispatcher!.pr!;
+      expect(pr.merge!.render({'pr_number': '12'}), ['tea', 'pulls', 'merge', '--style', 'rebase', '12']);
+      expect(pr.state!.arguments, contains('{pr}'));
+      expect(pr.stateEvery, const Duration(minutes: 5));
+      expect(
+        parseWorkflowYaml('dispatcher: {worktrees: [a], pr: {create: x}}').dispatcher!.pr!.stateEvery.inMinutes,
+        2,
+      );
+      expect(PullRequestConfig.numberOf('https://git.example/o/r/pulls/12'), '12');
+      expect(PullRequestConfig.numberOf('https://github.com/o/r/pull/7/'), '7');
+      expect(PullRequestConfig.numberOf('https://gitlab.example/o/r/-/merge_requests/3#note'), '3');
+      expect(PullRequestConfig.numberOf('https://git.example/o/r/pulls/7?tab=files'), '7');
+      expect(PullRequestConfig.numberOf('#7'), '7');
+      expect(PullRequestConfig.numberOf('7'), '7');
+      expect(PullRequestConfig.numberOf('https://git.example/o/r'), isNull);
+    });
+
+    test('dispatcher.merge: strategy pr with dispatcher.pr, else local; validation', () {
+      DispatcherConfig parse(String rest) => parseWorkflowYaml('dispatcher:\n  worktrees: [a]\n$rest').dispatcher!;
+      final plain = parse('');
+      expect(
+        (plain.merge.strategy, plain.merge.remote, plain.merge.cleanup, plain.merge.push),
+        (MergeStrategy.local, 'origin', true, false),
+      );
+      expect(parse('  pr: {create: x, remote: up}\n').merge.strategy, MergeStrategy.pr);
+      expect(parse('  pr: {create: x, remote: up}\n').merge.remote, 'up');
+
+      final local = parse('''
+  merge:
+    strategy: local
+    check: mise run check
+    push: true
+    remote: upstream
+    cleanup: false
+''').merge;
+      expect(local.check!.arguments, ['mise', 'run', 'check']);
+      expect((local.push, local.remote, local.cleanup), (true, 'upstream', false));
+      final command = parse('  merge: {strategy: command, command: [./ship.sh, "{branch}", "{pr_number}"]}\n').merge;
+      expect(command.command!.render({'branch': 'b', 'pr_number': '3'}), ['./ship.sh', 'b', '3']);
+
+      void rejects(String rest, String message) => expect(
+        () => parse(rest),
+        throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
+      );
+      rejects('  merge: {strategy: squash}\n', 'must be pr, local or command');
+      rejects('  merge: {strategy: command}\n', 'strategy command needs dispatcher.merge.command');
+      rejects('  merge: {command: x}\n', 'merge.command only applies to strategy command');
+      rejects('  merge: {strategy: command, command: x, check: y}\n', 'check and push only apply to strategy local');
+      rejects('  pr: {create: x, merge: y}\n  merge: {push: true}\n', 'only apply to strategy local');
+      rejects('  merge: {push: yes please}\n', 'merge.push must be true or false');
+      rejects('  merge: {squash: true}\n', 'unknown key "dispatcher.merge.squash"');
+      rejects('  merge: {check: "x {description}"}\n', 'unknown placeholder "{description}"');
+      rejects('  merge: {remote: -f}\n', 'not a remote name');
+      rejects('  pr: {create: x}\n  merge: {cleanup: true}\n', 'strategy pr needs dispatcher.pr.merge');
+      rejects('  merge: {strategy: pr}\n', 'needs dispatcher.pr with dispatcher.pr.merge');
+    });
+
     test('agent profiles: claude by default, built-in by name, own ones in agents', () {
       final byDefault = parseWorkflowYaml('dispatcher: {worktrees: [a]}').dispatcher!;
       expect(byDefault.agent.name, 'claude');
@@ -148,6 +288,10 @@ dispatcher:
       }
       expect(claude, isNot(contains('--bare')));
       expect(claude, isNot(contains('--dangerously-skip-permissions')));
+      final denied = claude[claude.indexOf('--disallowedTools') + 1];
+      for (final rule in ['Bash(git push *)', 'Bash(git -*)', 'Bash(git send-pack *)', 'Bash(git config *alias*)']) {
+        expect(denied, contains(rule), reason: '`git -C . push` slips past Bash(git push *) alone');
+      }
 
       expect(parseWorkflowYaml('dispatcher: {agent: codex, worktrees: [a]}').dispatcher!.agent.verified, isFalse);
 
@@ -171,7 +315,7 @@ dispatcher:
           items: [item('X-1')],
           workflow: parseWorkflowYaml(
             'dispatcher: {worktrees: [a], agent: mine, agents: {mine: {command: [my-agent, "{prompt}"], '
-            'env: {MY_NAME: "{worktree}-{id}"}}}, prompt: "Do {id} ({title}) as {worktree}."}',
+            'env: {MY_NAME: "{worktree}-{id}", GIT_EDITOR: vi}}}, prompt: "Do {id} ({title}) as {worktree}."}',
           ),
           claims: const [],
           now: DateTime.utc(2026, 10, 29),
@@ -181,7 +325,13 @@ dispatcher:
       final assignment = plan.assignments.single;
       expect(assignment.prompt, 'Do X-1 (Item X-1) as a.');
       expect(assignment.command, ['my-agent', 'Do X-1 (Item X-1) as a.']);
-      expect(assignment.environment, {'BACKLOG_AGENT': 'a', 'BACKLOG_DIR': '/w/backlog', 'MY_NAME': 'a-X-1'});
+      expect(assignment.environment, {
+        'GIT_EDITOR': 'vi', // the profile replaces the default
+        'GIT_SEQUENCE_EDITOR': 'true', // git never waits for an editor nobody sees
+        'BACKLOG_AGENT': 'a',
+        'BACKLOG_DIR': '/w/backlog',
+        'MY_NAME': 'a-X-1',
+      });
     });
 
     test('the legacy command is a plain profile without a prompt of its own', () {
@@ -222,6 +372,91 @@ dispatcher:
     test('splits a command string like a shell, without running one', () {
       expect(CommandTemplate.splitWords(r"""a  'b c' "d \"e\" \$f" g\ h ''"""), ['a', 'b c', r'd "e" $f', 'g h', '']);
       expect(() => CommandTemplate.splitWords('a "b'), throwsA(isA<ConfigurationException>()));
+    });
+
+    test('parses actions: buttons per status, on_enter hooks, prompt, command or built-in', () {
+      final dispatcher = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  agents:
+    reviewer: {command: "rev {prompt}"}
+  actions:
+    - name: Fix PR comments
+      statuses: [review]
+      prompt: "Fix the comments of {pr} on {branch}"
+    - name: AI review
+      on_enter: review
+      fresh: true
+      agent: reviewer
+      prompt: "Review {id}: {news}"
+    - name: Merge
+      on_enter: done
+      statuses: []
+      run: noop
+    - name: Tests
+      run: [sh, -c, "cd {path} && mise run check # {id} {pr} {base}"]
+''').dispatcher!;
+      final [fix, review, merge, tests] = dispatcher.actions;
+      expect(fix.kind, ActionKind.prompt);
+      expect([fix.offeredIn('review'), fix.offeredIn('todo')], [true, false]);
+      expect(fix.fresh, isFalse);
+      expect(dispatcher.profileFor(fix).name, 'claude');
+      expect(review.onEnter, 'review');
+      expect([review.offeredIn('review'), review.offeredIn('todo')], [true, false]);
+      expect(dispatcher.profileFor(review).name, 'reviewer');
+      expect(review.fresh, isTrue);
+      expect(merge.kind, ActionKind.builtIn);
+      expect(merge.builtIn, 'noop');
+      expect(merge.offeredIn('done'), isFalse);
+      expect(tests.kind, ActionKind.command);
+      expect([tests.offeredIn('todo'), tests.offeredIn('done')], [true, true]);
+      expect(tests.command!.render({'path': '/w', 'id': 'X-1', 'pr': '7', 'base': 'main'}), [
+        'sh',
+        '-c',
+        'cd /w && mise run check # X-1 7 main',
+      ]);
+      expect(dispatcher.action('Merge'), same(merge));
+      expect([fix.review, review.review], [false, false]);
+
+      final [builtIn, extra] = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  actions:
+    - {name: AI review, review: true, on_enter: review}
+    - {name: Security review, review: true, statuses: [review], agent: claude, prompt: "Focus on {branch}.", auto_fix: 2}
+''').dispatcher!.actions;
+      expect((builtIn.kind, builtIn.review, builtIn.fresh, builtIn.prompt), (ActionKind.prompt, true, true, null));
+      expect(builtIn.summary, 'AI review, agent, new session');
+      expect(builtIn.autoFix, 0);
+      expect((extra.review, extra.prompt!.render({'branch': 'b'}), extra.autoFix), (true, 'Focus on b.', 2));
+      expect(extra.summary, 'AI review (auto-fix 2), agent claude, new session');
+      expect(dispatcher.action('merge'), isNull);
+    });
+
+    test('rejects broken actions', () {
+      void rejects(String actions, String message) => expect(
+        () => parseWorkflowYaml('dispatcher: {worktrees: [a], actions: [$actions]}'),
+        throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
+      );
+      rejects('{name: A}', 'give exactly one of prompt, run and review');
+      rejects('{name: A, prompt: x, run: noop}', 'give exactly one of prompt, run and review');
+      rejects('{name: A, review: true, run: noop}', 'a review runs an agent; it takes no run');
+      rejects('{name: A, review: true, fresh: false}', 'a review always runs in a new session');
+      rejects('{name: A, review: yes please}', 'review must be true or false');
+      rejects('{name: A, prompt: x, auto_fix: 2}', 'auto_fix only applies to a review');
+      rejects('{name: A, review: true, auto_fix: -1}', 'auto_fix must be 0 or more rounds');
+      rejects('{name: A, review: true, auto_fix: two}', 'auto_fix must be a number of rounds');
+      rejects('{name: A, run: "mise run check"}', 'unknown built-in action "mise run check" (known: noop, merge)');
+      rejects('{name: A, prompt: x}, {name: A, run: noop}', 'Duplicate dispatcher action "A"');
+      rejects('{name: A, prompt: x, on_enter: reviewed}', 'unknown status "reviewed"');
+      rejects('{name: A, prompt: x, statuses: [todo, nope]}', 'unknown status "nope"');
+      rejects('{name: A, prompt: x, agent: robot}', 'unknown agent "robot"');
+      rejects('{name: A, run: noop, fresh: true}', 'only apply to prompt actions');
+      rejects('{name: A, prompt: x, fresh: yes please}', 'fresh must be true or false');
+      rejects('{name: A, prompt: "{prompt}"}', 'unknown placeholder "{prompt}"');
+      rejects('{name: A, run: [x, "{news}"]}', 'unknown placeholder "{news}"');
+      rejects('{name: A/B, run: noop}', 'must not contain "/"');
+      rejects('{name: A, run: noop, when: now}', 'unknown key "dispatcher.actions[].when"');
     });
 
     test('rejects a broken dispatcher section', () {

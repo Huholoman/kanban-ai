@@ -23,6 +23,7 @@ final class ProjectRuntime {
     this.launcher,
     this.log,
     this.prefixLogs = false,
+    this.stateDir,
   });
 
   final Clock clock;
@@ -38,6 +39,10 @@ final class ProjectRuntime {
 
   /// Whether log lines start with `[<project id>] ` (several projects).
   final bool prefixLogs;
+
+  /// Where dispatchers keep what they know about status hooks across
+  /// restarts (`actions/<project>/state.json`); null keeps it in memory.
+  final String? stateDir;
 }
 
 /// One backlog of the server: its [BacklogHost], the watcher that feeds change
@@ -129,6 +134,15 @@ final class HostedProject {
       clock: runtime.clock,
       debounce: runtime.dispatchDebounce,
       onError: (error, _) => say('Dispatcher: $error'),
+      log: say,
+      actions: runtime.stateDir == null ? null : FileActionStateStore(stateDir: runtime.stateDir!, project: id),
+      requests: FileActionRequests(BacklogLayout(host.root)),
+      note: (item, text) async => (await host.backlog).items.comment(
+        item.value,
+        author: ProcessAgentLauncher.noteAuthor,
+        text: text,
+        note: true,
+      ),
     );
     dispatcher.plans.listen((plan) {
       say(describePlan(plan));

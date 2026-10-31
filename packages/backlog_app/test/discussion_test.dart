@@ -127,26 +127,16 @@ void main() {
     expect(api.updates.last.$2.body, startsWith('Export as CSV.\n\n## Discussion\n\n### w1 ·'));
   });
 
-  testWidgets('in manual mode Send and continue resumes the agent with the reply', (tester) async {
-    final api = await _pump(tester, plan: _plan(mode: 'manual'));
-    expect(_key('send-and-continue'), findsOneWidget);
-    await _reply(tester, 'CSV.', 'send-and-continue');
-    expect(api.discussions['Q-1']!.last.text, 'CSV.');
-    expect(api.started, ['Q-1']);
-    expect(api.startedFresh, isEmpty);
-
-    await _reply(tester, 'Just a note.', 'send-comment');
-    expect(api.started, ['Q-1'], reason: 'Send alone does not start it');
-  });
-
-  testWidgets('in auto mode the agent continues by itself', (tester) async {
-    final api = await _pump(tester, plan: _plan(mode: 'auto'));
-    expect(_key('send-and-continue'), findsNothing);
-    expect(find.text('Send: the agent continues in w1 by itself. Note only: it is not woken.'), findsOneWidget);
-    await _reply(tester, 'CSV.', 'send-comment');
-    expect(api.started, isEmpty);
-    expect(api.discussions['Q-1']!.last.note, isFalse);
-  });
+  for (final mode in ['manual', 'auto']) {
+    testWidgets('in $mode mode Send wakes the agent through the dispatcher, without a start', (tester) async {
+      final api = await _pump(tester, plan: _plan(mode: mode));
+      expect(_key('send-and-continue'), findsNothing);
+      expect(find.text('Send: the agent continues in w1 by itself. Note only: it is not woken.'), findsOneWidget);
+      await _reply(tester, 'CSV.', 'send-comment');
+      expect(api.started, isEmpty, reason: 'the dispatcher resumes it by itself');
+      expect(api.discussions['Q-1']!.last.note, isFalse);
+    });
+  }
 
   testWidgets('Note only saves a note that wakes nobody and answers nothing', (tester) async {
     final api = await _pump(tester, plan: _plan(mode: 'auto'));

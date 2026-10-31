@@ -29,6 +29,8 @@ ItemDto item(
   List<String> conflictsWith = const [],
   bool ready = false,
   bool needsHuman = false,
+  String review = 'none',
+  int reviewFindings = 0,
 }) => ItemDto(
   id: id,
   title: 'Item $id',
@@ -44,6 +46,8 @@ ItemDto item(
   conflictsWith: conflictsWith,
   ready: ready,
   needsHuman: needsHuman,
+  review: review,
+  reviewFindings: reviewFindings,
   body: body,
 );
 
@@ -75,6 +79,9 @@ final class FakeBacklogApi implements BacklogApi {
   /// What backlog.yaml would say under `appearance`.
   AppearanceDto appearance = const AppearanceDto();
 
+  /// What backlog.yaml would say under `dispatcher.actions`.
+  List<ActionDto> actions = const [];
+
   @override
   Future<WorkflowDto> workflow() async => WorkflowDto(
     statuses: _workflow.statuses,
@@ -84,6 +91,7 @@ final class FakeBacklogApi implements BacklogApi {
     defaultPriority: _workflow.defaultPriority,
     defaultType: _workflow.defaultType,
     appearance: appearance,
+    actions: actions,
   );
 
   /// Simulates an edit of backlog.yaml.
@@ -112,6 +120,10 @@ final class FakeBacklogApi implements BacklogApi {
       ],
       related: [for (final id in found.related) linkTo(id)],
       conflicts: [for (final id in found.conflictsWith) linkTo(id)],
+      actions: [
+        for (final action in actions)
+          if (action.offeredIn(found.status)) action,
+      ],
       waiting: [
         for (final other in items_.values)
           if (other.conflictsWith.contains(found.id)) link(other),
@@ -315,6 +327,19 @@ final class FakeBacklogApi implements BacklogApi {
     return plan = afterStart ?? plan;
   }
 
+  /// Actions run with [runAction] (`<item> <name>`); they answer with
+  /// [afterAction] (or fail with [failAction]).
+  final actionsRun = <String>[];
+  DispatchDto? afterAction;
+  Object? failAction;
+
+  @override
+  Future<DispatchDto> runAction(String reference, String name) async {
+    if (failAction case final error?) throw error;
+    actionsRun.add('$reference $name');
+    return plan = afterAction ?? plan;
+  }
+
   @override
   Future<DispatchDto> stopAgent(String reference) async {
     stopped.add(reference);
@@ -371,6 +396,8 @@ final class FakeBacklogApi implements BacklogApi {
     dependsOn: item.dependsOn,
     children: children ?? item.children,
     needsHuman: needsHuman ?? item.needsHuman,
+    review: item.review,
+    reviewFindings: item.reviewFindings,
     body: body ?? item.body,
   );
 }

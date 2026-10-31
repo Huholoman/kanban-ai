@@ -1,4 +1,5 @@
 import '../../shared/errors.dart';
+import 'action_definition.dart';
 import 'appearance.dart';
 import 'dispatcher_config.dart';
 
@@ -83,6 +84,11 @@ final class Workflow {
     _require(statuses.any((s) => s.id == status), 'Default status "$status" is not defined.');
     _require(priorities.contains(priority), 'Default priority "$priority" is not defined.');
     _require(types.contains(type), 'Default type "$type" is not defined.');
+    for (final action in dispatcher?.actions ?? const <ActionDefinition>[]) {
+      for (final listed in [?action.onEnter, ...?action.statuses]) {
+        _require(statuses.any((s) => s.id == listed), 'dispatcher.actions "${action.name}": unknown status "$listed".');
+      }
+    }
 
     return Workflow._(
       statuses: List.unmodifiable(statuses),

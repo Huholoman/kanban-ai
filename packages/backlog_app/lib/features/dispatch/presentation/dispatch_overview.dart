@@ -9,11 +9,15 @@ import 'dispatch_scope.dart';
 
 /// The dispatcher in the navigation: mode and load, each worktree with what
 /// runs there (or why it is unavailable), the proposed next starts with a
-/// *Start* button and the held items. Empty without a dispatcher.
+/// *Start* button, the held items and the waiting ones with the reason.
+/// Empty without a dispatcher.
 class DispatchOverview extends StatelessWidget {
   const DispatchOverview({super.key, required this.onOpenItem});
 
   final void Function(String id) onOpenItem;
+
+  /// Waiting items listed with their reason; the rest are counted.
+  static const _waitingRows = 3;
 
   @override
   Widget build(BuildContext context) {
@@ -66,10 +70,22 @@ class DispatchOverview extends StatelessWidget {
             tooltip: '${held.title}: ${held.reason}',
             onTap: () => onOpenItem(held.item),
           ),
-        if (plan.waiting.isNotEmpty)
+        for (final waiting in plan.waitingReasons.take(_waitingRows))
+          _Row(
+            key: ValueKey('waiting-${waiting.item}'),
+            icon: Icons.hourglass_empty,
+            color: tokens.muted,
+            text: '${waiting.item} waits: ${waiting.reason}',
+            tooltip: '${waiting.title}: waits for an agent (${waiting.reason})',
+            onTap: () => onOpenItem(waiting.item),
+          ),
+        if (plan.waiting.length > _waitingRows || plan.waiting.length > plan.waitingReasons.length)
           Padding(
             padding: const EdgeInsets.fromLTRB(10, 2, 10, 4),
-            child: Text('${plan.waiting.length} more ready', style: small),
+            child: Text(
+              '${plan.waiting.length - plan.waitingReasons.take(_waitingRows).length} more waiting',
+              style: small,
+            ),
           ),
       ],
     );

@@ -1,19 +1,29 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:io' as io show pid;
 
+import 'package:collection/collection.dart';
 import 'package:path/path.dart' as p;
 
 import '../../backlog.dart';
 import '../../items/application/field_change.dart';
+import '../../items/domain/discussion.dart';
+import '../../items/domain/item.dart';
 import '../../items/domain/item_id.dart';
 import '../../planning/domain/backlog_snapshot.dart';
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+import '../../workflow/domain/workflow.dart';
+import '../domain/action_run.dart';
 import '../domain/agent_log_format.dart';
 import '../domain/agent_session.dart';
 import '../domain/dispatch_plan.dart';
+import 'built_in_actions.dart';
+import 'merge_action.dart';
+import 'pull_request_opener.dart';
+import 'pull_request_watcher.dart';
 
 /// Starts agents as detached processes that outlive the server, and looks
 /// after them while they run.
@@ -27,6 +37,18 @@ import '../domain/dispatch_plan.dart';
 /// `agents/<project>/<id>.json` (both under [stateDir]), which is how a
 /// restarted server finds it again.
 ///
+/// **Branch in another worktree:** git checks a branch out in one worktree
+/// only. When the assignment's branch is checked out elsewhere (e.g. where
+/// a `fresh` review ran), that worktree is detached (`git switch --detach`)
+/// if the dispatcher manages it (listed or created) and it is free (no live
+/// claim, nothing runs there) and clean. Otherwise nothing starts: an
+/// agent's item is *held* with the reason and a note in its discussion
+/// (once); the hold also stops a person's reply from waking the agent
+/// ([DispatchConditions.blocked]) and goes away by itself once the branch is
+/// free or its worktree can be freed. A prompt action fails with
+/// `InvalidInputException`, which the dispatcher notes once and drops.
+/// Actions therefore need not give the branch back when they end.
+///
 /// **While it runs** (checked every [pollInterval] once [attach]ed) its claim
 /// gets a heartbeat every [heartbeatEvery] (default a quarter of the lease,
 /// 1–10 minutes).
@@ -36,7 +58,9 @@ import '../domain/dispatch_plan.dart';
 /// that the dispatcher does not start it again by itself — unless it waits
 /// for a person to answer its question ([PlannedItem.needsHuman]), which
 /// keeps it from starting until the answer; an item the agent
-/// handed over (e.g. `review`) keeps its status and loses only the claim.
+/// handed over (e.g. `review`) keeps its status and loses only the claim;
+/// with `dispatcher.pr` it also gets the pull request the agent did not
+/// open ([PullRequestOpener]), noted in its discussion.
 /// The outcome is logged, appended to the log and kept in
 /// `agents/<project>/<id>.last.json`, with the agent's session id, which a
 /// later start of the item continues ([DispatchConditions.sessions]).
@@ -50,10 +74,28 @@ final class ProcessAgentLauncher extends AgentLauncher {
     this.pollInterval = const Duration(seconds: 5),
     this.heartbeatEvery,
     Map<String, String>? environment,
+    Map<String, BuiltInAction>? builtIns,
   }) : _backlog = backlog,
        _clock = clock,
        _log = log ?? ((_) {}),
-       _environment = environment ?? Platform.environment;
+       _environment = environment ?? Platform.environment,
+       _builtIns = builtIns ?? BuiltInActions.standard {
+    _pullRequests = PullRequestWatcher(
+      project: project,
+      stateDir: stateDir,
+      backlog: backlog,
+      running: (item) async => await _record(item) != null,
+      serialized: _serialized,
+      clock: clock,
+      environment: environment,
+      log: _log,
+    );
+  }
+
+  late final PullRequestWatcher _pullRequests;
+
+  /// Who writes the launcher's notes in the discussion (results of actions).
+  static const noteAuthor = 'kanban-ai';
 
   /// `$KANBAN_AI_STATE_DIR`, else `$XDG_STATE_HOME/kanban-ai`, else
   /// `~/.local/state/kanban-ai`.
@@ -74,6 +116,15 @@ final class ProcessAgentLauncher extends AgentLauncher {
   final Clock _clock;
   final void Function(String message) _log;
   final Map<String, String> _environment;
+  final Map<String, BuiltInAction> _builtIns;
+
+  /// Worktrees the dispatcher manages (listed and created), name → path, as
+  /// of the last [conditions].
+  var _managed = <String, String>{};
+
+  /// Built-in actions running inside this process, with their result once
+  /// they ended.
+  final _builtInRuns = <ItemId, BuiltInActionResult?>{};
   final _lastHeartbeat = <ItemId, DateTime>{};
   Future<void> _queue = Future.value();
   Timer? _timer;
@@ -96,8 +147,21 @@ final class ProcessAgentLauncher extends AgentLauncher {
   void attach(void Function() onChange) {
     _onChange = onChange;
     _timer?.cancel();
-    _timer = Timer.periodic(pollInterval, (_) => unawaited(tick()));
+    _timer = Timer.periodic(pollInterval, (_) {
+      unawaited(tick());
+      unawaited(pollPullRequests());
+    });
     unawaited(tick());
+  }
+
+  /// Asks `dispatcher.pr.state` about the pull requests of active items
+  /// (at most every `state_every`, unless [force]) and makes those merged
+  /// outside the board done ([PullRequestWatcher]); returns them.
+  Future<List<ItemId>> pollPullRequests({bool force = false}) async {
+    if (_closed) return const [];
+    final merged = await _pullRequests.poll(force: force);
+    if (merged.isNotEmpty) _onChange?.call();
+    return merged;
   }
 
   @override
@@ -114,33 +178,73 @@ final class ProcessAgentLauncher extends AgentLauncher {
       for (final planned in snapshot.items)
         if (planned.isClaimed) planned.claim!.agent,
     };
+    _managed = {for (final worktree in config.worktrees) worktree.name: worktree.resolvePath(backlogRoot)};
     final unavailable = <String, String>{};
+    final branches = <String, String>{};
     for (final worktree in config.worktrees) {
       if (claimed.contains(worktree.name) || runs.any((r) => r.run.worktree == worktree.name)) continue;
-      final problem = await worktreeProblem(worktree.resolvePath(backlogRoot));
+      final path = worktree.resolvePath(backlogRoot);
+      final problem = await worktreeProblem(path);
       if (problem != null) unavailable[worktree.name] = problem;
+      if (await worktreeBranch(path) case final branch?) branches[worktree.name] = branch;
     }
     final held = <ItemId, String>{};
+    final blocked = <ItemId>{};
+    final last = await _sessions(snapshot);
     for (final id in await _heldIds()) {
       final planned = snapshot[id];
       if (planned == null || planned.isDone) continue;
-      if (await _holdOf(id) case final reason?) held[id] = reason;
+      final hold = await _holdOf(id);
+      if (hold == null) continue;
+      if ((hold.branch, hold.worktree) case (final String branch, final String path)) {
+        // Held because the branch was in use elsewhere: lifted once it is not.
+        if (await worktreeBranch(path) != branch ||
+            await _branchBlocker(path, claimed: claimed, runs: [for (final r in runs) r.run]) == null) {
+          if (hold.before case final before?) {
+            await _write(_holdFile(id), {'reason': before, 'at': _clock.now().toUtc().toIso8601String()});
+            held[id] = before;
+          } else {
+            await _delete(_holdFile(id));
+          }
+          continue;
+        }
+        blocked.add(id);
+      }
+      held[id] = hold.reason;
     }
     return DispatchConditions(
       unavailable: unavailable,
       held: held,
+      blocked: blocked,
       runs: [for (final record in runs) record.run],
-      sessions: await _sessions(snapshot),
+      sessions: last.sessions,
+      starts: last.starts,
+      branches: branches,
     );
   }
 
-  /// The sessions of the last runs (`<id>.last.json`) of items that are
-  /// still open or in progress.
-  Future<Map<ItemId, AgentSession>> _sessions(BacklogSnapshot snapshot) async {
+  /// The branch checked out in the worktree at [path]; null when it is
+  /// detached, missing or not a git worktree.
+  static Future<String?> worktreeBranch(String path) async {
+    if (!await Directory(path).exists()) return null;
+    try {
+      final head = await Process.run('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], workingDirectory: path);
+      return head.exitCode == 0 ? '${head.stdout}'.trim() : null;
+    } on ProcessException {
+      return null;
+    }
+  }
+
+  /// The sessions and starts of the last runs (`<id>.last.json`) of items
+  /// that are still open or in progress.
+  Future<({Map<ItemId, AgentSession> sessions, Map<ItemId, AgentStart> starts})> _sessions(
+    BacklogSnapshot snapshot,
+  ) async {
     final dir = Directory(agentsDir);
-    if (!await dir.exists()) return const {};
+    if (!await dir.exists()) return (sessions: const <ItemId, AgentSession>{}, starts: const <ItemId, AgentStart>{});
     const suffix = '.last.json';
     final sessions = <ItemId, AgentSession>{};
+    final starts = <ItemId, AgentStart>{};
     await for (final entry in dir.list()) {
       final name = p.basename(entry.path);
       if (entry is! File || !name.endsWith(suffix)) continue;
@@ -149,6 +253,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
       if (planned == null || planned.isDone) continue;
       try {
         final json = (jsonDecode(await entry.readAsString()) as Map).cast<String, Object?>();
+        starts[id] = (at: DateTime.parse(json['started_at']! as String), worktree: json['worktree']! as String);
         if (json['session_id'] case final String session when session.isNotEmpty) {
           sessions[id] = AgentSession(
             item: id,
@@ -165,7 +270,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
         _log('Dispatcher: ignoring unreadable ${entry.path}: $error');
       }
     }
-    return sessions;
+    return (sessions: sessions, starts: starts);
   }
 
   /// Why an agent cannot start in the worktree at [path]; null when it is a
@@ -186,18 +291,23 @@ final class ProcessAgentLauncher extends AgentLauncher {
   @override
   Future<void> launch(DispatchAssignment assignment) => _serialized(() async {
     final id = assignment.id;
-    if (await _record(id) != null) throw UnavailableException('An agent already runs for $id.');
+    final action = assignment.action;
+    await _checkIdle(id, assignment.agent);
     final problem = await worktreeProblem(assignment.path);
     if (problem != null) {
       _log('Dispatcher: not starting $id in ${assignment.agent}: $problem.');
       throw UnavailableException('Worktree ${assignment.agent}: $problem.');
     }
     final backlog = await _backlog();
-    await backlog.claims.claim(id.value, assignment.agent);
+    // An action's agent works on the item without taking it over.
+    await backlog.claims.claim(id.value, assignment.agent, force: action != null, mirror: action == null);
     final _Record record;
     try {
       final branch = assignment.branch;
       if (branch != null) {
+        if (await _freeBranch(assignment, branch) case final problem?) {
+          await _branchInUse(backlog, assignment, branch, problem);
+        }
         await _checkout(assignment, branch, assignment.base ?? 'main');
         if (assignment.item.item.branch != branch) {
           await backlog.items.update(id.value, [FieldChange.parse('branch=$branch')]);
@@ -208,20 +318,228 @@ final class ProcessAgentLauncher extends AgentLauncher {
       await backlog.claims.release(id.value, agent: assignment.agent);
       rethrow;
     }
-    await _delete(_holdFile(id));
+    if (action == null) await _delete(_holdFile(id));
     _lastHeartbeat[id] = _clock.now();
     _log(
       'Dispatcher: started ${assignment.agentProfile.name} for $id in ${assignment.agent} '
+      '${action == null ? '' : '(action "${action.name}", ${assignment.trigger.id}) '}'
       '(pid ${record.run.pid}, branch ${assignment.branch ?? '-'}'
       '${assignment.resume == null ? '' : ', resuming session ${assignment.resume!.id}'}, log ${record.run.log}).',
     );
     _onChange?.call();
   });
 
+  /// Fails when something already runs for [id] or in [worktree].
+  Future<void> _checkIdle(ItemId id, String? worktree) async {
+    if (await _record(id) case final running?) {
+      throw UnavailableException(
+        '${running.run.action == null ? 'An agent' : 'The action "${running.run.action}"'} already runs for $id.',
+      );
+    }
+    if (worktree == null) return;
+    for (final record in await _records()) {
+      if (record.run.worktree == worktree) {
+        throw UnavailableException('Worktree $worktree is busy with ${record.run.item}.');
+      }
+    }
+  }
+
+  /// Runs an action's command detached (like an agent, with its output in
+  /// a log) or its built-in inside this process; nothing is claimed and the
+  /// item is left as it is. When it has ended, the exit code and the end of
+  /// its output go into the item's discussion as a note.
+  @override
+  Future<void> runJob(ActionJob job) => _serialized(() async {
+    final id = job.id;
+    final action = job.action;
+    await _checkIdle(id, job.worktree);
+    final builtIn = action.builtIn == null ? null : _builtIns[action.builtIn];
+    if (action.builtIn != null && builtIn == null) {
+      throw UnavailableException('The built-in action "${action.builtIn}" is not available in this server.');
+    }
+    final now = _clock.now();
+    await Directory(agentsDir).create(recursive: true);
+    await Directory(logsDir).create(recursive: true);
+    final log = p.join(logsDir, '$id-${_stamp(now)}.log');
+    await _delete(_exitFile(id));
+    await _delete(_stopFile(id));
+    final where = job.worktree ?? p.basename(job.path);
+    await File(log).writeAsString(
+      '# kanban-ai: action "${action.name}" (${job.trigger.id}) for $id in $where (${job.path}), '
+      'started ${now.toUtc().toIso8601String()}\n'
+      '# ${job.command == null ? 'built-in: ${action.builtIn}' : 'command: ${CommandTemplate.join(job.command!)}'}\n',
+      mode: FileMode.append,
+    );
+    final int pid;
+    if (job.command case final command?) {
+      final process = await Process.start(
+        'sh',
+        ['-c', _wrapper, 'kanban-ai-action', log, _exitFile(id), ...command],
+        workingDirectory: job.path,
+        environment: {..._environment, ...job.environment},
+        includeParentEnvironment: false,
+        mode: ProcessStartMode.detached,
+      );
+      pid = process.pid;
+    } else {
+      pid = io.pid;
+    }
+    final record = _Record(
+      AgentRun(
+        item: id,
+        worktree: where,
+        pid: pid,
+        startedAt: now,
+        log: log,
+        agent: action.name,
+        branch: job.values['branch'],
+        action: action.name,
+        kind: job.command == null ? RunKind.builtIn : RunKind.command,
+      ),
+      path: job.path,
+      pgid: job.command == null ? null : await _processGroup(pid),
+      output: AgentOutput.text,
+      trigger: job.trigger.id,
+    );
+    await _write(_recordFile(id), record.toJson());
+    if (builtIn != null) {
+      _builtInRuns[id] = null;
+      unawaited(_runBuiltIn(job, builtIn, log));
+    }
+    _log(
+      'Dispatcher: started the action "${action.name}" for $id in $where (${job.trigger.id}'
+      '${job.command == null ? ', built-in ${action.builtIn}' : ', pid $pid'}, log $log).',
+    );
+    _onChange?.call();
+  });
+
+  Future<void> _runBuiltIn(ActionJob job, BuiltInAction builtIn, String log) async {
+    final sink = File(log).openWrite(mode: FileMode.append);
+    BuiltInActionResult result;
+    try {
+      final backlog = await _backlog();
+      result = await builtIn.run(
+        BuiltInActionContext(
+          item: job.item,
+          action: job.action,
+          config: backlog.workflow.dispatcher!,
+          backlog: backlog,
+          backlogRoot: backlog.root,
+          worktree: job.worktree,
+          path: job.path,
+          values: job.values,
+          environment: {..._environment, ...job.environment},
+          log: sink.writeln,
+          trigger: job.trigger,
+          from: job.from,
+          stateDir: stateDir,
+          project: project,
+        ),
+      );
+    } catch (error) {
+      result = BuiltInActionResult(ok: false, summary: 'failed: $error');
+    }
+    sink.writeln('\n# kanban-ai: the built-in action ${result.ok ? 'succeeded' : 'failed'}: ${result.summary}');
+    await sink.close();
+    _builtInRuns[job.id] = result;
+    await File(_exitFile(job.id)).writeAsString('${result.ok ? 0 : 1}\n');
+    await tick();
+  }
+
+  /// Ends the run of an action: an agent's claim is dropped (the item keeps
+  /// its status, nothing is held), the run is recorded (as the item's last
+  /// session unless it was a `fresh` agent, a command or a built-in) and a
+  /// note with the result goes into the item's discussion.
+  Future<void> _finishAction(_Record record, int? exitCode, String reason) async {
+    final run = record.run;
+    final id = run.item;
+    final backlog = await _backlog();
+    final planned = (await backlog.planning.snapshot())[id];
+    var outcome = planned == null ? 'the item is gone' : 'the item stays ${planned.item.status}';
+    if (planned != null && record.kind == RunKind.agent && planned.claim?.agent == run.worktree) {
+      await backlog.claims.drop(id.value, run.worktree);
+      outcome = '$outcome, claim dropped';
+    }
+    final builtIn = record.kind == RunKind.builtIn ? _builtInRuns.remove(id) : null;
+    if (record.kind == RunKind.builtIn && builtIn == null && exitCode == null) {
+      reason = 'was interrupted (the server stopped while it ran)';
+    } else if (builtIn != null) {
+      reason = builtIn.ok ? 'succeeded: ${builtIn.summary}' : 'failed: ${builtIn.summary}';
+    }
+    final session = record.kind == RunKind.agent && record.output == AgentOutput.claudeStreamJson
+        ? await _claudeSession(run.log) ?? record.resumed
+        : record.resumed;
+    final ended = _clock.now();
+    final side = record.kind != RunKind.agent || record.side;
+    await _write(side ? _actionFile(id) : _lastFile(id), {
+      ...record.toJson(),
+      'ended_at': ended.toUtc().toIso8601String(),
+      'exit_code': exitCode,
+      'reason': reason,
+      'outcome': outcome,
+      'session_id': session,
+    });
+    try {
+      await File(
+        run.log,
+      ).writeAsString('# kanban-ai: the action "${run.action}" $reason; $outcome\n', mode: FileMode.append);
+    } on FileSystemException {
+      // The log was removed; the outcome is still in the server log.
+    }
+    for (final file in [_recordFile(id), _exitFile(id), _stopFile(id)]) {
+      await _delete(file);
+    }
+    _lastHeartbeat.remove(id);
+    _log('Dispatcher: the action "${run.action}" for $id in ${run.worktree} $reason; $outcome.');
+    if (planned == null) return;
+    // An agent that did its job says so itself when the action asks for it;
+    // only failures and the output of commands get a note.
+    if (record.kind == RunKind.agent && exitCode == 0) return;
+    final took = _duration(ended.difference(run.startedAt));
+    final where = record.kind == RunKind.agent ? 'agent ${run.agent} in ${run.worktree}' : run.worktree;
+    final text = StringBuffer('The action "${run.action}" ($where) $reason after $took.');
+    if (record.kind == RunKind.command) {
+      final tail = await _outputTail(run.log);
+      if (tail.isNotEmpty) {
+        final fence = tail.any((line) => line.contains('```')) ? '~~~~' : '```';
+        text.write('\n\n${fence}text\n${tail.join('\n')}\n$fence');
+      }
+    }
+    try {
+      await backlog.items.comment(id.value, author: noteAuthor, text: text.toString(), note: true);
+    } on BacklogException catch (error) {
+      _log('Dispatcher: could not add the result of the action to $id: ${error.message}');
+    }
+  }
+
+  /// The last lines a command wrote (without the launcher's own lines).
+  static Future<List<String>> _outputTail(String log, {int lines = 20}) async {
+    final file = File(log);
+    if (!await file.exists()) return const [];
+    final output = [
+      for (final line in await file.readAsLines(encoding: const Utf8Codec(allowMalformed: true)))
+        if (!line.startsWith('# kanban-ai:') && !line.startsWith('# command:'))
+          line.length > 300 ? '${line.substring(0, 300)}…' : line,
+    ];
+    while (output.isNotEmpty && output.last.trim().isEmpty) {
+      output.removeLast();
+    }
+    return output.length <= lines ? output : output.sublist(output.length - lines);
+  }
+
+  static String _duration(Duration duration) => duration.inSeconds < 120
+      ? '${duration.inSeconds} s'
+      : duration.inMinutes < 120
+      ? '${duration.inMinutes} min'
+      : '${duration.inHours} h ${duration.inMinutes % 60} min';
+
   @override
   Future<bool> stop(ItemId item) async {
     final record = await _record(item);
     if (record == null) return false;
+    if (record.kind == RunKind.builtIn) {
+      throw InvalidInputException('The built-in action "${record.run.action}" of $item cannot be stopped.');
+    }
     await File(_stopFile(item)).writeAsString('${_clock.now().toUtc().toIso8601String()}\n');
     await _signal(record, ProcessSignal.sigterm);
     for (var i = 0; i < 50 && await _alive(record); i++) {
@@ -257,9 +575,8 @@ final class ProcessAgentLauncher extends AgentLauncher {
     Map<String, Object?>? last;
     String? path = record?.run.log;
     if (path == null) {
-      final file = File(_lastFile(item));
-      if (!await file.exists()) return null;
-      last = (jsonDecode(await file.readAsString()) as Map).cast<String, Object?>();
+      last = await _lastRun(item);
+      if (last == null) return null;
       path = last['log'] as String?;
       if (path == null) return null;
     }
@@ -278,9 +595,8 @@ final class ProcessAgentLauncher extends AgentLauncher {
     if (await _record(item) case final record?) {
       return AgentLogSource(path: record.run.log, running: true, output: record.output);
     }
-    final text = await _read(_lastFile(item));
-    if (text == null) return null;
-    final last = (jsonDecode(text) as Map).cast<String, Object?>();
+    final last = await _lastRun(item);
+    if (last == null) return null;
     final path = last['log'];
     if (path is! String) return null;
     return AgentLogSource(
@@ -292,6 +608,91 @@ final class ProcessAgentLauncher extends AgentLauncher {
   }
 
   // ---------------------------------------------------------------- launch
+
+  /// Makes [branch] free for the worktree of [assignment] when another
+  /// worktree has it checked out and the dispatcher may detach that one;
+  /// returns where it is stuck otherwise (null: free).
+  Future<({String path, String why})?> _freeBranch(DispatchAssignment assignment, String branch) async {
+    final holder = await _checkedOutIn(assignment.path, branch);
+    if (holder == null || MergeAction.samePath(holder, assignment.path)) return null;
+    final snapshot = await (await _backlog()).planning.snapshot();
+    final why = await _branchBlocker(
+      holder,
+      claimed: {
+        for (final planned in snapshot.items)
+          if (planned.isClaimed) planned.claim!.agent,
+      },
+      runs: [for (final record in await _records()) record.run],
+    );
+    if (why != null) return (path: holder, why: why);
+    final detached = await Process.run('git', ['switch', '--quiet', '--detach'], workingDirectory: holder);
+    if (detached.exitCode != 0) {
+      return (path: holder, why: 'git switch --detach failed there (${_firstLine(detached.stderr)})');
+    }
+    _log('Dispatcher: detached ${_managedName(holder)} from $branch for ${assignment.id} in ${assignment.agent}.');
+    return null;
+  }
+
+  /// Why the dispatcher may not detach the worktree at [path] (null: it may):
+  /// it does not manage it, it is busy ([claimed] names, [runs]) or not clean.
+  Future<String?> _branchBlocker(String path, {required Set<String> claimed, required List<AgentRun> runs}) async {
+    final name = _managedName(path);
+    if (name == null) return 'a worktree the dispatcher does not manage';
+    if (claimed.contains(name) || runs.any((run) => run.worktree == name)) return 'the worktree $name, which is busy';
+    if (await worktreeProblem(path) case final problem?) return 'the worktree $name, which has $problem';
+    return null;
+  }
+
+  String? _managedName(String path) =>
+      _managed.entries.firstWhereOrNull((w) => MergeAction.samePath(w.value, path))?.key;
+
+  /// The worktree (of the repository of [path]) that has [branch] checked
+  /// out; null when none.
+  static Future<String?> _checkedOutIn(String path, String branch) async {
+    final list = await Process.run('git', ['worktree', 'list', '--porcelain'], workingDirectory: path);
+    if (list.exitCode != 0) return null;
+    String? worktree;
+    for (final line in LineSplitter.split('${list.stdout}')) {
+      if (line.startsWith('worktree ')) worktree = line.substring('worktree '.length);
+      if (line == 'branch refs/heads/$branch') return worktree;
+    }
+    return null;
+  }
+
+  /// Fails the launch of [assignment] because [branch] is stuck in another
+  /// worktree: an agent's item is held (noted in its discussion the first
+  /// time), a prompt action fails for good.
+  Future<Never> _branchInUse(
+    Backlog backlog,
+    DispatchAssignment assignment,
+    String branch,
+    ({String path, String why}) problem,
+  ) async {
+    final id = assignment.id;
+    final message =
+        'Cannot start in ${assignment.agent}: the branch $branch is checked out in ${problem.why} '
+        '(${problem.path}). Free it there (git switch --detach) and start $id again.';
+    if (assignment.action != null) throw InvalidInputException(message);
+    final previous = await _holdOf(id);
+    await _write(_holdFile(id), {
+      'reason': message,
+      'at': _clock.now().toUtc().toIso8601String(),
+      'branch': branch,
+      'worktree': problem.path,
+      // An earlier hold (the agent left it unfinished) comes back afterwards.
+      'before': ?(previous == null ? null : previous.before ?? (previous.branch == null ? previous.reason : null)),
+    });
+    if (previous?.branch != branch || previous?.worktree != problem.path) {
+      _log('Dispatcher: held $id: $message');
+      try {
+        await backlog.items.comment(id.value, author: noteAuthor, text: '$message Held until then.', note: true);
+      } on BacklogException catch (error) {
+        _log('Dispatcher: could not add a note to $id: ${error.message}');
+      }
+      _onChange?.call();
+    }
+    throw UnavailableException(message);
+  }
 
   Future<void> _checkout(DispatchAssignment assignment, String branch, String base) async {
     Future<ProcessResult> git(List<String> arguments) =>
@@ -318,8 +719,10 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final log = p.join(logsDir, '$id-${_stamp(now)}.log');
     await _delete(_exitFile(id));
     await _delete(_stopFile(id));
+    final action = assignment.action;
     await File(log).writeAsString(
-      '# kanban-ai: ${assignment.agentProfile.name} for $id in ${assignment.agent} (${assignment.path}), '
+      '# kanban-ai: ${assignment.agentProfile.name} for $id'
+      '${action == null ? '' : ' (action "${action.name}", ${assignment.trigger.id})'} in ${assignment.agent} (${assignment.path}), '
       'branch ${assignment.branch ?? '-'}, started ${now.toUtc().toIso8601String()}'
       '${assignment.resume == null ? '' : ', resuming session ${assignment.resume!.id}'}\n'
       '# command: ${CommandTemplate.join(assignment.command)}\n',
@@ -342,11 +745,14 @@ final class ProcessAgentLauncher extends AgentLauncher {
         log: log,
         agent: assignment.agentProfile.name,
         branch: assignment.branch,
+        action: action?.name,
       ),
       path: assignment.path,
       pgid: await _processGroup(process.pid),
       output: assignment.agentProfile.output,
       resumed: assignment.resume?.id,
+      side: action?.fresh ?? false,
+      trigger: action == null ? null : assignment.trigger.id,
     );
     await _write(_recordFile(id), record.toJson());
     return record;
@@ -355,6 +761,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
   // ------------------------------------------------------------ supervise
 
   Future<void> _heartbeat(_Record record) async {
+    if (record.kind != RunKind.agent) return; // commands and built-ins hold no claim
     final id = record.run.item;
     final now = _clock.now();
     final backlog = await _backlog();
@@ -381,10 +788,13 @@ final class ProcessAgentLauncher extends AgentLauncher {
         ? 'ended without an exit code (killed?)'
         : 'exited with code $exitCode';
 
+    if (record.run.action != null) return _finishAction(record, exitCode, reason);
+
     final backlog = await _backlog();
     final snapshot = await backlog.planning.snapshot();
     final planned = snapshot[id];
-    final String outcome;
+    var outcome = '';
+    var handedOver = false;
     if (planned == null) {
       outcome = 'the item is gone';
     } else if (planned.claim?.agent == run.worktree) {
@@ -402,6 +812,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
       } else {
         await backlog.claims.drop(id.value, run.worktree);
         outcome = 'it handed over as ${planned.item.status}, claim dropped';
+        handedOver = backlog.workflow.categoryOf(planned.item.status) == StatusCategory.active;
       }
     } else {
       outcome =
@@ -410,6 +821,9 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final session = record.output == AgentOutput.claudeStreamJson
         ? await _claudeSession(run.log) ?? record.resumed
         : record.resumed;
+    if (handedOver && planned != null) {
+      if (await _pullRequestFallback(backlog, record, planned.item) case final done?) outcome = '$outcome; $done';
+    }
     final ended = _clock.now();
     await _write(_lastFile(id), {
       ...record.toJson(),
@@ -438,6 +852,80 @@ final class ProcessAgentLauncher extends AgentLauncher {
     );
   }
 
+  /// The safety net for `dispatcher.pr`: an agent handed its item over
+  /// (e.g. to `review`) without a pull request — it did not run
+  /// `backlog pr`, or that failed. Pushes the branch and opens one with the
+  /// agent's last message (or its last comment, else a description made
+  /// from the item) and notes the result in the discussion; on failure the
+  /// note says why and the item stays where the agent put it. Returns what
+  /// happened for the log; null when there is nothing to do.
+  Future<String?> _pullRequestFallback(Backlog backlog, _Record record, Item item) async {
+    if (backlog.workflow.dispatcher?.pr == null) return null;
+    if (item.pr case final pr? when pr.trim().isNotEmpty) return null;
+    final branch = item.branch ?? record.run.branch;
+    if (branch == null) return null;
+    final base = backlog.workflow.dispatcher!.base;
+    final ahead = await Process.run('git', ['rev-list', '--count', '$base..$branch'], workingDirectory: record.path);
+    if (ahead.exitCode == 0 && '${ahead.stdout}'.trim() == '0') {
+      await _note(backlog, item, 'No pull request: $branch has no commits that are not in $base.');
+      return 'no pull request ($branch has no commits of its own)';
+    }
+    final description =
+        (record.output == AgentOutput.claudeStreamJson ? await _claudeResult(record.run.log) : null) ??
+        _lastComment(item, record.run.worktree);
+    try {
+      final opened = await PullRequestOpener(
+        environment: _environment,
+      ).open(backlog, item.id.value, workingDirectory: record.path, description: description);
+      await _note(
+        backlog,
+        item,
+        opened.created
+            ? 'The agent handed over without a pull request; pushed $branch and opened ${opened.url}'
+            : 'The agent handed over without recording its pull request; pushed $branch, found ${opened.url}',
+      );
+      return 'opened its pull request ${opened.url}';
+    } on BacklogException catch (error) {
+      await _note(
+        backlog,
+        item,
+        'Could not open a pull request for $branch: ${error.message}\n\n'
+        'The item stays ${item.status}; `backlog pr ${item.id}` in ${record.run.worktree} tries again.',
+      );
+      return 'opening its pull request failed: ${error.message}';
+    }
+  }
+
+  static Future<void> _note(Backlog backlog, Item item, String text) =>
+      backlog.items.comment(item.id.value, author: dispatcherAuthor, text: text, note: true);
+
+  /// The author of the dispatcher's notes in a discussion.
+  static const dispatcherAuthor = 'dispatcher';
+
+  static String? _lastComment(Item item, String agent) {
+    final own = Discussion.parse(item.body).comments.where((c) => c.author == agent && !c.question);
+    return own.isEmpty ? null : own.last.text;
+  }
+
+  /// The agent's final message: the `result` of the last `result` event.
+  static Future<String?> _claudeResult(String log) async {
+    final file = File(log);
+    if (!await file.exists()) return null;
+    String? result;
+    for (final line in await file.readAsLines()) {
+      if (!line.startsWith('{') || !line.contains('"type":"result"')) continue;
+      try {
+        final json = jsonDecode(line);
+        if (json is Map && json['result'] is String && (json['result'] as String).trim().isNotEmpty) {
+          result = (json['result'] as String).trim();
+        }
+      } on FormatException {
+        continue;
+      }
+    }
+    return result;
+  }
+
   static Future<String?> _claudeSession(String log) async {
     final file = File(log);
     if (!await file.exists()) return null;
@@ -458,6 +946,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
 
   Future<bool> _alive(_Record record) async {
     if (await File(_exitFile(record.run.item)).exists()) return false;
+    if (record.kind == RunKind.builtIn) return _builtInRuns.containsKey(record.run.item);
     final pid = record.run.pid;
     final proc = File('/proc/$pid/cmdline');
     if (await Directory('/proc').exists()) {
@@ -499,6 +988,30 @@ final class ProcessAgentLauncher extends AgentLauncher {
   String _holdFile(ItemId id) => p.join(agentsDir, '$id.hold.json');
   String _lastFile(ItemId id) => p.join(agentsDir, '$id.last.json');
 
+  /// The last run of an action that is not the item's session (a command, a
+  /// built-in or a `fresh` agent).
+  String _actionFile(ItemId id) => p.join(agentsDir, '$id.action.json');
+
+  /// How the latest run for [id] ended: of `<id>.last.json` and
+  /// `<id>.action.json` the one that ended last; null when none ran.
+  Future<Map<String, Object?>?> _lastRun(ItemId id) async {
+    Map<String, Object?>? latest;
+    for (final file in [_lastFile(id), _actionFile(id)]) {
+      final text = await _read(file);
+      if (text == null) continue;
+      final Map<String, Object?> json;
+      try {
+        json = (jsonDecode(text) as Map).cast<String, Object?>();
+      } on FormatException {
+        continue;
+      }
+      final ended = DateTime.tryParse(json['ended_at'] as String? ?? '');
+      final before = DateTime.tryParse(latest?['ended_at'] as String? ?? '');
+      if (latest == null || (ended != null && (before == null || !ended.isBefore(before)))) latest = json;
+    }
+    return latest;
+  }
+
   Future<_Record?> _record(ItemId id) async {
     final text = await _read(_recordFile(id));
     return text == null ? null : _Record.fromJson(jsonDecode(text) as Map<String, Object?>);
@@ -510,7 +1023,11 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final records = <_Record>[];
     await for (final entry in dir.list()) {
       final name = p.basename(entry.path);
-      if (entry is! File || !name.endsWith('.json') || name.endsWith('.hold.json') || name.endsWith('.last.json')) {
+      if (entry is! File ||
+          !name.endsWith('.json') ||
+          name.endsWith('.hold.json') ||
+          name.endsWith('.last.json') ||
+          name.endsWith('.action.json')) {
         continue;
       }
       try {
@@ -533,13 +1050,21 @@ final class ProcessAgentLauncher extends AgentLauncher {
     ];
   }
 
-  Future<String?> _holdOf(ItemId id) async {
+  /// Why [id] is held; for a branch in use elsewhere also the branch, the
+  /// worktree path that has it and the hold it replaced ([before]).
+  Future<({String reason, String? branch, String? worktree, String? before})?> _holdOf(ItemId id) async {
     final text = await _read(_holdFile(id));
     if (text == null) return null;
     try {
-      return '${(jsonDecode(text) as Map)['reason']}';
+      final json = jsonDecode(text) as Map;
+      return (
+        reason: '${json['reason']}',
+        branch: json['branch'] as String?,
+        worktree: json['worktree'] as String?,
+        before: json['before'] as String?,
+      );
     } on FormatException {
-      return 'held';
+      return (reason: 'held', branch: null, worktree: null, before: null);
     }
   }
 
@@ -587,9 +1112,18 @@ final class ProcessAgentLauncher extends AgentLauncher {
   static String _firstLine(Object? text) => '$text'.trim().split('\n').first;
 }
 
-/// What `agents/<project>/<id>.json` holds about a running agent.
+/// What `agents/<project>/<id>.json` holds about a running agent, action
+/// command or built-in.
 final class _Record {
-  _Record(this.run, {required this.path, required this.pgid, required this.output, this.resumed});
+  _Record(
+    this.run, {
+    required this.path,
+    required this.pgid,
+    required this.output,
+    this.resumed,
+    this.side = false,
+    this.trigger,
+  });
 
   factory _Record.fromJson(Map<String, Object?> json) => _Record(
     AgentRun(
@@ -600,16 +1134,20 @@ final class _Record {
       log: json['log']! as String,
       agent: json['agent'] as String? ?? '?',
       branch: json['branch'] as String?,
+      action: json['action'] as String?,
+      kind: RunKind.parse(json['kind']),
     ),
     path: json['path']! as String,
     pgid: json['pgid'] as int?,
     output: AgentOutput.values.firstWhere((o) => o.id == json['output'], orElse: () => AgentOutput.text),
     resumed: json['resumed'] as String?,
+    side: json['side'] == true,
+    trigger: json['trigger'] as String?,
   );
 
   final AgentRun run;
 
-  /// Absolute path of the worktree.
+  /// Absolute path of the worktree (the working directory).
   final String path;
 
   /// Process group of the agent (its own session); signalled by `stop`.
@@ -618,6 +1156,15 @@ final class _Record {
 
   /// The session this run continues; null for a new one.
   final String? resumed;
+
+  /// A `fresh` action agent: its session does not become the item's.
+  final bool side;
+
+  /// Why the action runs (`request`, `on_enter`); null for agents of the
+  /// item's own work.
+  final String? trigger;
+
+  RunKind get kind => run.kind;
 
   Map<String, Object?> toJson() => {
     'item': run.item.value,
@@ -631,5 +1178,6 @@ final class _Record {
     'output': output.id,
     'branch': run.branch,
     'resumed': resumed,
+    if (run.action != null) ...{'action': run.action, 'kind': run.kind.id, 'side': side, 'trigger': trigger},
   };
 }

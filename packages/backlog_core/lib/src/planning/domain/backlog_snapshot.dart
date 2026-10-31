@@ -4,8 +4,10 @@ import '../../items/domain/item_id.dart';
 import '../../items/domain/path_glob.dart';
 import '../../workflow/domain/workflow.dart';
 import 'planned_item.dart';
+import 'review_state.dart';
 
-/// The whole backlog at one moment: items, their relations and claims.
+/// The whole backlog at one moment: items, their relations and claims (and
+/// the heads of the code repository's branches, for outdated reviews).
 ///
 /// Everything derived (blocked, ready, cycles, …) is computed here, in one
 /// place, so that the CLI, a server and the app all agree on it.
@@ -18,6 +20,7 @@ final class BacklogSnapshot {
     required Workflow workflow,
     Iterable<Claim> claims = const [],
     required DateTime now,
+    Map<String, BranchHead> branchHeads = const {},
   }) {
     final byId = <ItemId, Item>{};
     for (final item in items) {
@@ -74,6 +77,9 @@ final class BacklogSnapshot {
       final ancestors = ancestorsOf(item);
       final conflicts = conflictsOf(item);
       final needsHuman = category != StatusCategory.done && item.discussion.openQuestion != null;
+      final branch = item.branch?.trim();
+      final head = branchHeads[branch == null || branch.isEmpty ? 'agent/${item.id}' : branch];
+      final review = ReviewState.of(item, head);
       planned[item.id] = PlannedItem(
         item: item,
         category: category,
@@ -92,6 +98,8 @@ final class BacklogSnapshot {
           for (final id in [item.id, ...ancestors])
             if (byId[id]?.type == 'epic') id,
         ],
+        review: review,
+        reviewedHead: head != null && (review == ReviewState.ok || review == ReviewState.changes),
       );
     }
 

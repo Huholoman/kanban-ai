@@ -58,6 +58,7 @@ final class ApiHandler {
           ..post('$items/<ref>/release', _release)
           ..post('$items/<ref>/done', _complete)
           ..post('$items/<ref>/comments', _comment)
+          ..post('$items/<ref>/actions/<name>', _runAction)
           ..get(views, _views)
           ..post(views, _createView)
           ..get('$views/<id>', _view)
@@ -78,7 +79,7 @@ final class ApiHandler {
     final includeDone = request.url.queryParameters['all'] == 'true';
     return _json([
       for (final planned in snapshot.items)
-        if (includeDone || !planned.isDone) DtoMapper.item(planned).toJson(),
+        if (includeDone || !planned.isDone) DtoMapper.item(planned, reviewing: _reviewing).toJson(),
     ]);
   }
 
@@ -153,6 +154,7 @@ final class ApiHandler {
   Future<Response> _view(Request request, String id) async => _json(
     DtoMapper.view(
       await (await _host.backlog).views.run(id, groupBy: request.url.queryParameters['group_by']),
+      reviewing: _reviewing,
     ).toJson(),
   );
 
@@ -197,11 +199,20 @@ final class ApiHandler {
     return plan == null ? DispatchDto.off : DtoMapper.dispatch(plan);
   }
 
+  /// Items an AI review runs or waits to run for, by the dispatcher's
+  /// latest plan (none without a running dispatcher).
+  Set<ItemId> get _reviewing => _dispatcher()?.current?.reviewing ?? const {};
+
   Dispatcher _running() => _dispatcher() ?? (throw const NotFoundException('No dispatcher runs for this project.'));
 
   Future<Response> _startAgent(Request request) async {
     final payload = DispatchRequest.fromJson(await _body(request));
     await _running().start(payload.item, fresh: payload.fresh);
+    return _json((await _plan()).toJson());
+  }
+
+  Future<Response> _runAction(Request request, String ref, String name) async {
+    await _running().runAction(ref, Uri.decodeComponent(name));
     return _json((await _plan()).toJson());
   }
 
@@ -243,7 +254,10 @@ final class ApiHandler {
     final planned = snapshot[ItemReference.resolve(ref, snapshot.ids)]!;
     final location = await backlog.items.locationOf(planned.id);
     final path = location == null ? null : backlog.layout.relative(location);
-    return _json(DtoMapper.detail(planned, snapshot, path: path).toJson(), status: status);
+    return _json(
+      DtoMapper.detail(planned, snapshot, path: path, reviewing: _reviewing).toJson(),
+      status: status,
+    );
   }
 
   static Future<Json> _body(Request request) async {

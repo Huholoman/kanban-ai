@@ -1,8 +1,10 @@
 import 'package:yaml/yaml.dart';
 
 import '../../shared/errors.dart';
+import '../domain/action_definition.dart';
 import '../domain/appearance.dart';
 import '../domain/dispatcher_config.dart';
+import '../domain/merge_config.dart';
 import '../domain/workflow.dart';
 
 /// Parses the `backlog.yaml` format into a [Workflow].
@@ -93,6 +95,9 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     'prompt',
     'resume_prompt',
     'command',
+    'actions',
+    'pr',
+    'merge',
   };
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
@@ -111,12 +116,19 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     }
     final prompt = yaml['prompt'];
     final resumePrompt = yaml['resume_prompt'];
+    final pr = _pullRequest(yaml['pr'], origin);
     return DispatcherConfig(
       mode: DispatchMode.parse('${yaml['mode'] ?? 'manual'}'.trim()),
       maxAgents: maxAgents as int?,
       newWorktrees: newWorktrees,
       base: yaml['base'] == null ? 'main' : _base(_string(yaml['base'], 'dispatcher.base', origin)),
       agent: _agent(yaml, origin),
+      profiles: _profiles(yaml, origin),
+      actions: [
+        for (final entry in _list(yaml['actions'] ?? const [], 'dispatcher.actions', origin)) _action(entry, origin),
+      ],
+      pr: pr,
+      merge: _merge(yaml['merge'], pr, origin),
       prompt: prompt == null
           ? null
           : TextTemplate(
@@ -180,6 +192,77 @@ NewWorktrees? _newWorktrees(YamlMap yaml, String origin) {
   );
 }
 
+/// `dispatcher.pr`: remote, the `create` and optional `find`, `review`,
+/// `merge` and `state` commands, `url_pattern` and `state_every`; null
+/// without it.
+PullRequestConfig? _pullRequest(Object? node, String origin) {
+  if (node == null) return null;
+  final yaml = _map(node, 'dispatcher.pr', origin);
+  const known = {'remote', 'create', 'find', 'review', 'url_pattern', 'merge', 'state', 'state_every'};
+  for (final key in yaml.keys) {
+    if (!known.contains('$key')) {
+      throw ConfigurationException('unknown key "dispatcher.pr.$key" (expected ${known.join(', ')}).');
+    }
+  }
+  CommandTemplate? command(String key) => _template(yaml[key], 'dispatcher.pr.$key', switch (key) {
+    'merge' || 'state' => PullRequestConfig.mergePlaceholders,
+    'review' => PullRequestConfig.reviewPlaceholders,
+    _ => PullRequestConfig.placeholders,
+  }, origin);
+  final every = yaml['state_every'];
+  if (every != null && every is! int) {
+    throw const ConfigurationException('dispatcher.pr.state_every must be an integer.');
+  }
+  return PullRequestConfig(
+    remote: yaml['remote'] == null ? 'origin' : _string(yaml['remote'], 'dispatcher.pr.remote', origin),
+    create: command('create') ?? (throw const ConfigurationException('dispatcher.pr.create is required.')),
+    find: command('find'),
+    review: command('review'),
+    urlPattern: yaml['url_pattern'] == null ? null : _string(yaml['url_pattern'], 'dispatcher.pr.url_pattern', origin),
+    merge: command('merge'),
+    state: command('state'),
+    stateEvery: Duration(minutes: (every as int?) ?? 2),
+  );
+}
+
+/// A command given as a list or as one string (split like a shell); null
+/// when [node] is null.
+CommandTemplate? _template(Object? node, String path, List<String> known, String origin) => switch (node) {
+  null => null,
+  final List<Object?> list => CommandTemplate(_strings(list, path, origin), label: path, known: known),
+  final Object text => CommandTemplate.parse(_string(text, path, origin), label: path, known: known),
+};
+
+/// `dispatcher.merge`: strategy (default pr with dispatcher.pr, else
+/// local), check, push, remote, command and cleanup; null without it.
+MergeConfig? _merge(Object? node, PullRequestConfig? pr, String origin) {
+  if (node == null) return null;
+  final yaml = _map(node, 'dispatcher.merge', origin);
+  const known = {'strategy', 'check', 'push', 'remote', 'command', 'cleanup'};
+  for (final key in yaml.keys) {
+    if (!known.contains('$key')) {
+      throw ConfigurationException('unknown key "dispatcher.merge.$key" (expected ${known.join(', ')}).');
+    }
+  }
+  bool flag(String key, bool fallback) => switch (yaml[key]) {
+    null => fallback,
+    final bool value => value,
+    _ => throw ConfigurationException('dispatcher.merge.$key must be true or false.'),
+  };
+  return MergeConfig(
+    strategy: yaml['strategy'] == null
+        ? (pr == null ? MergeStrategy.local : MergeStrategy.pr)
+        : MergeStrategy.parse(_string(yaml['strategy'], 'dispatcher.merge.strategy', origin)),
+    check: _template(yaml['check'], 'dispatcher.merge.check', MergeConfig.placeholders, origin),
+    push: flag('push', false),
+    remote: yaml['remote'] == null
+        ? pr?.remote ?? 'origin'
+        : _string(yaml['remote'], 'dispatcher.merge.remote', origin),
+    command: _template(yaml['command'], 'dispatcher.merge.command', MergeConfig.placeholders, origin),
+    cleanup: flag('cleanup', true),
+  );
+}
+
 String _base(String base) => base.startsWith('-') || base.contains(RegExp(r'\s'))
     ? throw ConfigurationException('dispatcher.base "$base" is not a branch name.')
     : base;
@@ -194,10 +277,7 @@ AgentProfile _agent(YamlMap yaml, String origin) {
       'give either dispatcher.agent (a profile) or dispatcher.command (a plain command), not both.',
     );
   }
-  final custom = <String, AgentProfile>{
-    for (final MapEntry(:key, :value) in _map(yaml['agents'], 'dispatcher.agents', origin).entries)
-      '$key': _profile('$key', value, origin),
-  };
+  final custom = _profiles(yaml, origin);
   if (command != null) {
     return AgentProfile(name: 'command', command: _command(command as Object, 'dispatcher.command', origin));
   }
@@ -208,6 +288,59 @@ AgentProfile _agent(YamlMap yaml, String origin) {
     throw ConfigurationException('dispatcher.agent: unknown agent "$chosen" (known: ${names.join(', ')}).');
   }
   return profile;
+}
+
+/// The profiles of `dispatcher.agents`.
+Map<String, AgentProfile> _profiles(YamlMap yaml, String origin) => {
+  for (final MapEntry(:key, :value) in _map(yaml['agents'], 'dispatcher.agents', origin).entries)
+    '$key': _profile('$key', value, origin),
+};
+
+/// One entry of `dispatcher.actions`.
+ActionDefinition _action(Object? node, String origin) {
+  final yaml = _map(node, 'dispatcher.actions[]', origin);
+  const known = {'name', 'statuses', 'on_enter', 'prompt', 'run', 'agent', 'fresh', 'review', 'auto_fix'};
+  for (final key in yaml.keys) {
+    if (!known.contains('$key')) {
+      throw ConfigurationException('unknown key "dispatcher.actions[].$key" (expected ${known.join(', ')}).');
+    }
+  }
+  final name = _string(yaml['name'], 'dispatcher.actions[].name', origin);
+  final path = 'dispatcher.actions "$name"';
+  final fresh = yaml['fresh'] ?? false;
+  if (fresh is! bool) throw ConfigurationException('$path.fresh must be true or false.');
+  final review = yaml['review'] ?? false;
+  if (review is! bool) throw ConfigurationException('$path.review must be true or false.');
+  final autoFix = yaml['auto_fix'] ?? 0;
+  if (autoFix is! int) throw ConfigurationException('$path.auto_fix must be a number of rounds.');
+  if (review && yaml['fresh'] == false) {
+    throw ConfigurationException('$path: a review always runs in a new session (fresh: false is not possible).');
+  }
+  final run = yaml['run'];
+  return ActionDefinition(
+    name: name,
+    statuses: yaml['statuses'] == null ? null : _strings(yaml['statuses'], '$path.statuses', origin),
+    onEnter: yaml['on_enter'] == null ? null : _string(yaml['on_enter'], '$path.on_enter', origin),
+    prompt: yaml['prompt'] == null
+        ? null
+        : TextTemplate(
+            _string(yaml['prompt'], '$path.prompt', origin),
+            known: ActionDefinition.promptPlaceholders,
+            label: '$path.prompt',
+          ),
+    command: run is List
+        ? CommandTemplate(
+            _strings(run, '$path.run', origin),
+            label: '$path.run',
+            known: ActionDefinition.commandPlaceholders,
+          )
+        : null,
+    builtIn: run == null || run is List ? null : _string(run, '$path.run', origin),
+    agent: yaml['agent'] == null ? null : _string(yaml['agent'], '$path.agent', origin),
+    fresh: fresh,
+    review: review,
+    autoFix: autoFix,
+  );
 }
 
 AgentProfile _profile(String name, Object? node, String origin) {
@@ -387,7 +520,7 @@ claims:
 # {worktree}, {path} (absolute path of the worktree), {backlog} (absolute path
 # of this folder), {branch}; commands and env also {prompt}.
 # dispatcher:
-#   mode: manual          # manual: propose, a person starts | auto: start by itself
+#   mode: manual          # manual: propose, a person starts (replies still wake agents) | auto: start by itself
 #   max_agents: 2         # at most this many at once (default: one per worktree)
 #   worktrees:            # path relative to this folder; a bare name means ../<name>
 #     - name: monorepo-2
@@ -414,4 +547,74 @@ claims:
 #   # The prompt when an agent continues its last session on the item; {news}
 #   # tells what happened since (how the run ended, new comments):
 #   resume_prompt: "Continue on {id}. Since your last run: {news}"
+#   # Actions: buttons on items (statuses: where they show; default every
+#   # status, or only the on_enter one) and hooks (on_enter: run by itself,
+#   # once, when an item enters that status). Each has exactly one of
+#   # prompt (an agent; it continues the item's session unless fresh: true),
+#   # run (a command as a list, or a built-in action by name: noop) and
+#   # review: true (an AI review, see below).
+#   # Prompt placeholders as above plus {pr}, {status}, {base}, {action},
+#   # {news}; command placeholders {id} {title} {branch} {pr} {status}
+#   # {worktree} {path} {backlog} {base} {action}.
+#   actions:
+#     - name: Address PR comments
+#       statuses: [review]
+#       prompt: "Go through the unresolved comments of PR {pr}, fix them and answer them."
+#       # agent: claude      # profile (default: dispatcher.agent)
+#     # AI review: review: true gives the agent a built-in review task (in a
+#     # new session: read git diff {base}...{branch}, the item and the
+#     # project's rules; check correctness, tests, docs, security; change
+#     # nothing) and it ends with backlog review --ok|--changes, which the
+#     # board shows on the card.
+#     - name: AI review
+#       review: true
+#       on_enter: review    # also a button in review
+#       # prompt: "Also check the database migrations."   # added to the built-in task
+#       # auto_fix: 2       # on changes wake the item's agent to fix them and review
+#       #                   # again, at most 2 rounds; then a person decides (default 0)
+#     - name: Tests
+#       statuses: [review]
+#       run: [sh, -c, "mise run check"]   # in the item's worktree; result as a note in the discussion
+#     # With a deploy status (category active) after review:
+#     # - name: Merge
+#     #   on_enter: deploy  # merges when an item is moved to deploy
+#     #   statuses: [review]   # and is a button in review
+#     #   run: merge        # built-in, see merge below
+#   # Pull requests: the agent finishes with `backlog pr <id>`, which pushes
+#   # its branch to remote and runs create (no shell; the description on
+#   # stdin) unless the item's pr field is set; the URL goes into pr. Without
+#   # this section agents never push. Placeholders: {id}, {title}, {branch},
+#   # {base}, {remote}, {description}.
+#   pr:
+#     remote: origin
+#     create: 'tea pulls create --head {branch} --base {base} --title "{id}: {title}" --description-file -'
+#     # create: 'gh pr create --head {branch} --base {base} --title "{id}: {title}" --body-file -'
+#     # find: 'gh pr list --head {branch} --json url --jq ".[0].url"'   # an open PR made elsewhere
+#     # url_pattern: 'https://\\S+/pulls/\\d+'   # default: the first URL in the output
+#     # backlog review also posts the review to the pull request (body on
+#     # stdin and in {body}; also {pr}, {pr_number}, {verdict}); a failure
+#     # is only a note in the item's discussion:
+#     # review: 'tea comment {pr_number}'
+#     # review: 'gh pr review {pr} --comment --body-file -'
+#     # Merging (the built-in action merge, strategy pr): {pr} is the URL,
+#     # {pr_number} its number; also {id} {title} {branch} {base} {remote}.
+#     # merge: tea pulls merge --style rebase {pr_number}
+#     # merge: gh pr merge --rebase {pr}
+#     # state prints merged / closed / open (a word or JSON with state and
+#     # merged); items in an active status with a pr are asked every
+#     # state_every minutes, a PR merged elsewhere makes them done.
+#     # state: gh pr view {pr} --json state --jq .state
+#     # state: tea api repos/{{owner}}/{{repo}}/pulls/{pr_number}   # Gitea
+#     # state_every: 2
+#   # How the built-in action merge merges (run: merge, typically
+#   # on_enter: deploy). Success: the item is done, its branch, created
+#   # worktree and session are cleaned up. Failure: the item goes back to
+#   # the status it came from, with a comment saying why.
+#   merge:
+#     strategy: local       # pr (default with pr above) | local (default) | command
+#     check: [mise, run, check]   # local: runs after the rebase onto base
+#     push: false           # local: push the merged base to remote
+#     # remote: origin      # default: pr.remote, else origin
+#     # command: [./ship.sh, "{branch}"]   # strategy command; exit 0 = merged
+#     cleanup: true         # remove branch and created worktree afterwards
 ''';

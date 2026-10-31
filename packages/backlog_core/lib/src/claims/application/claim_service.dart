@@ -46,13 +46,15 @@ final class ClaimService {
   ///
   /// Refuses blocked items, items waiting for overlapping work in progress,
   /// items with open children and finished items unless [force] is set. Claiming an item the agent already holds just
-  /// renews the claim.
-  Future<ClaimOutcome> claim(String reference, String agent, {bool force = false}) async {
+  /// renews the claim. Without [mirror] only the lock is taken and the item
+  /// file is left as it is (status, assignee): an action that works on an
+  /// item without taking it over.
+  Future<ClaimOutcome> claim(String reference, String agent, {bool force = false, bool mirror = true}) async {
     agent = Claim.validateAgent(agent);
     final snapshot = await _planning.snapshot();
     final planned = snapshot[ItemReference.resolve(reference, snapshot.ids)]!;
     if (!force) _checkClaimable(planned);
-    return _acquire(planned, agent);
+    return _acquire(planned, agent, mirror: mirror);
   }
 
   /// Claims the most urgent ready item that matches [where]; null when there
@@ -135,7 +137,7 @@ final class ClaimService {
     return finished;
   }
 
-  Future<ClaimOutcome> _acquire(PlannedItem planned, String agent) async {
+  Future<ClaimOutcome> _acquire(PlannedItem planned, String agent, {bool mirror = true}) async {
     final id = planned.id;
     final now = _clock.now();
     final fresh = Claim(itemId: id, agent: agent, claimedAt: now, heartbeatAt: now, lease: _workflow.claimLease);
@@ -160,6 +162,7 @@ final class ClaimService {
       throw ClaimConflictException('$id was just claimed by ${holder?.agent ?? 'another agent'}.');
     }
 
+    if (!mirror) return ClaimOutcome(planned.item, claim, tookOver: tookOver);
     try {
       final item = planned.item.copyWith(
         status: planned.category == StatusCategory.open ? _workflow.activeStatus : null,

@@ -207,7 +207,8 @@ class BoardController extends ChangeNotifier {
   }
 
   Future<void> start({String? viewId}) async {
-    _changes ??= DebouncedChanges(_api, () => unawaited(refresh(quiet: true)), delay: _refreshDelay);
+    // Plan changes too: they start and end AI reviews, which cards show.
+    _changes ??= DebouncedChanges(_api, () => unawaited(refresh(quiet: true)), delay: _refreshDelay, dispatch: true);
     selectedViewId = viewId;
     await refresh();
   }
