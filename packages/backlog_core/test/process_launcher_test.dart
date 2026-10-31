@@ -255,6 +255,13 @@ dispatcher:
     final after = await plan();
     expect(after.epics, {ItemId('T-0001')}, reason: 'the epic in review is still implemented as a whole');
     expect(after.assignments, isEmpty, reason: 'T-0003 stays with the epic');
+
+    // An action that continues the epic's session (not fresh) keeps it an epic.
+    await launcher.launch(after.actionStart('T-0001', 'Fix').agent!);
+    await finish('T-0001', 0);
+    final later = await plan();
+    expect(later.epics, {ItemId('T-0001')});
+    expect(later.assignments, isEmpty);
   });
 
   group('pull requests (dispatcher.pr)', () {

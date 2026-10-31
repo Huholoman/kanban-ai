@@ -488,8 +488,11 @@ final class ProcessAgentLauncher extends AgentLauncher {
         : record.resumed;
     final ended = _clock.now();
     final side = record.kind != RunKind.agent || record.side;
+    // An action that becomes the item's session keeps it an epic.
+    final epic = !side && await _lastWasEpic(id);
     await _write(side ? _actionFile(id) : _lastFile(id), {
       ...record.toJson(),
+      if (epic) 'epic': true,
       'ended_at': ended.toUtc().toIso8601String(),
       'exit_code': exitCode,
       'reason': reason,
