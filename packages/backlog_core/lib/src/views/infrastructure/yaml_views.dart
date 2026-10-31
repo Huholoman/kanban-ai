@@ -16,6 +16,7 @@ import 'yaml_writer.dart';
 /// ```yaml
 /// name: Launch board
 /// section: Releases         # optional heading in the app's view list
+/// pinned: true              # optional: in the phone's bottom bar
 /// layout: kanban            # list | kanban | table | graph
 /// filter:
 ///   milestone: launch
@@ -58,6 +59,10 @@ final class YamlViewRepository implements ViewRepository {
 
   @override
   Future<void> setSection(String id, String? section) => _edit(id, (source) => withSection(source, section));
+
+  @override
+  Future<void> setPinned(String id, bool pinned) =>
+      _edit(id, (source) => _withKey(source, 'pinned', pinned ? true : null));
 
   @override
   Future<void> setColumns(String id, List<String>? columns) => _edit(id, (source) => withColumns(source, columns));
@@ -165,6 +170,7 @@ ViewDefinition parseViewYaml(String id, String source) {
     columns: yaml['columns'] == null ? null : _strings(yaml['columns'], 'columns'),
     sort: yaml['sort'] == null ? const [] : _strings(yaml['sort'], 'sort').map(SortKey.parse).toList(),
     fields: yaml['fields'] == null ? const [] : _strings(yaml['fields'], 'fields'),
+    pinned: yaml['pinned'] == true,
     section: switch ('${yaml['section'] ?? ''}'.trim()) {
       '' => null,
       final section => section,

@@ -155,4 +155,18 @@ void main() {
     ]);
     expect(BoardFilter.none.toggle(FilterFacet.type, 'bug').toggle(FilterFacet.type, 'bug').toConditions(), isEmpty);
   });
+
+  test('counts tell how many items carry each value', () {
+    final counts = BoardFilter.counts([ui, backend, plain]);
+    expect(counts[FilterFacet.label], {'ui': 1, 'web': 1, 'backend': 1});
+    expect(counts[FilterFacet.priority], {'p0': 1, 'p2': 1, 'p3': 1});
+    expect(counts[FilterFacet.type], {'task': 2, 'bug': 1});
+  });
+
+  test('counts include epics above an item', () {
+    final epic = item('E', type: 'epic');
+    final child = item('C', parent: 'E');
+    final counts = BoardFilter.counts([epic, child], index: {'E': epic, 'C': child});
+    expect(counts[FilterFacet.epic], {'E': 2});
+  });
 }

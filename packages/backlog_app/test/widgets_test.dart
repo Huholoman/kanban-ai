@@ -2,7 +2,6 @@ import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/backlog_app.dart';
 import 'package:backlog_app/features/board/presentation/view_layouts.dart';
 import 'package:backlog_app/features/item/presentation/item_page.dart';
-import 'package:backlog_app/shared/item_style.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -33,7 +32,7 @@ void main() {
     expect(find.text('todo'), findsOneWidget);
     expect(find.text('in-progress'), findsOneWidget);
     expect(find.text('Item T-1'), findsOneWidget);
-    expect(find.text('#ui'), findsOneWidget);
+    expect(find.text('ui'), findsOneWidget);
   });
 
   testWidgets('dragging a card to another column changes its status', (tester) async {
@@ -97,12 +96,14 @@ void main() {
   });
 
   testWidgets('on a narrow screen the detail is a page and views are in a dropdown', (tester) async {
-    await pumpApp(tester, width: 800);
+    await pumpApp(tester, width: 500);
     expect(find.byKey(const ValueKey('view-picker')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('page-in-progress'))); // one column at a time
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Item T-2'));
     await tester.pumpAndSettle();
     expect(find.text('Item T-1'), findsNothing);
-    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    expect(find.byTooltip('Close'), findsOneWidget);
   });
 
   testWidgets('views are switched in the left panel', (tester) async {
@@ -141,18 +142,18 @@ void main() {
         item('T-3', status: 'in-progress', labels: ['ui', 'web']),
       ],
     );
-    await tester.tap(find.byKey(const ValueKey('filter-label')));
+    await tester.tap(find.byKey(const ValueKey('filter-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('filter-label-ui')).first);
     await tester.pumpAndSettle();
-    await tester.tapAt(const Offset(700, 800)); // close the menu
+    await tester.tapAt(const Offset(1300, 800)); // close the popover
     await tester.pumpAndSettle();
 
     expect(find.text('Item T-1'), findsOneWidget);
     expect(find.text('Item T-3'), findsOneWidget);
     expect(find.text('Item T-2'), findsNothing);
-    expect(find.text('Labels: #ui'), findsOneWidget);
-    expect(find.text('2 of 3'), findsOneWidget);
+    expect(find.text('label: ui'), findsOneWidget);
+    expect(find.text('2 of 3 shown ·'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('filter-clear')));
     await tester.pumpAndSettle();
@@ -237,7 +238,7 @@ void main() {
     expect(position.pixels, greaterThan(0));
   });
 
-  testWidgets('children open in panels to the right, the board gives way when they do not fit', (tester) async {
+  testWidgets('children open inside the panel next to the board, Esc closes it', (tester) async {
     await pumpApp(
       tester,
       width: 1900,
@@ -253,43 +254,17 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('link-S-1')).first);
     await tester.pumpAndSettle();
-    expect(find.byType(ItemDetailView), findsNWidgets(2));
-    expect(find.byType(KanbanBoard), findsOneWidget, reason: 'two panels still fit next to the board');
-
-    await tester.tap(find.byKey(const ValueKey('link-T-1')).first);
+    await tester.ensureVisible(find.byKey(const ValueKey('open-S-1')));
     await tester.pumpAndSettle();
-    expect(find.byType(ItemDetailView), findsNWidgets(3));
-    expect(find.byType(KanbanBoard), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('open-S-1')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ItemDetailView), findsOneWidget);
+    expect(find.byKey(const ValueKey('ancestor-E-1')), findsOneWidget);
+    expect(find.byType(KanbanBoard), findsOneWidget);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
-    expect(find.byType(ItemDetailView), findsNWidgets(2));
-    expect(find.byType(KanbanBoard), findsOneWidget);
-  });
-
-  testWidgets('the breadcrumb leads back to the board', (tester) async {
-    await pumpApp(
-      tester,
-      width: 1300,
-      items: [
-        item('E-1', type: 'epic'),
-        item('S-1', type: 'story', parent: 'E-1'),
-        item('T-1', parent: 'S-1'),
-      ],
-    );
-    await tester.tap(find.text('Item E-1'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('link-S-1')).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('link-T-1')).first);
-    await tester.pumpAndSettle();
-
-    expect(find.byType(ItemDetailView), findsNWidgets(2), reason: 'only two panels fit');
-    expect(find.byKey(const ValueKey('crumb-E-1')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('crumb-board')));
-    await tester.pumpAndSettle();
     expect(find.byType(ItemDetailView), findsNothing);
-    expect(find.byType(KanbanBoard), findsOneWidget);
   });
 
   testWidgets('relations fold, show counts and hide when empty', (tester) async {
@@ -303,8 +278,8 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('card-S-1')));
     await tester.pumpAndSettle();
-    expect(find.text('Children (2)'), findsOneWidget);
-    expect(find.text('1/2 done'), findsOneWidget);
+    expect(find.text('Tasks'), findsOneWidget);
+    expect(find.text('1 of 2 done'), findsOneWidget);
     expect(find.text('Parent (0)'), findsNothing);
     expect(find.byKey(const ValueKey('relation-dependencies')), findsNothing);
     expect(find.byKey(const ValueKey('add-dependencies')), findsOneWidget);
@@ -313,7 +288,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('relation-children')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('link-T-1')), findsNothing);
-    expect(find.text('Children (2)'), findsOneWidget);
+    expect(find.text('Tasks'), findsOneWidget);
   });
 
   testWidgets('colours from backlog.yaml reach cards and the theme switch works', (tester) async {
@@ -326,10 +301,14 @@ void main() {
     await tester.pumpWidget(BacklogApp(api: api));
     await tester.pumpAndSettle();
 
-    final label = tester.widget<Tag>(find.widgetWithText(Tag, '#ui'));
-    expect(label.color, const Color(0xFFD81B60));
-    final priority = tester.widget<Tag>(find.widgetWithText(Tag, 'p2'));
-    expect(priority.color, const Color(0xFF00FF00));
+    final label = tester.widget<Text>(
+      find.descendant(of: find.byKey(const ValueKey('card-T-1')), matching: find.text('ui')),
+    );
+    expect(label.style?.color, const Color(0xFFD81B60));
+    final priority = tester.widget<Text>(
+      find.descendant(of: find.byKey(const ValueKey('card-T-1')), matching: find.text('p2')),
+    );
+    expect(priority.style?.color, const Color(0xFF00FF00));
 
     MaterialApp app() => tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(app().themeMode, ThemeMode.system);
@@ -364,6 +343,8 @@ void main() {
     final api = await pumpApp(tester);
     expect(find.byKey(const ValueKey('filter-save')), findsNothing, reason: 'nothing to save without a filter');
     await tester.tap(find.byKey(const ValueKey('filter-flag-ready')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('filter-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('filter-save')));
     await tester.pumpAndSettle();

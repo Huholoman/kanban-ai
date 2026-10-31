@@ -28,7 +28,9 @@ abstract interface class BacklogApi {
 
   Future<List<ViewSummaryDto>> views();
 
-  Future<ViewResultDto> view(String id);
+  /// Runs view [id]; [groupBy] regroups it for this request only ('' for
+  /// ungrouped).
+  Future<ViewResultDto> view(String id, {String? groupBy});
 
   Future<ViewSummaryDto> updateView(String id, ViewUpdateRequest request);
 

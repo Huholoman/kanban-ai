@@ -14,10 +14,13 @@ final class ViewService {
 
   Future<List<ViewDefinition>> all() async => (await _views.load()).views;
 
-  Future<ViewResult> run(String id) async {
+  /// Runs view [id]; with [groupBy] grouped by that field for this run only
+  /// (empty string: ungrouped), the saved definition stays as it is.
+  Future<ViewResult> run(String id, {String? groupBy}) async {
     final catalog = await _views.load();
     for (final view in catalog.views) {
-      if (view.id == id) return evaluate(view);
+      if (view.id != id) continue;
+      return evaluate(groupBy == null ? view : view.regroupedBy(groupBy.isEmpty ? null : groupBy));
     }
     final broken = catalog.problems.where((problem) => p.basenameWithoutExtension(problem.$1) == id);
     if (broken.isNotEmpty) throw ConfigurationException('${broken.first.$1}: ${broken.first.$2}');
@@ -26,6 +29,11 @@ final class ViewService {
 
   Future<ViewDefinition> setSection(String id, String? section) async {
     await _views.setSection(id, section);
+    return _reloaded(id);
+  }
+
+  Future<ViewDefinition> setPinned(String id, bool pinned) async {
+    await _views.setPinned(id, pinned);
     return _reloaded(id);
   }
 
@@ -40,6 +48,7 @@ final class ViewService {
   Future<ViewDefinition> saveAs({
     required String name,
     String? section,
+    bool pinned = false,
     String? base,
     List<Object?> conditions = const [],
   }) async {
@@ -50,6 +59,7 @@ final class ViewService {
     final definition = <String, Object?>{
       'name': name.trim(),
       if (section != null && section.trim().isNotEmpty) 'section': section.trim(),
+      if (pinned) 'pinned': true,
       'layout': template['layout'] ?? 'list',
       if (parts.isNotEmpty) 'filter': parts.length == 1 ? parts.single : {'and': parts},
       for (final key in ['group_by', 'columns', 'sort', 'fields'])

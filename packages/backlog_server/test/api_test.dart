@@ -194,6 +194,29 @@ void main() {
     );
   });
 
+  test('views carry counts and can be pinned', () async {
+    await api.createItem(const NewItemRequest(title: 'A', status: 'todo'));
+    await api.createItem(const NewItemRequest(title: 'B', status: 'todo'));
+    final board = (await api.views()).firstWhere((v) => v.id == 'board');
+    expect(board.count, 2);
+    expect(board.pinned, isFalse);
+    expect((await api.updateView('board', const ViewUpdateRequest.pinned(true))).pinned, isTrue);
+    expect((await api.views()).firstWhere((v) => v.id == 'board').pinned, isTrue);
+    expect((await api.updateView('board', const ViewUpdateRequest.pinned(false))).pinned, isFalse);
+    final saved = await api.createView(const NewViewRequest(name: 'Pinned one', pinned: true));
+    expect(saved.pinned, isTrue);
+  });
+
+  test('a view can be regrouped for one request without changing it', () async {
+    await api.createItem(const NewItemRequest(title: 'Urgent', status: 'todo', priority: 'p0'));
+    final byPriority = await api.view('board', groupBy: 'priority');
+    expect(byPriority.groupBy, 'priority');
+    expect(byPriority.columns, isNull);
+    expect(byPriority.groups.map((g) => g.key), containsAll(['p0', 'p1', 'p2', 'p3']));
+    expect((await api.view('board')).groupBy, 'status');
+    expect((await api.view('board', groupBy: '')).groups.single.key, '');
+  });
+
   test('lint reports problems', () async {
     expect(await api.lint(), isEmpty);
     File(p.join(dir.path, 'items', 'S-zzzz-x.md')).writeAsStringSync('---\nid: S-zzzz\ntitle: X\nstatus: nope\n---\n');

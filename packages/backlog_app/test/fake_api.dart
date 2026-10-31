@@ -83,11 +83,18 @@ final class FakeBacklogApi implements BacklogApi {
     if (found == null) throw BacklogApiException(404, 'not_found', 'No item "$reference".');
     ItemLinkDto link(ItemDto item) =>
         ItemLinkDto(id: item.id, title: item.title, status: item.status, category: item.category);
+    ItemLinkDto linkTo(String id) => items_[id] == null ? ItemLinkDto(id: id) : link(items_[id]!);
     final children = items_.values.where((i) => i.parent == found.id).toList();
     return ItemDetailDto(
       item: _with(found, children: Progress(children.where((c) => c.isDone).length, children.length)),
       parent: found.parent == null ? null : link(items_[found.parent]!),
       children: [for (final child in children) link(child)],
+      dependencies: [for (final id in found.dependsOn) linkTo(id)],
+      dependents: [
+        for (final other in items_.values)
+          if (other.dependsOn.contains(found.id)) link(other),
+      ],
+      related: [for (final id in found.related) linkTo(id)],
     );
   }
 
@@ -144,6 +151,7 @@ final class FakeBacklogApi implements BacklogApi {
   /// Section and columns of each view, as `PATCH /api/views/<id>` sets them.
   final viewSections = <String, String>{};
   final viewColumns = <String, List<String>>{};
+  final pinnedViews = <String>{};
 
   @override
   Future<List<ViewSummaryDto>> views() async => [
@@ -154,14 +162,24 @@ final class FakeBacklogApi implements BacklogApi {
         layout: ViewLayoutDto.kanban,
         groupBy: 'status',
         section: request.section,
+        pinned: request.pinned || pinnedViews.contains('saved-${index + 1}'),
       ),
-    ViewSummaryDto(id: 'list', name: 'All', layout: ViewLayoutDto.list, section: viewSections['list']),
+    ViewSummaryDto(
+      id: 'list',
+      name: 'All',
+      layout: ViewLayoutDto.list,
+      section: viewSections['list'],
+      pinned: pinnedViews.contains('list'),
+      count: items_.length,
+    ),
     ViewSummaryDto(
       id: 'board',
       name: 'Board',
       layout: ViewLayoutDto.kanban,
       groupBy: 'status',
       section: viewSections['board'],
+      pinned: pinnedViews.contains('board'),
+      count: items_.values.where((i) => const ['todo', 'in-progress', 'done'].contains(i.status)).length,
     ),
   ];
 
@@ -180,6 +198,9 @@ final class FakeBacklogApi implements BacklogApi {
       final section = request.section?.trim() ?? '';
       section.isEmpty ? viewSections.remove(id) : viewSections[id] = section;
     }
+    if (request.pinned case final pinned?) {
+      pinned ? pinnedViews.add(id) : pinnedViews.remove(id);
+    }
     if (request.changesColumns) {
       final columns = request.columns;
       columns == null || columns.isEmpty ? viewColumns.remove(id) : viewColumns[id] = columns;
@@ -188,9 +209,21 @@ final class FakeBacklogApi implements BacklogApi {
   }
 
   @override
-  Future<ViewResultDto> view(String id) async {
+  Future<ViewResultDto> view(String id, {String? groupBy}) async {
     viewLoads++;
     final all = items_.values.toList();
+    if (groupBy == 'priority') {
+      return ViewResultDto(
+        id: id,
+        name: 'Board',
+        layout: ViewLayoutDto.kanban,
+        groupBy: 'priority',
+        groups: [
+          for (final priority in _workflow.priorities)
+            ViewGroupDto(priority, all.where((i) => i.priority == priority).toList()),
+        ],
+      );
+    }
     if (id == 'list') {
       return ViewResultDto(id: id, name: 'All', layout: ViewLayoutDto.list, groups: [ViewGroupDto('', all)]);
     }

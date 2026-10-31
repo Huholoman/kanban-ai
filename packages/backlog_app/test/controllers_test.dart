@@ -50,6 +50,39 @@ void main() {
       expect(board.sectionNames, isEmpty);
     });
 
+    test('the view can be regrouped for the session and resets on view change', () async {
+      await board.setGroupBy('priority');
+      expect(board.result!.groupBy, 'priority');
+      expect(board.canMove, isTrue, reason: 'dropping into a priority column sets the priority');
+      await board.selectView('list');
+      expect(board.groupByOverride, isNull);
+    });
+
+    test('people are the agents with live claims, busiest first', () async {
+      ClaimDto claim(String agent, {bool expired = false}) => ClaimDto(
+        item: 'x',
+        agent: agent,
+        claimedAt: DateTime.utc(2026),
+        heartbeatAt: DateTime.utc(2026),
+        expiresAt: DateTime.utc(2027),
+        expired: expired,
+      );
+      ItemDto claimed(String id, ClaimDto c) =>
+          ItemDto(id: id, title: id, type: 'task', status: 'in-progress', priority: 'p2', claim: c);
+      board.dispose(); // the one from setUp; tearDown disposes the new one
+      api = FakeBacklogApi([
+        claimed('A', claim('bob')),
+        claimed('B', claim('alice')),
+        claimed('C', claim('alice')),
+        claimed('D', claim('carol', expired: true)),
+      ]);
+      board = BoardController(api, refreshDelay: const Duration(milliseconds: 10));
+      await board.start();
+      expect(board.people, [('alice', 2), ('bob', 1)]);
+      board.showPerson('bob');
+      expect(board.filter.valuesFor(FilterFacet.person), {'bob'});
+    });
+
     test('list views cannot be reordered by dragging', () async {
       await board.selectView('list');
       expect(board.result!.layout, ViewLayoutDto.list);
@@ -115,6 +148,28 @@ void main() {
       expect(controller.item!.isDone, isTrue);
     });
 
+    test('loads the parent chain, the siblings and previews of children', () async {
+      final api = FakeBacklogApi([
+        item('E-1', type: 'epic'),
+        item('S-1', type: 'story', parent: 'E-1'),
+        item('S-2', type: 'story', parent: 'E-1'),
+        item('T-1', parent: 'S-2', body: 'first'),
+      ]);
+      final controller = ItemController(api, 'S-2', refreshDelay: Duration.zero);
+      addTearDown(controller.dispose);
+      await controller.start();
+      expect(controller.ancestors.map((a) => a.item.id), ['E-1']);
+      expect(controller.siblings.map((s) => s.id), ['S-1', 'S-2']);
+      expect('${controller.position}', '2 / 2');
+
+      expect(controller.preview('T-1'), isNull);
+      await controller.loadPreview('T-1');
+      expect(controller.preview('T-1')!.item.body, 'first');
+      api.externalChange(item('T-1', parent: 'S-2', body: 'second'));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(controller.preview('T-1')!.item.body, 'second', reason: 'previews follow changes');
+    });
+
     test('a missing item shows an error', () async {
       final controller = ItemController(FakeBacklogApi([]), 'T-9');
       addTearDown(controller.dispose);
@@ -134,7 +189,7 @@ void main() {
       addTearDown(appearance.dispose);
       await appearance.start();
       expect(appearance.mode, ThemeMode.dark);
-      expect(appearance.theme(Brightness.dark).colorScheme.surface, const Color(0xFF101820));
+      expect(appearance.theme(Brightness.dark).scaffoldBackgroundColor, const Color(0xFF101820));
 
       api
         ..appearance = const AppearanceDto(

@@ -66,7 +66,8 @@ final class HttpBacklogApi implements BacklogApi {
   Future<List<ViewSummaryDto>> views() async => _list(await _get(ApiPaths.views)).map(ViewSummaryDto.fromJson).toList();
 
   @override
-  Future<ViewResultDto> view(String id) async => ViewResultDto.fromJson(asJson(await _get(ApiPaths.view(id))));
+  Future<ViewResultDto> view(String id, {String? groupBy}) async =>
+      ViewResultDto.fromJson(asJson(await _get(ApiPaths.view(id), query: {'group_by': ?groupBy})));
 
   @override
   Future<ViewSummaryDto> updateView(String id, ViewUpdateRequest request) async =>
@@ -116,8 +117,17 @@ final class HttpBacklogApi implements BacklogApi {
     return uri.replace(scheme: uri.scheme == 'https' ? 'wss' : 'ws');
   }
 
-  Uri _uri(String path, [Map<String, String> query = const {}]) =>
-      baseUri.replace(path: path, queryParameters: query.isEmpty ? null : query);
+  /// Built from the origin only: a query or fragment left in [baseUri] (the
+  /// app's `Uri.base` ends in `?#`) must not leak into requests — browsers
+  /// refuse to open a WebSocket whose URL has a fragment, even an empty one.
+  Uri _uri(String path, [Map<String, String> query = const {}]) => Uri(
+    scheme: baseUri.scheme,
+    userInfo: baseUri.userInfo,
+    host: baseUri.host,
+    port: baseUri.port,
+    path: path,
+    queryParameters: query.isEmpty ? null : query,
+  );
 
   Map<String, String> get _headers => {
     'accept': 'application/json',

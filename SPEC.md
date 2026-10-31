@@ -230,7 +230,7 @@ Errors and warnings with a code, item and location:
 | `--web` | `BACKLOG_WEB` | built app next to the sources / bundled in Nix | static web app |
 | `-q` | | | no request log |
 
-At start it prints the board URLs (with the token). It watches the folder (debounced, ignoring `.git`, temp and editor files) and pushes change events; edits from agents, `git pull` or an editor appear on the board immediately. `backlog.yaml` changes reload the workflow.
+At start it prints the board URLs (with the token). The web app is served with `Cache-Control: no-cache` and an ETag per file (derived from the build's location, size and time — files in the Nix store all share one date), so browsers revalidate and never keep files of an older build. It watches the folder (debounced, ignoring `.git`, temp and editor files) and pushes change events; edits from agents, `git pull` or an editor appear on the board immediately. `backlog.yaml` changes reload the workflow.
 
 ### 8.1 REST API
 
@@ -245,7 +245,7 @@ At start it prints the board URLs (with the token). It watches the folder (debou
 | `POST /api/items/<ref>/claim` \| `release` \| `done` | `{agent?, status?, force}` | detail |
 | `GET /api/views` | | `[{id, name, layout, group_by, section}]` |
 | `POST /api/views` | `{name, section?, base?, conditions: [...]}` | view summary (201); writes `views/<slug>.yaml` (unique id) copying `layout`, `group_by`, `columns`, `sort`, `fields` from `base` and setting `filter: {and: [<base filter>, ...conditions]}`; invalid filters are `invalid_input` |
-| `GET /api/views/<id>` | | `{id, name, layout, group_by, fields, columns, hidden, groups: [{key, items}]}` |
+| `GET /api/views/<id>` | `?group_by=field` regroups for this request only (empty: ungrouped; columns dropped) | `{id, name, layout, group_by, fields, columns, hidden, groups: [{key, items}]}` |
 | `PATCH /api/views/<id>` | `{section?, columns?}` — only given keys change, null/blank/empty removes | view summary; writes `section:` / `columns:` into the YAML, keeping the rest |
 | `GET /api/lint` | | `[{severity, code, message, item?, location?}]` |
 | `WS /api/events` | `?token=` | `{"type": "changed", "paths": [...]}` |
@@ -256,40 +256,48 @@ Errors: `{"error": {"type", "message", "candidates"?}}` with `not_found` 404, `a
 
 URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from the UI, default `web`), `&server=http://…` (another API server).
 
-**Layout** (responsive): from 900 px a left panel with views; from 1200 px detail panels next to the board; narrower windows use a view dropdown and full-screen detail.
+**Layout** (responsive): from 1200 px a left panel with views (208 px, 240 px from 2000 px) and the open item as a panel on the right; 840–1199 px view tabs under the header (☰ opens a drawer with the full navigation) and the open item as a bottom sheet; below 840 px the open item is a full page; below 600 px the header has ☰ and a view dropdown and a bottom bar shows the pinned views (up to three; the first two views when none are pinned) plus *More* (the drawer). *New item* is a floating button outside the left panel. From 2000 px wide (27" 4K and similar) text is 15 % larger.
 
 **Left panel**
 - *New item* button (dialog: title, type, status, priority, milestone, parent, labels, body).
-- Saved views; views with `section` grouped under foldable section headings; the ⋮ menu of a view moves it to an existing or new section (persisted to the YAML).
+- Saved views with their item count; views with `section` grouped under foldable section headings; the ⋮ menu of a view moves it to an existing or new section (persisted to the YAML) or pins it to the phone's bottom bar.
+- *People*: agents holding a live claim with how many items each holds (busiest first); a click narrows the board to that agent's items (the People filter).
+- *Lint* summary at the bottom ("Lint: 2 warnings"); a click lists the problems with links to items.
+
+**Header** (56 px, top of the main area): the filter bar, then *Group: status ▾* (regroups the current view for the session by status, priority, type, milestone, assignee, labels or epic, or none; *The view's own* goes back; an asterisk marks a changed grouping; only an icon when the header is narrow), compact buttons for columns, theme and reload, and a loading indicator. `/` focuses the search when no text field has focus.
 
 **Filter bar** (client-side, on any view, kept across views)
-- Search in id, title, branch.
-- Menus: Labels, Epic (everything under the chosen epic at any depth), Type, Priority, Milestone, People (assignee or claim holder). Values in one menu are alternatives; menus, chips and search combine with AND.
-- Chips: Ready, Blocked, Claimed (with explanatory tooltips). Clear button and "shown of total" count.
-- **Save as view:** turns the filter into view conditions (search → `or` of `contains` on id/title/branch, menus → field lists, people → `assignee` or `claimed_by`, epic → `epic`, chips → `ready/blocked/claimed: true`) and saves the current view plus them as a new view (name, optional section); the board then switches to it with the filter cleared.
+- Search in id, title, branch (280 px, `/` focuses it).
+- **Filters** button with a badge (number of selected values) opens a popover: Labels (count per value), Epic (everything under the chosen epic at any depth), Type, Priority, Milestone, People (assignee or claim holder). A section with more than six values shows only six — the ticked ones, then the most frequent — with *Show all (N)* and its own search box, so the other sections stay in reach; Type and Priority are rows of checkboxes; "Clear all", "N items match" and **Save as view...**. Values in one section are alternatives; sections, readiness segments and search combine with AND.
+- Segmented control Ready | Blocked | Claimed (with explanatory tooltips), then one removable chip per facet with values (`label: infra`, `priority: p0-p1`). "N of M shown · Clear" when a filter is active.
+- **Save as view:** turns the filter into view conditions (search → `or` of `contains` on id/title/branch, facet sections → field lists, people → `assignee` or `claimed_by`, epic → `epic`, segments → `ready/blocked/claimed: true`) and saves the current view plus them as a new view (name, optional section, optionally pinned to the mobile bottom bar); the board then switches to it with the filter cleared.
 - Status is intentionally not a filter: views show it as columns.
 
 **Kanban**
-- The whole board scrolls as a page (draggable scrollbars, horizontal scroll when columns overflow); columns grow with their cards.
+- The whole board scrolls as a page (draggable scrollbars, horizontal scroll when columns overflow); columns grow with their cards. Each column has a header (name, count) above a grey well with the cards; columns share the width, 196–280 px each.
+- On a phone the board shows one column at a time, full width: swipe sideways or use the switcher on top (‹ todo · 7 › and a scrollable row of all columns with counts; the current one scrolls into view). Empty columns stay as pages ("Nothing in …"). A long press on a card opens *Move X to* with the other columns, which sets the grouped field like a drop.
 - Drag a card to another column to set the field the view groups by (status, priority, type, milestone, assignee); optimistic update, rolled back with a message on failure.
-- Inside a column children are indented under their parent; a parent sitting in another column appears as a grey context header, so a story in progress still shows its epic.
+- Inside a column children are indented under their parent; a parent sitting in another column appears as a muted line "↑ Epic title", so a story in progress still shows its epic.
 - Parents with nested items have a fold toggle ("N hidden").
-- Cards show id (click copies it), type, priority, title, milestone, labels, PR link, blocked/ready state, claim holder (expired claims greyed), checklist or children progress.
+- Cards: id (click copies it) and priority on top (the most urgent one in the warning colour), the title, and one meta line by state, in this order: *● Ready*, *Blocked by …*, claim holder with the time left (*◉ agent · 1h left*), *Claim expired · agent* (faint, dashed border), otherwise labels, milestone and assignee; a PR link and branch share the line. A thin bar shows checklist or children progress. The selected card has an accent border, done cards are dimmed.
 
 **Lists / table / graph**
-- Items grouped by the view's `group_by`; the graph layout shows each item with an expandable tree of its dependencies (titles, statuses, cycle-safe), clickable.
+- Items grouped by the view's `group_by` (headers like column headers, rows are the same cards); the graph layout shows each item with an expandable tree of its dependencies (titles, statuses, cycle-safe), clickable.
 
 **Detail**
-- Header: type, id (click copies), Claim / Release / Done actions.
-- Editable title, status, priority, type, milestone, assignee, branch, pull request, labels, Markdown body (rendered, with an editor).
+- Header: back (when the detail has history), breadcrumb of the parent chain (*Epic › Story › X-2c91 Title*, ancestors clickable), close; below it "Story 2 of 5" with ‹ 2 / 5 › stepping through the parent's children (disabled at the ends, hidden without a parent; no history entry), or "Task · X-7f3a" without a parent; id (click copies), Claim / Release / Done actions.
+- **Navigation inside the detail:** every link (ancestor, sibling, child, relation, blocker) shows the item in the same panel or page; ← walks back the way taken. The board resets it when another card is opened.
+- "Blocked by X-7f3a Title" warning line when blocked.
+- An epic has a *Scope board* button that narrows the board to everything under it (the Epic filter).
+- Title edited in place (saved on Enter or when the field loses focus); status and priority side by side as compact dropdowns (a chip with the value's colour dot and ▾ opens the list of values); milestone, type, assignee, branch (monospace), pull request and labels (chips with × and *+ label*) as a definition list, each edited in place; Markdown body in a card (rendered, with an editor), its checklist items (`- [ ]` / `- [x]`, not inside code blocks) as checkboxes that rewrite their line and save the body.
 - PR shown as "PR #42", opens in a new tab (http/https only).
-- Relations as foldable sections with counts — Children (with "x/y done"), Parent, Depends on, Blocks, Related; empty ones hidden; links added from the *Link:* row and removed with ×.
-- **Panel trail:** opening a child (or any link) from a panel opens it in a new panel to the right; the child open on the right is highlighted in its parent's list. Two panels fit beside the board; with more, the board and the oldest panels give way to a breadcrumb (*Board › Epic › …*) leading back. Esc closes the rightmost panel.
+- Children ("Tasks" for a story) with "x of y done": each row (▸ id, title, status) expands in place to the first lines of the child's body, its own children ("Subtasks x of y done") and *Open X →*.
+- Parent, Depends on, Blocks, Related as folded rows with counts ("Depends on 1 ▸"); empty ones hidden; links added from the *Link:* row and removed with ×.
+- **One detail panel:** 480 px (520 px from 2000 px) right of the board from 1200 px; from 840 px a bottom sheet over the board (about 45 % of the height, drag handle, ⤢ opens it as a full page); narrower windows use a full page. Esc closes it.
 
 **Other**
-- Columns button in the app bar (views with `group_by`): pick and reorder the shown groups, saved as `columns:`; *Default* removes it.
+- Columns button in the header (views with `group_by`): pick and reorder the shown groups, saved as `columns:`; *Default* removes it.
 - Theme switch system → light → dark (for the session; default from `appearance.mode`); colours from `appearance`, reloaded live.
-- Lint badge in the app bar with the list of problems linking to items.
 - Live updates over the WebSocket (debounced refresh), reconnecting automatically.
 
 ## 10. Installation and operation
@@ -309,7 +317,7 @@ Dart pub workspace (`backlog_core`, `backlog_cli`, `backlog_api`, `backlog_serve
 - **backlog_cli** — thin adapter; text and JSON renderers.
 - **backlog_api** — DTOs, `BacklogApi` interface, `HttpBacklogApi` (pure Dart, compiles for the web).
 - **backlog_server** — shelf: `ApiHandler` + `DtoMapper`, `ChangeFeed` (watcher → WebSocket), middleware (token, client allowlist, CORS), multi-address binding.
-- **backlog_app** — features `board` and `item`, each with `application/` (ChangeNotifier controllers and pure logic: `BoardFilter`, `ColumnArrangement`, `DetailTrail`) and `presentation/`; depends only on `BacklogApi`.
+- **backlog_app** — features `board` and `item`, each with `application/` (ChangeNotifier controllers and pure logic: `BoardFilter`, `ColumnArrangement`, `DetailNavigation`; shared design tokens in `shared/tokens.dart`) and `presentation/`; depends only on `BacklogApi`.
 
 Development: `mise run check` (format check, analysis, all tests), `mise run playground` (demo backlog), `mise run serve`.
 
@@ -318,6 +326,6 @@ Development: `mise run check` (format check, analysis, all tests), `mise run pla
 - Prototype; formats may still change.
 - Claims coordinate agents sharing one filesystem; agents on different machines need a shared backlog folder (or the server).
 - The web app has no user accounts; protection is the token plus `--host`/`--allow`.
-- Filter state, folded columns and the panel trail are not kept across page reloads.
+- Filter state, folded columns and the detail's navigation history are not kept across page reloads.
 - `section` and `columns` are the only view properties editable from the app; other view changes, statuses and colours are made in the YAML.
 - The theme switch is not remembered across page reloads.

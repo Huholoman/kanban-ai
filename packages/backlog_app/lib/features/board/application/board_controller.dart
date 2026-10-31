@@ -42,6 +42,13 @@ class BoardController extends ChangeNotifier {
   /// Sections of the view list that are folded.
   Set<String> collapsedSections = const {};
 
+  /// Grouping chosen in the header for the current view only (null: the
+  /// view's own; '' ungrouped). Reset when another view is selected.
+  String? groupByOverride;
+
+  /// Fields the header offers to group by.
+  static const groupableFields = ['status', 'priority', 'type', 'milestone', 'assignee', 'labels', 'epic'];
+
   /// One-off messages for the user (failed moves and the like).
   Stream<String> get notices => _notices.stream;
 
@@ -122,10 +129,16 @@ class BoardController extends ChangeNotifier {
 
   /// Saves the current view narrowed by [filter] as a new view and switches
   /// to it (with the filter cleared, the view now does the filtering).
-  Future<bool> saveFilterAsView(String name, {String? section}) async {
+  Future<bool> saveFilterAsView(String name, {String? section, bool pinned = false}) async {
     try {
       final created = await _api.createView(
-        NewViewRequest(name: name, section: section, base: selectedViewId, conditions: filter.toConditions()),
+        NewViewRequest(
+          name: name,
+          section: section,
+          pinned: pinned,
+          base: selectedViewId,
+          conditions: filter.toConditions(),
+        ),
       );
       filter = BoardFilter.none;
       selectedViewId = created.id;
@@ -136,6 +149,38 @@ class BoardController extends ChangeNotifier {
     await refresh();
     return true;
   }
+
+  /// Views pinned to the phone's bottom bar, in list order.
+  List<ViewSummaryDto> get pinnedViews => [
+    for (final view in views)
+      if (view.pinned) view,
+  ];
+
+  /// Pins view [id] to the phone's bottom bar, or unpins it.
+  Future<void> setPinned(String id, bool pinned) async {
+    try {
+      await _api.updateView(id, ViewUpdateRequest.pinned(pinned));
+    } catch (e) {
+      _notices.add('$e');
+    }
+    await refresh(quiet: true);
+  }
+
+  /// Narrows the board to everything under [epicId] (replacing any other
+  /// epic in the filter); the filter bar shows it as a removable chip.
+  void scopeToEpic(String epicId) {
+    var next = filter;
+    for (final other in filter.valuesFor(FilterFacet.epic)) {
+      next = next.toggle(FilterFacet.epic, other);
+    }
+    setFilter(next.toggle(FilterFacet.epic, epicId));
+  }
+
+  /// The epic the board is scoped to, if exactly one is chosen.
+  String? get scopedEpic => switch (filter.valuesFor(FilterFacet.epic)) {
+    final epics when epics.length == 1 => epics.single,
+    _ => null,
+  };
 
   /// Moves view [id] to [section] (null or blank: out of any section).
   Future<void> moveView(String id, String? section) async {
@@ -152,6 +197,10 @@ class BoardController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// How many items of the current view have each facet value.
+  Map<FilterFacet, Map<String, int>> get filterCounts =>
+      BoardFilter.counts(result?.groups.expand((group) => group.items) ?? const [], index: index);
+
   void setFilter(BoardFilter next) {
     filter = next;
     notifyListeners();
@@ -165,7 +214,36 @@ class BoardController extends ChangeNotifier {
 
   Future<void> selectView(String id) async {
     selectedViewId = id;
+    groupByOverride = null;
     await refresh();
+  }
+
+  /// Regroups the current view by [field] for this session; null goes back
+  /// to the view's own grouping.
+  Future<void> setGroupBy(String? field) async {
+    groupByOverride = field;
+    await refresh();
+  }
+
+  /// Agents holding a live claim, with how many items each holds, busiest
+  /// first — the "People" part of the navigation.
+  List<(String, int)> get people {
+    final counts = <String, int>{};
+    for (final item in index.values) {
+      final claim = item.claim;
+      if (claim != null && !claim.expired && !item.isDone) counts[claim.agent] = (counts[claim.agent] ?? 0) + 1;
+    }
+    return counts.entries.map((e) => (e.key, e.value)).toList()
+      ..sort((a, b) => b.$2 != a.$2 ? b.$2.compareTo(a.$2) : a.$1.compareTo(b.$1));
+  }
+
+  /// Narrows the board to what [agent] works on (assignee or claim).
+  void showPerson(String agent) {
+    var next = filter;
+    for (final other in filter.valuesFor(FilterFacet.person)) {
+      next = next.toggle(FilterFacet.person, other);
+    }
+    setFilter(next.toggle(FilterFacet.person, agent));
   }
 
   /// Reloads everything; [quiet] keeps the current content visible meanwhile.
@@ -181,7 +259,7 @@ class BoardController extends ChangeNotifier {
       final loadedLint = await _api.lint();
       final loadedItems = await _api.items(includeDone: true);
       final id = _pickView(loadedViews);
-      final loadedResult = id == null ? null : await _api.view(id);
+      final loadedResult = id == null ? null : await _api.view(id, groupBy: groupByOverride);
       if (generation != _generation) return; // a newer refresh won
       workflow = loadedWorkflow;
       views = loadedViews;

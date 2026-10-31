@@ -99,18 +99,25 @@ final class ApiHandler {
   }
 
   Future<Response> _views(Request request) async {
-    final views = await (await _host.backlog).views.all();
-    return _json([for (final view in views) DtoMapper.viewSummary(view).toJson()]);
+    final service = (await _host.backlog).views;
+    return _json([
+      for (final view in await service.all())
+        DtoMapper.viewSummary(view, count: (await service.evaluate(view)).items.toSet().length).toJson(),
+    ]);
   }
 
-  Future<Response> _view(Request request, String id) async =>
-      _json(DtoMapper.view(await (await _host.backlog).views.run(id)).toJson());
+  Future<Response> _view(Request request, String id) async => _json(
+    DtoMapper.view(
+      await (await _host.backlog).views.run(id, groupBy: request.url.queryParameters['group_by']),
+    ).toJson(),
+  );
 
   Future<Response> _createView(Request request) async {
     final payload = NewViewRequest.fromJson(await _body(request));
     final view = await (await _host.backlog).views.saveAs(
       name: payload.name,
       section: payload.section,
+      pinned: payload.pinned,
       base: payload.base,
       conditions: payload.conditions,
     );
@@ -120,11 +127,12 @@ final class ApiHandler {
   Future<Response> _updateView(Request request, String id) async {
     final payload = ViewUpdateRequest.fromJson(await _body(request));
     final views = (await _host.backlog).views;
-    if (!payload.changesSection && !payload.changesColumns) {
-      throw const InvalidInputException('Nothing to change: give "section" and/or "columns".');
+    if (!payload.changesSection && !payload.changesColumns && payload.pinned == null) {
+      throw const InvalidInputException('Nothing to change: give "section", "columns" and/or "pinned".');
     }
     var view = payload.changesSection ? await views.setSection(id, payload.section) : null;
     if (payload.changesColumns) view = await views.setColumns(id, payload.columns);
+    if (payload.pinned case final pinned?) view = await views.setPinned(id, pinned);
     return _json(DtoMapper.viewSummary(view!).toJson());
   }
 

@@ -47,8 +47,45 @@ class _BacklogAppState extends State<BacklogApp> {
         themeMode: _appearance.mode,
         // Theme loads after the first frame; switch at once instead of fading.
         themeAnimationDuration: Duration.zero,
+        builder: (context, child) => _LargeScreenText(child: child!),
         home: const BoardPage(),
       ),
     ),
   );
+}
+
+/// Scales text up on very wide screens (27" 4K and similar), where 13 px
+/// would read small from the usual distance; the user's own scaling applies
+/// on top.
+class _LargeScreenText extends StatelessWidget {
+  const _LargeScreenText({required this.child});
+
+  /// From this logical width text is [factor] times larger.
+  static const wideWidth = 2000.0;
+  static const factor = 1.15;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    if (media.size.width < wideWidth) return child;
+    return MediaQuery(
+      data: media.copyWith(textScaler: _Scaled(media.textScaler)),
+      child: child,
+    );
+  }
+}
+
+class _Scaled extends TextScaler {
+  const _Scaled(this.inner);
+
+  final TextScaler inner;
+
+  @override
+  double scale(double fontSize) => inner.scale(fontSize) * _LargeScreenText.factor;
+
+  @override
+  // ignore: deprecated_member_use
+  double get textScaleFactor => inner.textScaleFactor * _LargeScreenText.factor;
 }

@@ -5,7 +5,6 @@ import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_core/backlog_core.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
-import 'package:shelf_static/shelf_static.dart';
 
 import 'backlog_host.dart';
 import 'events/change_feed.dart';
@@ -13,6 +12,7 @@ import 'events/event_socket.dart';
 import 'http/api_handler.dart';
 import 'http/client_filter.dart';
 import 'http/middleware.dart';
+import 'http/web_app.dart';
 
 /// Composition root of the server: the API, change events and the static web
 /// app in front of one backlog folder.
@@ -74,9 +74,7 @@ final class BacklogServer {
   }) {
     final api = ApiHandler(host).handler;
     final socket = eventSocketHandler(events);
-    final web = webRoot != null && Directory(webRoot).existsSync()
-        ? createStaticHandler(webRoot, defaultDocument: 'index.html')
-        : null;
+    final web = webRoot != null && Directory(webRoot).existsSync() ? webAppHandler(webRoot) : null;
 
     FutureOr<Response> route(Request request) {
       final path = request.url.path;

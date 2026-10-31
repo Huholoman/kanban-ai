@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/ui/ui.dart';
+
 /// Picks and orders the columns (groups) of a view. Pops the chosen columns,
 /// an empty list for "back to the default", or null when cancelled.
 Future<List<String>?> showColumnsDialog(
@@ -57,16 +59,16 @@ class _ColumnsDialogState extends State<_ColumnsDialog> {
       ),
     ),
     actions: [
-      TextButton(onPressed: () => Navigator.of(context).pop(const <String>[]), child: const Text('Default')),
-      TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-      FilledButton(
+      LinkButton(label: 'Default', onPressed: () => Navigator.of(context).pop(const <String>[])),
+      LinkButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+      PrimaryButton(
+        label: 'Save',
         onPressed: _checked.isEmpty
             ? null
             : () => Navigator.of(context).pop([
                 for (final column in _order)
                   if (_checked.contains(column)) column,
               ]),
-        child: const Text('Save'),
       ),
     ],
   );
