@@ -297,6 +297,29 @@ final class FakeBacklogApi implements BacklogApi {
   Future<AgentLogDto> agentLog(String reference, {int lines = 100}) async =>
       log ?? (throw BacklogApiException(404, 'not_found', 'No agent has run for $reference.'));
 
+  /// What [followAgentLog] streams; add updates to it to simulate the server.
+  final agentLogUpdates = StreamController<AgentLogUpdateDto>.broadcast();
+
+  /// Items whose log is followed now.
+  final followedLogs = <String>[];
+
+  @override
+  Stream<AgentLogUpdateDto> followAgentLog(String reference, {int lines = 200}) {
+    late final StreamController<AgentLogUpdateDto> controller;
+    StreamSubscription<AgentLogUpdateDto>? subscription;
+    controller = StreamController<AgentLogUpdateDto>(
+      onListen: () {
+        followedLogs.add(reference);
+        subscription = agentLogUpdates.stream.where((u) => u.item == reference).listen(controller.add);
+      },
+      onCancel: () {
+        followedLogs.remove(reference);
+        return subscription?.cancel();
+      },
+    );
+    return controller.stream;
+  }
+
   static ItemDto _with(ItemDto item, {String? status, String? priority, String? body, Progress? children}) => ItemDto(
     id: item.id,
     title: item.title,

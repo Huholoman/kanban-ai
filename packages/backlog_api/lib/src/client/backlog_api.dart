@@ -1,3 +1,4 @@
+import '../model/agent_log_update_dto.dart';
 import '../model/dispatch_dto.dart';
 import '../model/item_dto.dart';
 import '../model/misc_dto.dart';
@@ -53,6 +54,12 @@ abstract interface class BacklogApi {
   /// The end of the log of the agent of [reference] (running or last).
   Future<AgentLogDto> agentLog(String reference, {int lines = 100});
 
+  /// Follows the log of the agent of [reference] live: first its last
+  /// [lines] readable lines (also of an ended run, or none yet), then what
+  /// is appended, a new run's log (reset) and the end of the run; reconnects
+  /// while listened to.
+  Stream<AgentLogUpdateDto> followAgentLog(String reference, {int lines = 200});
+
   /// Notifications about changed files and, with [BacklogChangeEvent.isDispatch],
   /// about a changed dispatcher plan; reconnects while listened to.
   Stream<BacklogChangeEvent> changes();
@@ -96,6 +103,9 @@ abstract final class ApiPaths {
   static String itemAction(String reference, String action) => '${item(reference)}/$action';
 
   static String agentLog(String reference) => '$dispatch/log/${Uri.encodeComponent(reference)}';
+
+  /// WebSocket following the agent log of [reference].
+  static String agentLogLive(String reference) => '${agentLog(reference)}/live';
 
   static String view(String id) => '$views/${Uri.encodeComponent(id)}';
 }
