@@ -378,6 +378,16 @@ void main() {
       expect((await preset.linter.run()).map((i) => i.message), contains(contains('unverified preset')));
     });
 
+    test('warns when dispatcher.allow cannot apply to an agent', () async {
+      final (backlog, _) = await tempBacklog(
+        config:
+            'dispatcher: {command: sh, allow: ["Bash(dotnet *)"], worktrees: [{name: here, path: .}], '
+            'actions: [{name: R, prompt: x, agent: claude}]}\n',
+      );
+      final issues = (await backlog.linter.run()).where((i) => i.code == 'dispatcher-allow');
+      expect(issues.map((i) => i.message), [contains('agent "command"')]);
+    });
+
     test('warns about actions whose program is not on the PATH or that can never run', () async {
       final (backlog, _) = await tempBacklog(
         config:
