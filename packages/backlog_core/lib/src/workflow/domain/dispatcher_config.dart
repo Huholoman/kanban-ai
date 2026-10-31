@@ -431,6 +431,23 @@ final class DispatcherConfig {
   /// new comments of others in the discussion).
   static const resumePromptPlaceholders = [...promptPlaceholders, 'news'];
 
+  /// How every default prompt (and the frame of prompt actions) tells the
+  /// agent to talk to people: the discussion carries questions and answers
+  /// only, no acknowledgements, progress or summaries.
+  static const talkRules =
+      'Talking to people: the discussion of the item is for questions and answers only. Write a comment only to ask '
+      'what you need to know (`backlog ask {id} "<your question>"`, then stop) or to answer a question a person asked '
+      'you. Never acknowledge an answer ("thanks, on it"), never report progress and never summarise your work in '
+      'comments: that belongs in commit messages (and the pull request description). Write in the language the '
+      'people in the item use.';
+
+  /// How every default prompt tells the agent to run things so that its tool
+  /// whitelist lets them through (nobody can approve anything else).
+  static const runRules =
+      'Running things: run the project\'s scripts directly as `./script args` (not `sh script`), one command per '
+      'call without `;` or `&&` chains, and read files with your Read tool rather than `cat`; anything else needs an '
+      'approval nobody can give and is denied.';
+
   /// The prompt every agent gets unless `dispatcher.prompt` replaces it.
   static const defaultPrompt =
       'You are the coding agent {worktree}, working on backlog item {id} ("{title}") in this git worktree.\n'
@@ -441,10 +458,10 @@ final class DispatcherConfig {
       '3. When the work is finished, run `backlog set {id} status=review`.\n'
       '4. Never push and never open pull requests.\n'
       '5. If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"`, leave the status as '
-      'it is and stop; you will be resumed with the answer. Use `backlog comment {id} "…"` for notes a person '
-      'should read.\n'
+      'it is and stop; you will be resumed with the answer.\n'
       '6. If a discussion in the item changes what it asks for, update its description or acceptance criteria in '
-      'the body above the `## Discussion` section (never edit the comments) and say so in a comment.';
+      'the body above the `## Discussion` section (never edit the comments; no comment about it is needed).\n'
+      '$talkRules\n$runRules';
 
   /// The prompt for continuing an agent's earlier session on the same item
   /// (unless `dispatcher.resume_prompt` replaces it).
@@ -455,13 +472,13 @@ final class DispatcherConfig {
       'Run `backlog show {id}` to see the item as it is now. Then:\n'
       '- If the new comments only ask you something (e.g. why you did something), answer with '
       '`backlog comment {id} "…"` and stop: change no code and leave the status as it is.\n'
-      '- If they answer your question or ask for changes, reply briefly with `backlog comment {id} "…"` and '
-      'continue the work under the same rules as before: small commits containing {id} on {branch}, '
+      '- If they answer your question or ask for changes, continue the work (no comment to acknowledge it) under the same rules as before: small commits containing {id} on {branch}, '
       '`backlog set {id} status=review` when finished, never push.\n'
       '- Without new comments, continue the work under the same rules.\n'
       '- If the discussion changed what the item asks for, update its description or acceptance criteria in the body '
-      'above `## Discussion` (never edit the comments) and say so in your comment.\n'
-      '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.';
+      'above `## Discussion` (never edit the comments; no comment about it is needed).\n'
+      '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.\n'
+      '$talkRules\n$runRules';
 
   /// The prompt every agent gets when the project opens pull requests
   /// (`dispatcher.pr`) unless `dispatcher.prompt` replaces it: the agent
@@ -480,10 +497,10 @@ final class DispatcherConfig {
       'way your work leaves this worktree. If it fails, say why with `backlog comment {id} "…"` and still set the '
       'status to review.\n'
       '5. If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"`, leave the status as '
-      'it is and stop; you will be resumed with the answer. Use `backlog comment {id} "…"` for notes a person '
-      'should read.\n'
+      'it is and stop; you will be resumed with the answer.\n'
       '6. If a discussion in the item changes what it asks for, update its description or acceptance criteria in '
-      'the body above the `## Discussion` section (never edit the comments) and say so in a comment.';
+      'the body above the `## Discussion` section (never edit the comments; no comment about it is needed).\n'
+      '$talkRules\n$runRules';
 
   /// The resume prompt when the project opens pull requests (`dispatcher.pr`).
   static const defaultPullRequestResumePrompt =
@@ -493,14 +510,14 @@ final class DispatcherConfig {
       'Run `backlog show {id}` to see the item as it is now. Then:\n'
       '- If the new comments only ask you something (e.g. why you did something), answer with '
       '`backlog comment {id} "…"` and stop: change no code and leave the status as it is.\n'
-      '- If they answer your question or ask for changes, reply briefly with `backlog comment {id} "…"` and '
-      'continue the work under the same rules as before: small commits containing {id} on {branch}; when finished, '
+      '- If they answer your question or ask for changes, continue the work (no comment to acknowledge it) under the same rules as before: small commits containing {id} on {branch}; when finished, '
       '`backlog pr {id}` (it pushes {branch} and opens the pull request when there is none yet; give '
       '`--description "…"` then) and `backlog set {id} status=review`; never run `git push` yourself.\n'
       '- Without new comments, continue the work under the same rules.\n'
       '- If the discussion changed what the item asks for, update its description or acceptance criteria in the body '
-      'above `## Discussion` (never edit the comments) and say so in your comment.\n'
-      '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.';
+      'above `## Discussion` (never edit the comments; no comment about it is needed).\n'
+      '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.\n'
+      '$talkRules\n$runRules';
 
   /// In order of preference: free work goes to the first free worktree.
   final List<WorktreeDefinition> worktrees;

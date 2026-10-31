@@ -280,8 +280,10 @@ final class DispatchAssignment {
     'in-progress), and you take no other items.\n'
     '{context}\n\n'
     'The action:\n{task}\n\n'
-    'When you are done, say briefly what you did or found with `backlog comment {id} "…"` and stop. If something '
-    'is unclear, ask with `backlog ask {id} "<your question>"` and stop. {publish}',
+    'Comment only when the action asks you to (then in exactly one comment) or to answer a question a person asked; '
+    'otherwise finish without a comment. If something is unclear, ask with `backlog ask {id} "<your question>"` '
+    'and stop. {publish}\n'
+    '${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}',
     known: const [...ActionDefinition.promptPlaceholders, 'context', 'task', 'publish'],
     label: 'action prompt',
   );

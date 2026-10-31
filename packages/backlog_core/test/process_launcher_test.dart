@@ -503,9 +503,17 @@ dispatcher:
       final after = await planned('T-0001');
       expect((after.item.status, after.claim), ('review', null));
       expect(File(p.join(stateDir, 'agents', 'demo', 'T-0001.hold.json')).existsSync(), isFalse);
-      expect((await notes()).single.text, startsWith('The action "Fix" (agent fake in wt-1) exited with code 0 after'));
-      expect((await notes()).single.note, isTrue);
+      // A successful agent leaves no note of its own: the discussion stays for questions and answers.
+      expect(await notes(), isEmpty);
       expect((await plan()).sessions[ItemId('T-0001')]!.id, 'sess-T-0001', reason: 'still the item session');
+    });
+
+    test('a prompt action whose agent fails leaves a note', () async {
+      await reviewed();
+      await launcher.launch((await plan()).actionStart('T-0001', 'Fix').agent!);
+      await finish('T-0001', 3);
+      expect((await notes()).single.text, startsWith('The action "Fix" (agent fake in wt-1) exited with code 3 after'));
+      expect((await notes()).single.note, isTrue);
     });
 
     test('a fresh prompt action is a side session that does not replace the item session', () async {

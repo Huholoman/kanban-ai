@@ -446,6 +446,9 @@ final class ProcessAgentLauncher extends AgentLauncher {
     _lastHeartbeat.remove(id);
     _log('Dispatcher: the action "${run.action}" for $id in ${run.worktree} $reason; $outcome.');
     if (planned == null) return;
+    // An agent that did its job says so itself when the action asks for it;
+    // only failures and the output of commands get a note.
+    if (record.kind == RunKind.agent && exitCode == 0) return;
     final took = _duration(ended.difference(run.startedAt));
     final where = record.kind == RunKind.agent ? 'agent ${run.agent} in ${run.worktree}' : run.worktree;
     final text = StringBuffer('The action "${run.action}" ($where) $reason after $took.');
