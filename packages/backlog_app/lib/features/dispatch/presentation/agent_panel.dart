@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../../../app/app_scope.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
+import '../application/agent_log_controller.dart';
+import 'agent_log_view.dart';
 import 'dispatch_scope.dart';
 
 /// `14:05 (12 min)`: when [time] was, and how long ago.
@@ -22,8 +24,8 @@ String sinceText(DateTime time, {DateTime? now}) {
 }
 
 /// The dispatcher's view of one item in its detail: the agent working on it
-/// (worktree, since when, branch, its log, *Stop*), or why the dispatcher
-/// holds it back. Empty when neither applies.
+/// (worktree, since when, branch, its live log, *Stop*), why the dispatcher
+/// holds it back, or the log of its last run. Empty when none applies.
 class AgentPanel extends StatefulWidget {
   const AgentPanel({super.key, required this.item});
 
@@ -34,39 +36,29 @@ class AgentPanel extends StatefulWidget {
 }
 
 class _AgentPanelState extends State<AgentPanel> {
-  bool _showLog = false;
-  AgentLogDto? _log;
-  Object? _logError;
-  Timer? _poll;
+  AgentLogController? _log;
+
+  /// Shown or hidden by the reader; by default shown while an agent runs.
+  bool? _showLogChoice;
 
   @override
-  void dispose() {
-    _poll?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _loadLog() async {
-    try {
-      final log = await AppScope.of(context).api.agentLog(widget.item.id, lines: 60);
-      if (mounted) {
-        setState(() {
-          _log = log;
-          _logError = null;
-        });
-      }
-    } on BacklogApiException catch (error) {
-      if (mounted) setState(() => _logError = error.message);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_log == null && DispatchScope.maybeOf(context)?.configured == true) {
+      _log = AgentLogController(AppScope.of(context).api, widget.item.id)
+        ..addListener(_logChanged)
+        ..start();
     }
   }
 
-  void _toggleLog() {
-    setState(() => _showLog = !_showLog);
-    _poll?.cancel();
-    if (!_showLog) return;
-    unawaited(_loadLog());
-    _poll = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (_log?.running ?? true) unawaited(_loadLog());
-    });
+  void _logChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _log?.dispose();
+    super.dispose();
   }
 
   @override
@@ -78,7 +70,10 @@ class _AgentPanelState extends State<AgentPanel> {
     final id = widget.item.id;
     final run = dispatch.runFor(id);
     final held = dispatch.plan.heldReason(id);
-    if (run == null && held == null && !_showLog) return const SizedBox.shrink();
+    final log = _log;
+    final hasLog = log?.hasLog ?? false;
+    if (run == null && held == null && !hasLog) return const SizedBox.shrink();
+    final showLog = hasLog && (_showLogChoice ?? (run != null || (log?.running ?? false)));
     return Container(
       key: const ValueKey('agent-panel'),
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -108,12 +103,17 @@ class _AgentPanelState extends State<AgentPanel> {
                         style: small?.copyWith(color: tokens.text),
                       )
                     : Text(
-                        held == null ? 'No agent runs.' : 'Held: $held',
+                        held == null ? 'Agent · last run' : 'Held: $held',
                         key: const ValueKey('agent-held'),
                         style: small?.copyWith(color: tokens.text),
                       ),
               ),
-              LinkButton(label: _showLog ? 'Hide log' : 'Log', onPressed: _toggleLog),
+              if (hasLog)
+                LinkButton(
+                  key: const ValueKey('agent-log-toggle'),
+                  label: showLog ? 'Hide log' : 'Log',
+                  onPressed: () => setState(() => _showLogChoice = !showLog),
+                ),
               if (run != null)
                 SecondaryButton(
                   key: const ValueKey('stop-agent'),
@@ -123,33 +123,7 @@ class _AgentPanelState extends State<AgentPanel> {
                 ),
             ],
           ),
-          if (_showLog) ...[
-            const SizedBox(height: 8),
-            if (_logError != null) Text('$_logError', style: small),
-            if (_log case final log?) ...[
-              Text(
-                log.running
-                    ? log.path
-                    : '${log.path} · ${log.last?.reason ?? 'ended'}; ${log.last?.outcome ?? ''}'
-                          '${log.last?.sessionId == null ? '' : ' · claude --resume ${log.last!.sessionId}'}',
-                style: small?.copyWith(color: tokens.muted),
-              ),
-              const SizedBox(height: 4),
-              Container(
-                constraints: const BoxConstraints(maxHeight: 260),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: tokens.surface, borderRadius: BorderRadius.circular(4)),
-                child: SingleChildScrollView(
-                  reverse: true,
-                  child: SelectableText(
-                    log.lines.join('\n'),
-                    key: const ValueKey('agent-log'),
-                    style: small?.copyWith(fontFamily: 'monospace', fontSize: 11),
-                  ),
-                ),
-              ),
-            ],
-          ],
+          if (showLog && log != null) ...[const SizedBox(height: 8), AgentLogView(controller: log)],
         ],
       ),
     );
