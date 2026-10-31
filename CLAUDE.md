@@ -4,9 +4,9 @@ Dart pub workspace (`dart pub get` in the root) plus the Flutter app outside it 
 
 - `packages/backlog_core` — modules `workflow`, `items`, `claims`, `planning`, `dispatch`, `views`, `validation`, `projects`, each split into `domain/` (pure, no I/O), `application/` (use cases), `infrastructure/` (file-system adapters). Ports are interfaces in `domain/`. `src/backlog.dart` is the composition root.
 - `packages/backlog_cli` — thin adapter over the core services; output in `src/render/` (text and JSON — JSON fields are only ever added, agents depend on them).
-- `packages/backlog_api` — HTTP contract (DTOs, `BacklogApi` interface, `HttpBacklogApi`). Pure Dart, must compile for the web: no `dart:io`, no `backlog_core`.
+- `packages/backlog_api` — HTTP contract (DTOs, `BacklogApi` and `ProjectsApi` interfaces, `HttpBacklogApi`, `HttpProjectsApi`). Pure Dart, must compile for the web: no `dart:io`, no `backlog_core`.
 - `packages/backlog_server` — shelf adapter: `ApiHandler` + `DtoMapper` (core → DTO), `ChangeFeed` (watcher → WebSocket), `BacklogServer` composition root.
-- `packages/backlog_app` — Flutter web/linux. `features/<name>/application` (ChangeNotifier controllers, no widgets) and `presentation`; depends only on `BacklogApi` from `AppScope`; tests use `test/fake_api.dart`.
+- `packages/backlog_app` — Flutter web/linux. `features/<name>/application` (ChangeNotifier controllers, no widgets) and `presentation`; depends only on `ProjectsApi` and `BacklogApi` from `AppScope`; tests use `test/fake_api.dart`.
 
 Rules:
 - Domain code must not import `dart:io`; derived state (blocked, ready, …) belongs in `BacklogSnapshot`, not in adapters.

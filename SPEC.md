@@ -327,9 +327,12 @@ The plan is logged whenever it changes (`Dispatcher (auto): 1/2 running; starts 
 
 URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from the UI, default `web`), `&server=http://…` (another API server).
 
+**Projects:** the app loads `GET /api/projects` and opens the project named by the route after `#` (`/#/p/<id>`), else the one last opened in this browser (`localStorage`, per server origin), else the first available project; unknown and unavailable projects in the URL fall back the same way. The route always names the open project (a link can be shared and reloaded) and the page title is its name. Each project gets a fresh session: its API (`/api/p/<id>/…`), theme, board, filters, open item and WebSocket; the previous project's are disposed. A URL edited to another `#/p/<id>` switches to it. When `/api/projects` answers 404 (a server without projects) the app shows the single backlog on the unprefixed paths; other failures show the error with *Retry*; when no project can be opened their errors are listed.
+
 **Layout** (responsive): from 1200 px a left panel with views (208 px, 240 px from 2000 px) and the open item as a panel on the right; 840–1199 px view tabs under the header (☰ opens a drawer with the full navigation) and the open item as a bottom sheet; below 840 px the open item is a full page; below 600 px the header has ☰ and a view dropdown and a bottom bar shows the pinned views (up to three; the first two views when none are pinned) plus *More* (the drawer). *New item* is a floating button outside the left panel. From 2000 px wide (27" 4K and similar) text is 15 % larger.
 
 **Left panel**
+- On top the open project's name; with more than one project it opens a menu of all registered projects (the open one ticked; one the server cannot open greyed out with its error and not selectable). The drawer has the same switcher on narrower windows and phones.
 - *New item* button (dialog: title, type, status, priority, milestone, parent, labels, body).
 - Saved views with their item count; views with `section` grouped under foldable section headings; the ⋮ menu of a view moves it to an existing or new section (persisted to the YAML) or pins it to the phone's bottom bar.
 - *People*: agents holding a live claim with how many items each holds (busiest first); a click narrows the board to that agent's items (the People filter).
@@ -386,9 +389,9 @@ Dart pub workspace (`backlog_core`, `backlog_cli`, `backlog_api`, `backlog_serve
 
 - **backlog_core** — hexagonal modules `workflow`, `items`, `claims`, `planning`, `dispatch`, `views`, `validation`, `projects` (the registry: `ProjectRegistry`, port `ProjectRegistryStore`, `ProjectService`, YAML store); pure `domain/`, use cases in `application/`, file-system adapters in `infrastructure/`; `Backlog` is the composition root; derived state lives in `BacklogSnapshot`; `DispatchPlan` (pure) turns a snapshot into assignments, `Dispatcher` re-plans on changes and hands them to the `AgentLauncher` port.
 - **backlog_cli** — thin adapter; text and JSON renderers.
-- **backlog_api** — DTOs, `BacklogApi` interface, `HttpBacklogApi` (pure Dart, compiles for the web).
+- **backlog_api** — DTOs, `BacklogApi` and `ProjectsApi` interfaces, `HttpBacklogApi`, `HttpProjectsApi` (pure Dart, compiles for the web).
 - **backlog_server** — shelf: `ProjectHub` (hosted projects, `/api/p/<id>` routing, `/api/projects`) with a `HostedProject` per backlog (`BacklogHost`, `ChangeFeed` → its WebSocket and dispatcher, `ApiHandler` + `DtoMapper`), `RegistryWatcher` (live registry), middleware (token, client allowlist, CORS), multi-address binding.
-- **backlog_app** — features `board` and `item`, each with `application/` (ChangeNotifier controllers and pure logic: `BoardFilter`, `ColumnArrangement`, `DetailNavigation`; shared design tokens in `shared/tokens.dart`) and `presentation/`; depends only on `BacklogApi`.
+- **backlog_app** — features `board`, `item` and `projects` (`ProjectsController` picks the open project; one session per project), each with `application/` (ChangeNotifier controllers and pure logic: `BoardFilter`, `ColumnArrangement`, `DetailNavigation`; shared design tokens in `shared/tokens.dart`) and `presentation/`; depends only on `ProjectsApi` and `BacklogApi`.
 
 Development: `mise run check` (format check, analysis, all tests), `mise run playground` (demo backlog), `mise run serve`.
 
