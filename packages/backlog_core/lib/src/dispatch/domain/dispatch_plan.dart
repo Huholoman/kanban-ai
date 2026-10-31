@@ -633,25 +633,29 @@ final class DispatchPlan {
     final assignments = <DispatchAssignment>[];
     final left = <PlannedItem>[];
     final reasons = <ItemId, String>{};
+    // In manual mode the assignments are only proposals: they reserve
+    // nothing, so an item they leave out can still be started by hand
+    // ([assignmentFor]) while an agent may start at all.
+    final proposalsOnly = config.mode == DispatchMode.manual && slots > 0;
+    final unproposed = [...free];
     for (final (index, candidate) in ready.indexed) {
       final session = sessions[candidate.id];
-      final own = _resumableIn(session, config.agent, free);
       final newSession = fresh.contains(candidate.id);
+      final full = free.isEmpty || assignments.length >= slots;
+      final own = _resumableIn(session, config.agent, full && proposalsOnly ? unproposed : free);
       final String? reason;
-      if (free.isEmpty) {
-        reason = 'no free worktree';
-      } else if (assignments.length >= slots) {
-        reason = config.maxAgents - running <= assignments.length
-            ? 'max_agents (${config.maxAgents}) reached'
-            : 'no free worktree';
+      if (full && !proposalsOnly) {
+        reason = free.isEmpty || config.maxAgents - running > assignments.length
+            ? 'no free worktree'
+            : 'max_agents (${config.maxAgents}) reached';
       } else if (own == null && !candidate.isReady && !newSession) {
         reason = 'the worktree ${session!.worktree} of its session is not free'; // a reply waits for it
       } else {
         reason = null;
       }
-      if (reason != null) {
+      if (reason != null || full) {
         left.add(candidate);
-        reasons[candidate.id] = reason;
+        if (reason != null) reasons[candidate.id] = reason;
         continue;
       }
       // Leave the worktrees that later items could continue their sessions in
@@ -731,7 +735,9 @@ final class DispatchPlan {
   /// [hasRepliesWithoutSession]) that cannot start yet.
   final List<PlannedItem> waiting;
 
-  /// Why each of [waiting] cannot start now (`no free worktree`, …).
+  /// Why each of [waiting] cannot start now (`no free worktree`, …). In
+  /// manual mode only items that cannot start even by hand have one: the
+  /// proposals of other items take no worktree.
   final Map<ItemId, String> waitingReasons;
 
   /// Ready items the dispatcher does not start by itself, with the reason.

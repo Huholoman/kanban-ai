@@ -234,6 +234,33 @@ void main() {
     expect(_key('start-agent'), findsOneWidget, reason: 'a worktree can be created');
   });
 
+  testWidgets('manual mode: a ready item outside the proposals starts too', (tester) async {
+    const plan = DispatchDto(
+      configured: true,
+      mode: 'manual',
+      agent: 'claude',
+      maxAgents: 2,
+      capacity: 2,
+      maxWorktrees: 2,
+      spareWorktrees: 2,
+      worktrees: [
+        DispatchWorktreeDto(name: 'app-1', path: '/w/app-1', busy: false, created: true, isNew: true),
+        DispatchWorktreeDto(name: 'app-2', path: '/w/app-2', busy: false, created: true, isNew: true),
+      ],
+      assignments: [
+        DispatchAssignmentDto(item: 'R-2', title: 'Item R-2', worktree: 'app-1', newWorktree: true),
+        DispatchAssignmentDto(item: 'X-9', title: 'Item X-9', worktree: 'app-2', newWorktree: true),
+      ],
+      waiting: ['R-3'],
+    );
+    final (api, _) = await _pumpDetail(tester, 'R-3', plan);
+    expect(_key('start-agent'), findsOneWidget, reason: 'proposals of other items reserve nothing');
+    expect(_key('agent-panel'), findsNothing, reason: 'it does not wait for anything');
+    await tester.tap(_key('start-agent'));
+    await tester.pumpAndSettle();
+    expect(api.started, ['R-3']);
+  });
+
   testWidgets('a running agent shows where and since when, its log and a Stop button', (tester) async {
     final (api, _) = await _pumpDetail(tester, 'R-1', _plan(running: true));
     expect(find.text('w1 · R-1'), findsOneWidget);
