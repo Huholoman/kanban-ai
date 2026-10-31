@@ -190,6 +190,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
     }
     final held = <ItemId, String>{};
     final blocked = <ItemId>{};
+    final last = await _sessions(snapshot);
     for (final id in await _heldIds()) {
       final planned = snapshot[id];
       if (planned == null || planned.isDone) continue;
@@ -216,7 +217,8 @@ final class ProcessAgentLauncher extends AgentLauncher {
       held: held,
       blocked: blocked,
       runs: [for (final record in runs) record.run],
-      sessions: await _sessions(snapshot),
+      sessions: last.sessions,
+      starts: last.starts,
       branches: branches,
     );
   }
@@ -233,13 +235,16 @@ final class ProcessAgentLauncher extends AgentLauncher {
     }
   }
 
-  /// The sessions of the last runs (`<id>.last.json`) of items that are
-  /// still open or in progress.
-  Future<Map<ItemId, AgentSession>> _sessions(BacklogSnapshot snapshot) async {
+  /// The sessions and starts of the last runs (`<id>.last.json`) of items
+  /// that are still open or in progress.
+  Future<({Map<ItemId, AgentSession> sessions, Map<ItemId, AgentStart> starts})> _sessions(
+    BacklogSnapshot snapshot,
+  ) async {
     final dir = Directory(agentsDir);
-    if (!await dir.exists()) return const {};
+    if (!await dir.exists()) return (sessions: const <ItemId, AgentSession>{}, starts: const <ItemId, AgentStart>{});
     const suffix = '.last.json';
     final sessions = <ItemId, AgentSession>{};
+    final starts = <ItemId, AgentStart>{};
     await for (final entry in dir.list()) {
       final name = p.basename(entry.path);
       if (entry is! File || !name.endsWith(suffix)) continue;
@@ -248,6 +253,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
       if (planned == null || planned.isDone) continue;
       try {
         final json = (jsonDecode(await entry.readAsString()) as Map).cast<String, Object?>();
+        starts[id] = (at: DateTime.parse(json['started_at']! as String), worktree: json['worktree']! as String);
         if (json['session_id'] case final String session when session.isNotEmpty) {
           sessions[id] = AgentSession(
             item: id,
@@ -264,7 +270,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
         _log('Dispatcher: ignoring unreadable ${entry.path}: $error');
       }
     }
-    return sessions;
+    return (sessions: sessions, starts: starts);
   }
 
   /// Why an agent cannot start in the worktree at [path]; null when it is a

@@ -378,6 +378,109 @@ void main() {
       expect(listed.waiting.map((i) => '${i.id}'), ['T-2']);
     });
 
+    test('a reply without a session to continue starts a new session where the item\'s branch is', () {
+      const reply =
+          '## Discussion\n\n### g-1 · 2026-10-29 09:00:00 UTC\n\nDone, in review.\n\n'
+          '### tobik · 2026-10-29 11:30:00 UTC\n\nRebase pls.\n';
+      // Worked on elsewhere: no session, no known start, but a branch and an assignee.
+      final elsewhere = item(
+        'T-2',
+        status: 'review',
+        body: reply,
+      ).copyWith(branch: () => 'agent/T-2', assignee: () => 'g-1');
+      final plan = _plan(
+        [item('T-1', priority: 'p0'), elsewhere],
+        workflow: _resumingWorkflow(),
+        conditions: const DispatchConditions(branches: {'w2': 'agent/T-2'}),
+      );
+      expect(plan.assignments.map((a) => a.key), ['T-2@w2+reply', 'T-1@w1']);
+      final start = plan.assignments.first;
+      expect(start.resume, isNull);
+      expect(plan.isReply(start), isTrue, reason: 'it starts in manual mode too');
+      expect(plan.isReply(plan.assignments.last), isFalse);
+      expect(start.prompt, startsWith('Again T-2 in w2: there is no earlier session of yours to continue'));
+      expect(start.prompt, contains('### tobik · 2026-10-29 11:30:00 UTC\n\nRebase pls.'));
+      expect(start.prompt, isNot(contains('Done, in review.')), reason: 'the assignee\'s own comments are not news');
+      expect(plan.assignmentFor('T-2').key, 'T-2@w2+reply');
+      expect(() => plan.assignmentFor('T-2', fresh: true), throwsA(isA<InvalidInputException>()));
+
+      // A failed merge's comment of the dispatcher counts the same; a note does not.
+      const merge = '## Discussion\n\n### kanban-ai · 2026-10-29 11:30:00 UTC\n\nThe merge failed: rebase.\n';
+      final failed = _plan([elsewhere.copyWith(body: merge)], workflow: _resumingWorkflow());
+      expect(failed.assignments.single.key, 'T-2@w1+reply');
+      expect(failed.assignments.single.prompt, contains('The merge failed: rebase.'));
+      final noted = _plan([
+        elsewhere.copyWith(body: merge.replaceFirst('UTC', 'UTC · note')),
+      ], workflow: _resumingWorkflow());
+      expect(noted.assignments, isEmpty);
+
+      // Without a branch, or not yet worked on (todo), nothing is known to continue.
+      expect(_plan([elsewhere.copyWith(branch: () => null)], workflow: _resumingWorkflow()).assignments, isEmpty);
+      expect(_plan([elsewhere.copyWith(status: 'backlog')], workflow: _resumingWorkflow()).assignments, isEmpty);
+    });
+
+    test('a new session for replies runs once: after its start the comments are old', () {
+      const reply = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nWhy?\n';
+      final t2 = item('T-2', status: 'review', body: reply).copyWith(branch: () => 'agent/T-2');
+      // Its session ran in a worktree that is gone: the start is still known.
+      final gone = _plan(
+        [t2],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(
+          sessions: {ItemId('T-2'): _session('T-2', 'w9')},
+          starts: {ItemId('T-2'): (at: DateTime.utc(2026, 10, 29, 10), worktree: 'w9')},
+        ),
+      );
+      expect(gone.assignments.single.key, 'T-2@w1+reply');
+
+      // The new session started after the reply (its own comment is no reply either).
+      final later = _plan(
+        [t2.copyWith(body: '$reply\n### w1 · 2026-10-29 11:50:00 UTC\n\nRebased.\n')],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(
+          starts: {ItemId('T-2'): (at: DateTime.utc(2026, 10, 29, 11, 40), worktree: 'w1')},
+        ),
+      );
+      expect(later.assignments, isEmpty);
+      expect(later.waiting, isEmpty);
+    });
+
+    test('items that wait for an agent say why', () {
+      const reply = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nWhy?\n';
+      final plan = _plan(
+        [
+          item('T-1', status: 'in-progress'),
+          item('T-2', status: 'review', body: reply),
+          item('T-3', status: 'review', body: reply).copyWith(branch: () => 'agent/T-3'),
+          item('T-4'),
+        ],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        claims: [_claim('T-1', 'w1')],
+        conditions: DispatchConditions(
+          sessions: {ItemId('T-2'): _session('T-2', 'w1')},
+          unavailable: {'w2': 'uncommitted changes (1 paths)'},
+        ),
+      );
+      expect(plan.assignments, isEmpty);
+      expect(plan.waiting.map((i) => '${i.id}'), ['T-2', 'T-3', 'T-4']);
+      expect(plan.waitingReasons.map((id, reason) => MapEntry('$id', reason)), {
+        'T-2': 'no free worktree',
+        'T-3': 'no free worktree',
+        'T-4': 'no free worktree',
+      });
+
+      final limited = _plan(
+        [item('T-1', status: 'in-progress'), item('T-2', status: 'review', body: reply), item('T-4')],
+        workflow: _resumingWorkflow(worktrees: ['w1', 'w2']),
+        claims: [_claim('T-1', 'w1')],
+        conditions: DispatchConditions(sessions: {ItemId('T-2'): _session('T-2', 'w1')}),
+      );
+      expect(limited.assignments.map((a) => a.key), ['T-4@w2']);
+      expect(limited.waitingReasons.map((id, reason) => MapEntry('$id', reason)), {
+        'T-2': 'the worktree w1 of its session is not free',
+      });
+    });
+
     test('sameDecisionAs compares assignments, waiting items and busy worktrees', () {
       final a = _plan([item('T-1')]);
       expect(a.sameDecisionAs(_plan([item('T-1')])), isTrue);
@@ -490,6 +593,22 @@ dispatcher:
       expect(launcher.launched, ['T-0002@w2+resume'], reason: 'T-0001 stays a proposal');
       await dispatcher.evaluate();
       expect(launcher.launched, hasLength(1), reason: 'launched once');
+    });
+
+    test('manual mode starts a new session for a reply on an item without one', () async {
+      final dispatcher = await start('manual', resuming: true);
+      await backlog.items.create(NewItem(title: 'B', status: 'review'));
+      await backlog.items.update('T-0001', [FieldChange.parse('branch=agent/T-0001')]);
+      launcher.given = const DispatchConditions(branches: {'w2': 'agent/T-0001'});
+      await dispatcher.evaluate();
+      expect(launcher.launched, isEmpty);
+
+      await backlog.items.comment('T-0001', author: 'kanban-ai', text: 'The merge failed: rebase on main.');
+      await dispatcher.evaluate();
+      expect(launcher.launched, ['T-0001@w2+reply']);
+      await dispatcher.evaluate();
+      expect(launcher.launched, hasLength(1), reason: 'claimed: launched once');
+      expect(errors, isEmpty);
     });
 
     test('changes are debounced into one evaluation', () async {

@@ -215,6 +215,7 @@ final class DispatchDto {
     this.worktrees = const [],
     this.assignments = const [],
     this.waiting = const [],
+    this.waitingReasons = const [],
     this.held = const [],
     this.sessions = const [],
     this.maxWorktrees,
@@ -236,6 +237,7 @@ final class DispatchDto {
     worktrees: json.objects('worktrees').map(DispatchWorktreeDto.fromJson).toList(),
     assignments: json.objects('assignments').map(DispatchAssignmentDto.fromJson).toList(),
     waiting: json.strings('waiting'),
+    waitingReasons: json.objects('waiting_reasons').map(HeldItemDto.fromJson).toList(),
     held: json.objects('held').map(HeldItemDto.fromJson).toList(),
     sessions: json.objects('sessions').map(AgentSessionDto.fromJson).toList(),
     maxWorktrees: json['max_worktrees'] is int ? json['max_worktrees']! as int : null,
@@ -261,6 +263,10 @@ final class DispatchDto {
 
   /// Ready items left over (ids, most urgent first).
   final List<String> waiting;
+
+  /// Why each of [waiting] cannot start now (`no free worktree`, …), in the
+  /// same order.
+  final List<HeldItemDto> waitingReasons;
   final List<HeldItemDto> held;
 
   /// Unfinished items whose last agent session the configured agent can
@@ -312,6 +318,14 @@ final class DispatchDto {
     return null;
   }
 
+  /// Why [item] waits for an agent that cannot start yet, or null.
+  String? waitingReason(String item) {
+    for (final waiting in waitingReasons) {
+      if (waiting.item == item) return waiting.reason;
+    }
+    return null;
+  }
+
   /// The session a start of [item] continues, if any.
   AgentSessionDto? sessionFor(String item) {
     for (final session in sessions) {
@@ -330,6 +344,7 @@ final class DispatchDto {
     'worktrees': [for (final worktree in worktrees) worktree.toJson()],
     'assignments': [for (final assignment in assignments) assignment.toJson()],
     'waiting': waiting,
+    'waiting_reasons': [for (final item in waitingReasons) item.toJson()],
     'held': [for (final item in held) item.toJson()],
     'sessions': [for (final session in sessions) session.toJson()],
     'max_worktrees': maxWorktrees,

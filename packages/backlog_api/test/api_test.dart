@@ -40,6 +40,7 @@ void main() {
         maxWorktrees: 3,
         spareWorktrees: 0,
         waiting: const ['X-3'],
+        waitingReasons: const [HeldItemDto(item: 'X-3', title: 'Three', reason: 'no free worktree')],
         held: const [HeldItemDto(item: 'X-4', title: 'Four', reason: 'stopped')],
         sessions: [
           AgentSessionDto(item: 'X-4', session: 'sess-4', worktree: 'w1', endedAt: DateTime.utc(2026), reason: 'x'),
@@ -49,6 +50,8 @@ void main() {
       expect(copy.toJson(), plan.toJson());
       expect(copy.runFor('X-1')!.startedAt, DateTime.utc(2026, 10, 31, 12));
       expect(copy.heldReason('X-4'), 'stopped');
+      expect(copy.waitingReason('X-3'), 'no free worktree');
+      expect(copy.waitingReason('X-4'), isNull);
       expect(copy.sessionFor('X-4')!.session, 'sess-4');
       expect(copy.sessionFor('X-2'), isNull);
       expect(copy.assignments.map((a) => (a.resume, a.newWorktree)), [('sess-2', false), (null, true)]);

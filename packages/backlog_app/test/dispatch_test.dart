@@ -22,6 +22,7 @@ DispatchDto _plan({
   bool running = false,
   bool free = true,
   List<HeldItemDto> held = const [],
+  List<HeldItemDto> waiting = const [],
   List<AgentSessionDto> sessions = const [],
 }) => DispatchDto(
   configured: true,
@@ -61,6 +62,8 @@ DispatchDto _plan({
         ]
       : const [],
   held: held,
+  waiting: [for (final item in waiting) item.item],
+  waitingReasons: waiting,
   sessions: sessions,
 );
 
@@ -265,6 +268,15 @@ void main() {
     expect(api.stopped, ['R-1']);
     expect(find.text('Held: stopped by a person'), findsOneWidget);
     expect(find.text('R-1 held'), findsOneWidget);
+
+    api.dispatchChange(
+      _plan(
+        waiting: const [HeldItemDto(item: 'R-1', title: 'Item R-1', reason: 'no free worktree')],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Waiting for an agent: no free worktree'), findsOneWidget);
+    expect(find.text('R-1 waits: no free worktree'), findsOneWidget);
   });
 
   group('actions', () {

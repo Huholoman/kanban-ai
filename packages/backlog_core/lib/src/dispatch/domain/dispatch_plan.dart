@@ -9,6 +9,7 @@ import '../../planning/domain/review_state.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/action_definition.dart';
 import '../../workflow/domain/dispatcher_config.dart';
+import '../../workflow/domain/workflow.dart';
 import 'action_run.dart';
 import 'agent_log_format.dart';
 import 'agent_session.dart';
@@ -78,6 +79,7 @@ final class DispatchConditions {
     this.blocked = const {},
     this.runs = const [],
     this.sessions = const {},
+    this.starts = const {},
     this.created = const [],
     this.spare = const [],
     this.branches = const {},
@@ -106,6 +108,11 @@ final class DispatchConditions {
   /// The session of the last run per item, where the agent reported one.
   final Map<ItemId, AgentSession> sessions;
 
+  /// When and where the last run of the item's own agent started, per
+  /// unfinished item, whether or not it reported a session
+  /// (`<id>.last.json`): replies are the comments written since.
+  final Map<ItemId, AgentStart> starts;
+
   /// Worktrees the dispatcher created earlier (`dispatcher.repo`) that still
   /// exist; they join the listed ones.
   final List<WorktreeDefinition> created;
@@ -128,6 +135,7 @@ final class DispatchConditions {
     blocked: blocked,
     runs: runs,
     sessions: sessions,
+    starts: starts,
     created: created,
     spare: spare,
     branches: branches,
@@ -198,13 +206,16 @@ final class DispatchAssignment {
     this.action,
     this.trigger = ActionTrigger.request,
     this.fix,
+    this.newSession = false,
   });
 
   /// Fills the [config]'s prompt, command and environment for [item] in
   /// [worktree] (absolute [path]); [backlogRoot] is the backlog folder. With
   /// [resume] (a session the profile can continue there, see
   /// [AgentSession.resumableBy]) the agent continues it with the resume
-  /// prompt instead of starting a new session.
+  /// prompt instead of starting a new session. Without one, [replies] (the
+  /// `{news}` of a new session started for replies, see [newSessionNews])
+  /// also selects the resume prompt.
   ///
   /// With a prompt [action] the agent is the action's profile and its prompt
   /// is the action's text inside [actionFrame]; it continues [resume] the
@@ -220,6 +231,7 @@ final class DispatchAssignment {
     ActionDefinition? action,
     ActionTrigger trigger = ActionTrigger.request,
     ReviewFix? fix,
+    String? replies,
   }) {
     final branch = branchFor(item);
     final values = {
@@ -252,7 +264,11 @@ final class DispatchAssignment {
         'review': fix.review.text,
       });
     } else if (action == null) {
-      prompt = session == null ? config.prompt.render(values) : config.resumePrompt.render({...values, 'news': news!});
+      prompt = session != null
+          ? config.resumePrompt.render({...values, 'news': news!})
+          : replies != null
+          ? config.resumePrompt.render({...values, 'news': replies})
+          : config.prompt.render(values);
     } else {
       final actionValues = {
         ...values,
@@ -305,6 +321,7 @@ final class DispatchAssignment {
       action: action,
       trigger: trigger,
       fix: fix,
+      newSession: session == null && replies != null && action == null && fix == null,
     );
   }
 
@@ -413,6 +430,10 @@ final class DispatchAssignment {
   /// (`auto_fix`); null otherwise.
   final ReviewFix? fix;
 
+  /// A new session takes up replies to the item's agent because none can be
+  /// continued ([DispatchPlan.hasRepliesWithoutSession]).
+  final bool newSession;
+
   ItemId get id => item.id;
 
   /// The name the claim is taken under.
@@ -421,7 +442,8 @@ final class DispatchAssignment {
   /// `<id>@<worktree>` (with `+resume` when continuing a session); equal
   /// keys mean the same decision.
   String get key =>
-      '$id@${worktree.name}${resume == null ? '' : '+resume'}${action == null ? '' : ':${action!.name}'}'
+      '$id@${worktree.name}${resume == null ? '' : '+resume'}${newSession ? '+reply' : ''}'
+      '${action == null ? '' : ':${action!.name}'}'
       '${fix == null ? '' : '+fix'}';
 }
 
@@ -456,9 +478,11 @@ final class DispatchPlan {
     this.spare = const [],
     this.recheckAt,
     this.sessions = const {},
+    this.starts = const {},
     this.runs = const [],
     this.pending = const [],
     this.branches = const {},
+    this.waitingReasons = const {},
   });
 
   /// Whether a person (anyone but the agent) commented on unfinished,
@@ -473,15 +497,51 @@ final class DispatchPlan {
       session.resumableBy(config.agent, session.worktree) &&
       session.repliesIn(planned.item).isNotEmpty;
 
+  /// Whether others commented on unfinished, unclaimed [planned] for its
+  /// agent ([repliesWithoutSession] since its last [start]) but [config]'s
+  /// agent cannot continue its [session] (none is known, it ran elsewhere,
+  /// another profile): a new session of the agent takes the comments up,
+  /// like a resume would, whatever the item's status and hold.
+  static bool hasRepliesWithoutSession(
+    PlannedItem planned,
+    AgentSession? session,
+    AgentStart? start,
+    BacklogSnapshot snapshot,
+    DispatcherConfig config,
+  ) =>
+      !planned.isDone &&
+      !planned.isClaimed &&
+      !planned.needsHuman &&
+      !(session != null && session.resumableBy(config.agent, session.worktree)) &&
+      repliesWithoutSession(
+        planned.item,
+        start,
+        active: snapshot.workflow.categoryOf(planned.item.status) == StatusCategory.active,
+      ).isNotEmpty;
+
+  /// The `{news}` of a new session for [planned]'s replies
+  /// ([hasRepliesWithoutSession]); null when it has none.
+  String? _newSessionNews(PlannedItem planned) =>
+      hasRepliesWithoutSession(planned, sessions[planned.id], starts[planned.id], snapshot, config)
+      ? newSessionNews(
+          repliesWithoutSession(
+            planned.item,
+            starts[planned.id],
+            active: snapshot.workflow.categoryOf(planned.item.status) == StatusCategory.active,
+            notes: true,
+          ),
+        )
+      : null;
+
   /// Whether [assignment] continues a session because a person replied to
-  /// its agent ([hasReplies]): such starts run in manual mode too.
+  /// its agent ([hasReplies]) or starts a new one for such replies
+  /// ([hasRepliesWithoutSession]): such starts run in manual mode too.
   bool isReply(DispatchAssignment assignment) {
     final planned = snapshot[assignment.id];
-    return assignment.resume != null &&
-        assignment.action == null &&
-        assignment.fix == null &&
-        planned != null &&
-        hasReplies(planned, sessions[assignment.id], config);
+    if (planned == null || assignment.action != null || assignment.fix != null) return false;
+    if (assignment.resume != null) return hasReplies(planned, sessions[assignment.id], config);
+    return assignment.newSession &&
+        hasRepliesWithoutSession(planned, sessions[assignment.id], starts[assignment.id], snapshot, config);
   }
 
   /// The free, existing worktree in [free] where [config]'s agent can
@@ -541,13 +601,22 @@ final class DispatchPlan {
     final free = [...worktrees.where((w) => w.isFree), ...spare];
     final slots = (config.maxAgents - running).clamp(0, free.length);
     final runningItems = {for (final run in conditions.runs) run.item};
-    // A person wrote to an agent whose session can go on: first, even when held
-    // (unless its branch is stuck in another worktree).
-    final replied = [
+    // A person wrote to an agent: first, even when held (unless its branch is
+    // stuck in another worktree). Its session goes on, or without one a new
+    // session takes the comments up.
+    final fresh = {
       for (final planned in snapshot.items)
         if (!runningItems.contains(planned.id) &&
             !conditions.blocked.contains(planned.id) &&
-            hasReplies(planned, sessions[planned.id], config))
+            hasRepliesWithoutSession(planned, sessions[planned.id], conditions.starts[planned.id], snapshot, config))
+          planned.id,
+    };
+    final replied = [
+      for (final planned in snapshot.items)
+        if (fresh.contains(planned.id) ||
+            (!runningItems.contains(planned.id) &&
+                !conditions.blocked.contains(planned.id) &&
+                hasReplies(planned, sessions[planned.id], config)))
           planned,
     ];
     final ready = [
@@ -563,11 +632,26 @@ final class DispatchPlan {
 
     final assignments = <DispatchAssignment>[];
     final left = <PlannedItem>[];
+    final reasons = <ItemId, String>{};
     for (final (index, candidate) in ready.indexed) {
       final session = sessions[candidate.id];
       final own = _resumableIn(session, config.agent, free);
-      if (assignments.length >= slots || free.isEmpty || (own == null && !candidate.isReady)) {
-        left.add(candidate); // a reply waits for the worktree of its session
+      final newSession = fresh.contains(candidate.id);
+      final String? reason;
+      if (free.isEmpty) {
+        reason = 'no free worktree';
+      } else if (assignments.length >= slots) {
+        reason = config.maxAgents - running <= assignments.length
+            ? 'max_agents (${config.maxAgents}) reached'
+            : 'no free worktree';
+      } else if (own == null && !candidate.isReady && !newSession) {
+        reason = 'the worktree ${session!.worktree} of its session is not free'; // a reply waits for it
+      } else {
+        reason = null;
+      }
+      if (reason != null) {
+        left.add(candidate);
+        reasons[candidate.id] = reason;
         continue;
       }
       // Leave the worktrees that later items could continue their sessions in
@@ -576,7 +660,10 @@ final class DispatchPlan {
         for (final later in [...ready.skip(index + 1), ...waitingForAnswer])
           if (_resumableIn(sessions[later.id], config.agent, free) case final w?) w.name,
       };
-      final target = own ?? free.firstWhere((w) => !reserved.contains(w.name), orElse: () => free.first);
+      // A new session for replies goes where the item's branch is checked out.
+      final branch = DispatchAssignment.branchFor(candidate);
+      final home = newSession ? free.firstWhereOrNull((w) => !w.isNew && conditions.branches[w.name] == branch) : null;
+      final target = own ?? home ?? free.firstWhere((w) => !reserved.contains(w.name), orElse: () => free.first);
       free.remove(target);
       assignments.add(
         DispatchAssignment.render(
@@ -587,6 +674,16 @@ final class DispatchPlan {
           backlogRoot: backlogRoot,
           resume: own == null ? null : session,
           create: target.isNew,
+          replies: newSession
+              ? newSessionNews(
+                  repliesWithoutSession(
+                    candidate.item,
+                    conditions.starts[candidate.id],
+                    active: snapshot.workflow.categoryOf(candidate.item.status) == StatusCategory.active,
+                    notes: true,
+                  ),
+                )
+              : null,
         ),
       );
     }
@@ -605,7 +702,9 @@ final class DispatchPlan {
       worktrees: List.unmodifiable(worktrees),
       assignments: List.unmodifiable(assignments),
       waiting: List.unmodifiable(left),
+      waitingReasons: Map.unmodifiable(reasons),
       sessions: Map.unmodifiable(sessions),
+      starts: Map.unmodifiable(conditions.starts),
       held: List.unmodifiable([
         for (final item in snapshot.ready)
           if (conditions.held[item.id] case final reason? when !replied.contains(item)) (item: item, reason: reason),
@@ -628,9 +727,12 @@ final class DispatchPlan {
   final List<DispatchAssignment> assignments;
 
   /// Ready items left over for lack of free worktrees or of the limit, and
-  /// items with replies for their agent ([hasReplies]) whose session's
-  /// worktree is not free.
+  /// items with replies for their agent ([hasReplies],
+  /// [hasRepliesWithoutSession]) that cannot start yet.
   final List<PlannedItem> waiting;
+
+  /// Why each of [waiting] cannot start now (`no free worktree`, …).
+  final Map<ItemId, String> waitingReasons;
 
   /// Ready items the dispatcher does not start by itself, with the reason.
   final List<({PlannedItem item, String reason})> held;
@@ -646,6 +748,9 @@ final class DispatchPlan {
   /// The session of each item's last agent run, where one is known and its
   /// worktree still exists.
   final Map<ItemId, AgentSession> sessions;
+
+  /// The last start of each item's own agent ([DispatchConditions.starts]).
+  final Map<ItemId, AgentStart> starts;
 
   /// Everything running now: agents (also those of prompt actions) and the
   /// commands and built-ins of actions, inside the worktrees or not.
@@ -858,7 +963,8 @@ final class DispatchPlan {
   DispatchAssignment assignmentFor(String reference, {bool fresh = false}) {
     final planned = snapshot[ItemReference.resolve(reference, snapshot.ids)]!;
     final replied = !fresh && hasReplies(planned, sessions[planned.id], config);
-    if (!planned.isReady && !replied) throw _notReady(planned);
+    final news = fresh ? null : _newSessionNews(planned);
+    if (!planned.isReady && !replied && news == null) throw _notReady(planned);
     final free = available;
     if (free.isEmpty || capacity == 0) {
       final reasons = [
@@ -873,13 +979,15 @@ final class DispatchPlan {
     }
     final session = fresh ? null : sessions[planned.id];
     final own = _resumableIn(session, config.agent, free);
-    if (own == null && !planned.isReady) {
+    if (own == null && !planned.isReady && news == null) {
       throw UnavailableException(
         'The worktree ${session!.worktree} of the session of ${planned.id} is not free; '
         'its agent continues there once it is.',
       );
     }
-    final target = own ?? free.first;
+    final branch = DispatchAssignment.branchFor(planned);
+    final home = news == null ? null : free.firstWhereOrNull((w) => !w.isNew && branches[w.name] == branch);
+    final target = own ?? home ?? free.first;
     return DispatchAssignment.render(
       config,
       item: planned,
@@ -888,6 +996,7 @@ final class DispatchPlan {
       backlogRoot: backlogRoot,
       resume: own == null ? null : session,
       create: target.isNew,
+      replies: own == null ? news : null,
     );
   }
 
@@ -920,7 +1029,10 @@ final class DispatchPlan {
       other != null &&
       other.mode == mode &&
       _sameList(other.assignments.map((a) => a.key), assignments.map((a) => a.key)) &&
-      _sameList(other.waiting.map((i) => i.id), waiting.map((i) => i.id)) &&
+      _sameList(
+        other.waiting.map((i) => '${i.id}:${other.waitingReasons[i.id]}'),
+        waiting.map((i) => '${i.id}:${waitingReasons[i.id]}'),
+      ) &&
       _sameList(other.held.map((h) => '${h.item.id}:${h.reason}'), held.map((h) => '${h.item.id}:${h.reason}')) &&
       _sameList(other.worktrees.map(_worktreeKey), worktrees.map(_worktreeKey)) &&
       _sameList(other.runs.map(_runKey), runs.map(_runKey)) &&

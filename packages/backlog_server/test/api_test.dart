@@ -419,6 +419,7 @@ void main() {
       expect(plan.worktrees.map((w) => w.name), ['w1', 'w2']);
       expect(plan.assignments.single.item, a.item.id);
       expect(plan.waiting, [b.item.id]);
+      expect(plan.waitingReason(b.item.id), 'max_agents (1) reached');
 
       final started = await api.startAgent(b.item.id);
       expect(launcher.started, ['${b.item.id}@w1']);

@@ -70,10 +70,11 @@ class _AgentPanelState extends State<AgentPanel> {
     final id = widget.item.id;
     final run = dispatch.runFor(id);
     final held = dispatch.plan.heldReason(id);
+    final waiting = dispatch.plan.waitingReason(id);
     final queued = dispatch.pendingActionsFor(id);
     final log = _log;
     final hasLog = log?.hasLog ?? false;
-    if (run == null && held == null && !hasLog && queued.isEmpty) return const SizedBox.shrink();
+    if (run == null && held == null && waiting == null && !hasLog && queued.isEmpty) return const SizedBox.shrink();
     final showLog = hasLog && (_showLogChoice ?? (run != null || (log?.running ?? false)));
     return Container(
       key: const ValueKey('agent-panel'),
@@ -104,7 +105,11 @@ class _AgentPanelState extends State<AgentPanel> {
                         style: small?.copyWith(color: tokens.text),
                       )
                     : Text(
-                        held == null ? 'Agent · last run' : 'Held: $held',
+                        held != null
+                            ? 'Held: $held'
+                            : waiting != null
+                            ? 'Waiting for an agent: $waiting'
+                            : 'Agent · last run',
                         key: const ValueKey('agent-held'),
                         style: small?.copyWith(color: tokens.text),
                       ),

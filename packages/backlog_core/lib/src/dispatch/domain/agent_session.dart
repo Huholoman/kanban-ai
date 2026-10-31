@@ -1,3 +1,5 @@
+import 'package:collection/collection.dart';
+
 import '../../items/domain/discussion.dart';
 import '../../items/domain/item.dart';
 import '../../items/domain/item_id.dart';
@@ -63,4 +65,39 @@ final class AgentSession {
         : '';
     return '$run New comments in the item\'s discussion since then:\n\n$listed\n$notes';
   }
+}
+
+/// When and in which worktree the last run of an item's own agent started
+/// (`<id>.last.json`), whether or not it reported a session.
+typedef AgentStart = ({DateTime at, String worktree});
+
+/// What others said to [item]'s agent that a new session has to take up
+/// when no session can be continued: the comments since the agent's last
+/// [start], except its own (notes and reviews only with [notes]). Without a
+/// known start (the item was worked on elsewhere) only an [active] item
+/// (in progress, in review, …) with a `branch` counts — an agent's work
+/// exists — and the comments after the last one of its assignee. Once a
+/// new session has started, these comments are older than its start and
+/// wake nobody again.
+List<Comment> repliesWithoutSession(Item item, AgentStart? start, {required bool active, bool notes = false}) {
+  if (start != null) return item.discussion.after(start.at, except: start.worktree, notes: notes);
+  if (!active || (item.branch?.trim().isEmpty ?? true)) return const [];
+  final assignee = item.assignee;
+  final last = assignee == null ? null : item.discussion.comments.lastWhereOrNull((c) => c.author == assignee);
+  return item.discussion.after(last?.at ?? DateTime.utc(1970), except: assignee, notes: notes);
+}
+
+/// `{news}` of the resume prompt for a new session started because of
+/// [comments] (see [repliesWithoutSession]): there is no earlier session
+/// to continue, so the agent first gets its bearings.
+String newSessionNews(List<Comment> comments) {
+  const fresh =
+      'there is no earlier session of yours to continue here (it ran elsewhere or is gone), so this is a new '
+      'session: first run `backlog instructions`, read the item and look at the commits on its branch.';
+  if (comments.isEmpty) return '$fresh No new comments in the discussion.';
+  final listed = [for (final comment in comments) '${comment.heading}\n\n${comment.text}'].join('\n\n');
+  final notes = comments.any((c) => c.isContext)
+      ? 'Comments marked "note" or "review" are context for you; they need no answer.\n'
+      : '';
+  return '$fresh New comments in the item\'s discussion:\n\n$listed\n$notes';
 }

@@ -310,6 +310,7 @@ dispatcher:
     expect(again.assignments, isEmpty, reason: 'held items are not started by themselves');
     expect(again.held.single.reason, contains('exited with code 3'));
     expect(logs.last, contains('released and held'));
+    expect(again.starts[ItemId('T-0001')]?.worktree, 'wt-1', reason: 'the start is known for replies');
 
     // A person starts it again: that lifts the hold.
     await launcher.launch(again.assignmentFor('T-0001'));

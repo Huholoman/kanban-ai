@@ -238,6 +238,11 @@ abstract final class DtoMapper {
         ),
     ],
     waiting: [for (final item in plan.waiting) item.id.value],
+    waitingReasons: [
+      for (final item in plan.waiting)
+        if (plan.waitingReasons[item.id] case final reason?)
+          HeldItemDto(item: item.id.value, title: item.item.title, reason: reason),
+    ],
     held: [
       for (final (:item, :reason) in plan.held)
         HeldItemDto(item: item.id.value, title: item.item.title, reason: reason),
