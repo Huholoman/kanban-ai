@@ -515,6 +515,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - Columns button in the header (views with `group_by`): pick and reorder the shown groups, saved as `columns:`; *Default* removes it.
 - Theme switch system → light → dark (for the session; default from `appearance.mode`); colours from `appearance`, reloaded live.
 - Live updates over the WebSocket (debounced refresh), reconnecting automatically.
+- Works without internet access: CanvasKit and the fonts come from the server — Roboto and *BoardSymbols* (`packages/backlog_app/fonts/`, a subset of the Noto symbol fonts made by `tool/symbols_font.sh`: arrows, ticks, geometric shapes, dingbats, math operators, box drawing), the theme's fallback font. Only characters outside both (emoji, CJK and other scripts) make the web engine fetch a Noto font from `fonts.gstatic.com`; offline they show as boxes.
 
 ## 10. Installation and operation
 
@@ -523,7 +524,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 - **Nix flake**: `nix run github:Huholoman/kanban-ai`, `#server`; packages `kanban-ai` (CLI + server with the web bundled) and `web`; `overlays.default`.
 - **NixOS module** `services.kanban-ai`: `enable`, `package`, `backlog`, `user`, `host` (string or list, default `127.0.0.1`), `port` (8640), `allow` (list), `tokenFile` (`BACKLOG_TOKEN=…`), `openFirewall`; runs a systemd service.
 - **Without Nix**: Dart ≥ 3.8 and Flutter ≥ 3.32; `dart compile exe` the two entry points, `flutter build web --no-web-resources-cdn --pwa-strategy=none` the app and `tool/precompress.sh build/web` in `packages/backlog_app` (what `mise run build-web` does).
-- **Web build** (Nix and `mise run build-web` alike): CanvasKit is part of the build instead of Google's CDN; no service worker (the server's ETags keep the browser cache right; an empty `flutter_service_worker.js` replaces the worker of older builds); `.br` and `.gz` copies of the compressible files (`gzip -9`, `brotli -q 11` when `brotli` is installed) for the server to send (§8).
+- **Web build** (Nix and `mise run build-web` alike): CanvasKit and the fonts (§9) are part of the build instead of Google's CDN; no service worker (the server's ETags keep the browser cache right; an empty `flutter_service_worker.js` replaces the worker of older builds); `.br` and `.gz` copies of the compressible files (`gzip -9`, `brotli -q 11` when `brotli` is installed) for the server to send (§8).
 
 Agents get the workflow from `backlog instructions` (paste into CLAUDE.md / AGENTS.md): identify with `BACKLOG_AGENT`, `backlog next` or `claim`, `heartbeat` during long work, set `branch`/`pr`, give new items `touches`, `done` or `release`, split discovered work into new items, `lint` before stopping.
 
