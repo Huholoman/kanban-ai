@@ -127,6 +127,7 @@ final class WorktreeProvisioner extends AgentLauncher {
           if (!removed.contains(key)) key: value,
       },
       held: inner.held,
+      blocked: inner.blocked,
       runs: inner.runs,
       sessions: inner.sessions,
       created: created,

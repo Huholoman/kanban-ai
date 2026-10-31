@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:io' as io show pid;
 
+import 'package:collection/collection.dart';
 import 'package:path/path.dart' as p;
 
 import '../../backlog.dart';
@@ -20,6 +21,7 @@ import '../domain/agent_log_format.dart';
 import '../domain/agent_session.dart';
 import '../domain/dispatch_plan.dart';
 import 'built_in_actions.dart';
+import 'merge_action.dart';
 import 'pull_request_opener.dart';
 import 'pull_request_watcher.dart';
 
@@ -34,6 +36,18 @@ import 'pull_request_watcher.dart';
 /// appended to `logs/<project>/<id>-<time>.log`. The process is described by
 /// `agents/<project>/<id>.json` (both under [stateDir]), which is how a
 /// restarted server finds it again.
+///
+/// **Branch in another worktree:** git checks a branch out in one worktree
+/// only. When the assignment's branch is checked out elsewhere (e.g. where
+/// a `fresh` review ran), that worktree is detached (`git switch --detach`)
+/// if the dispatcher manages it (listed or created) and it is free (no live
+/// claim, nothing runs there) and clean. Otherwise nothing starts: an
+/// agent's item is *held* with the reason and a note in its discussion
+/// (once); the hold also stops a person's reply from waking the agent
+/// ([DispatchConditions.blocked]) and goes away by itself once the branch is
+/// free or its worktree can be freed. A prompt action fails with
+/// `InvalidInputException`, which the dispatcher notes once and drops.
+/// Actions therefore need not give the branch back when they end.
 ///
 /// **While it runs** (checked every [pollInterval] once [attach]ed) its claim
 /// gets a heartbeat every [heartbeatEvery] (default a quarter of the lease,
@@ -104,6 +118,10 @@ final class ProcessAgentLauncher extends AgentLauncher {
   final Map<String, String> _environment;
   final Map<String, BuiltInAction> _builtIns;
 
+  /// Worktrees the dispatcher manages (listed and created), name → path, as
+  /// of the last [conditions].
+  var _managed = <String, String>{};
+
   /// Built-in actions running inside this process, with their result once
   /// they ended.
   final _builtInRuns = <ItemId, BuiltInActionResult?>{};
@@ -160,6 +178,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
       for (final planned in snapshot.items)
         if (planned.isClaimed) planned.claim!.agent,
     };
+    _managed = {for (final worktree in config.worktrees) worktree.name: worktree.resolvePath(backlogRoot)};
     final unavailable = <String, String>{};
     final branches = <String, String>{};
     for (final worktree in config.worktrees) {
@@ -170,14 +189,32 @@ final class ProcessAgentLauncher extends AgentLauncher {
       if (await worktreeBranch(path) case final branch?) branches[worktree.name] = branch;
     }
     final held = <ItemId, String>{};
+    final blocked = <ItemId>{};
     for (final id in await _heldIds()) {
       final planned = snapshot[id];
       if (planned == null || planned.isDone) continue;
-      if (await _holdOf(id) case final reason?) held[id] = reason;
+      final hold = await _holdOf(id);
+      if (hold == null) continue;
+      if ((hold.branch, hold.worktree) case (final String branch, final String path)) {
+        // Held because the branch was in use elsewhere: lifted once it is not.
+        if (await worktreeBranch(path) != branch ||
+            await _branchBlocker(path, claimed: claimed, runs: [for (final r in runs) r.run]) == null) {
+          if (hold.before case final before?) {
+            await _write(_holdFile(id), {'reason': before, 'at': _clock.now().toUtc().toIso8601String()});
+            held[id] = before;
+          } else {
+            await _delete(_holdFile(id));
+          }
+          continue;
+        }
+        blocked.add(id);
+      }
+      held[id] = hold.reason;
     }
     return DispatchConditions(
       unavailable: unavailable,
       held: held,
+      blocked: blocked,
       runs: [for (final record in runs) record.run],
       sessions: await _sessions(snapshot),
       branches: branches,
@@ -262,6 +299,9 @@ final class ProcessAgentLauncher extends AgentLauncher {
     try {
       final branch = assignment.branch;
       if (branch != null) {
+        if (await _freeBranch(assignment, branch) case final problem?) {
+          await _branchInUse(backlog, assignment, branch, problem);
+        }
         await _checkout(assignment, branch, assignment.base ?? 'main');
         if (assignment.item.item.branch != branch) {
           await backlog.items.update(id.value, [FieldChange.parse('branch=$branch')]);
@@ -562,6 +602,91 @@ final class ProcessAgentLauncher extends AgentLauncher {
   }
 
   // ---------------------------------------------------------------- launch
+
+  /// Makes [branch] free for the worktree of [assignment] when another
+  /// worktree has it checked out and the dispatcher may detach that one;
+  /// returns where it is stuck otherwise (null: free).
+  Future<({String path, String why})?> _freeBranch(DispatchAssignment assignment, String branch) async {
+    final holder = await _checkedOutIn(assignment.path, branch);
+    if (holder == null || MergeAction.samePath(holder, assignment.path)) return null;
+    final snapshot = await (await _backlog()).planning.snapshot();
+    final why = await _branchBlocker(
+      holder,
+      claimed: {
+        for (final planned in snapshot.items)
+          if (planned.isClaimed) planned.claim!.agent,
+      },
+      runs: [for (final record in await _records()) record.run],
+    );
+    if (why != null) return (path: holder, why: why);
+    final detached = await Process.run('git', ['switch', '--quiet', '--detach'], workingDirectory: holder);
+    if (detached.exitCode != 0) {
+      return (path: holder, why: 'git switch --detach failed there (${_firstLine(detached.stderr)})');
+    }
+    _log('Dispatcher: detached ${_managedName(holder)} from $branch for ${assignment.id} in ${assignment.agent}.');
+    return null;
+  }
+
+  /// Why the dispatcher may not detach the worktree at [path] (null: it may):
+  /// it does not manage it, it is busy ([claimed] names, [runs]) or not clean.
+  Future<String?> _branchBlocker(String path, {required Set<String> claimed, required List<AgentRun> runs}) async {
+    final name = _managedName(path);
+    if (name == null) return 'a worktree the dispatcher does not manage';
+    if (claimed.contains(name) || runs.any((run) => run.worktree == name)) return 'the worktree $name, which is busy';
+    if (await worktreeProblem(path) case final problem?) return 'the worktree $name, which has $problem';
+    return null;
+  }
+
+  String? _managedName(String path) =>
+      _managed.entries.firstWhereOrNull((w) => MergeAction.samePath(w.value, path))?.key;
+
+  /// The worktree (of the repository of [path]) that has [branch] checked
+  /// out; null when none.
+  static Future<String?> _checkedOutIn(String path, String branch) async {
+    final list = await Process.run('git', ['worktree', 'list', '--porcelain'], workingDirectory: path);
+    if (list.exitCode != 0) return null;
+    String? worktree;
+    for (final line in LineSplitter.split('${list.stdout}')) {
+      if (line.startsWith('worktree ')) worktree = line.substring('worktree '.length);
+      if (line == 'branch refs/heads/$branch') return worktree;
+    }
+    return null;
+  }
+
+  /// Fails the launch of [assignment] because [branch] is stuck in another
+  /// worktree: an agent's item is held (noted in its discussion the first
+  /// time), a prompt action fails for good.
+  Future<Never> _branchInUse(
+    Backlog backlog,
+    DispatchAssignment assignment,
+    String branch,
+    ({String path, String why}) problem,
+  ) async {
+    final id = assignment.id;
+    final message =
+        'Cannot start in ${assignment.agent}: the branch $branch is checked out in ${problem.why} '
+        '(${problem.path}). Free it there (git switch --detach) and start $id again.';
+    if (assignment.action != null) throw InvalidInputException(message);
+    final previous = await _holdOf(id);
+    await _write(_holdFile(id), {
+      'reason': message,
+      'at': _clock.now().toUtc().toIso8601String(),
+      'branch': branch,
+      'worktree': problem.path,
+      // An earlier hold (the agent left it unfinished) comes back afterwards.
+      'before': ?(previous == null ? null : previous.before ?? (previous.branch == null ? previous.reason : null)),
+    });
+    if (previous?.branch != branch || previous?.worktree != problem.path) {
+      _log('Dispatcher: held $id: $message');
+      try {
+        await backlog.items.comment(id.value, author: noteAuthor, text: '$message Held until then.', note: true);
+      } on BacklogException catch (error) {
+        _log('Dispatcher: could not add a note to $id: ${error.message}');
+      }
+      _onChange?.call();
+    }
+    throw UnavailableException(message);
+  }
 
   Future<void> _checkout(DispatchAssignment assignment, String branch, String base) async {
     Future<ProcessResult> git(List<String> arguments) =>
@@ -919,13 +1044,21 @@ final class ProcessAgentLauncher extends AgentLauncher {
     ];
   }
 
-  Future<String?> _holdOf(ItemId id) async {
+  /// Why [id] is held; for a branch in use elsewhere also the branch, the
+  /// worktree path that has it and the hold it replaced ([before]).
+  Future<({String reason, String? branch, String? worktree, String? before})?> _holdOf(ItemId id) async {
     final text = await _read(_holdFile(id));
     if (text == null) return null;
     try {
-      return '${(jsonDecode(text) as Map)['reason']}';
+      final json = jsonDecode(text) as Map;
+      return (
+        reason: '${json['reason']}',
+        branch: json['branch'] as String?,
+        worktree: json['worktree'] as String?,
+        before: json['before'] as String?,
+      );
     } on FormatException {
-      return 'held';
+      return (reason: 'held', branch: null, worktree: null, before: null);
     }
   }
 

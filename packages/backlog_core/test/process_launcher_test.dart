@@ -474,6 +474,85 @@ dispatcher:
     expect(await dispatcher.stop('T-0001'), isTrue);
   });
 
+  group('the branch checked out in another worktree', () {
+    Future<List<Comment>> notes() async =>
+        (await planned('T-0001')).item.discussion.comments.where((c) => c.author == 'kanban-ai').toList();
+
+    /// T-0001 left unfinished by its agent in wt-1 (its session lives there),
+    /// then its branch checked out in wt-2 (as a fresh review would).
+    Future<void> branchInWt2() async {
+      await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
+      await launcher.launch((await plan()).assignmentFor('T-0001'));
+      await finish('T-0001', 3);
+      await _git(path('wt-1'), ['switch', '-q', '--detach']);
+      await _git(path('wt-2'), ['switch', '-q', 'agent/T-0001']);
+      clock.advance(const Duration(minutes: 5));
+      await backlog.items.comment('T-0001', author: 'tobik', text: 'Go on.');
+    }
+
+    test('a free, clean worktree of the dispatcher is detached and the agent starts', () async {
+      await branchInWt2();
+      final resume = (await plan()).assignments.single;
+      expect(resume.key, 'T-0001@wt-1+resume');
+      await launcher.launch(resume);
+      expect(await ProcessAgentLauncher.worktreeBranch(path('wt-2')), isNull);
+      await waitForLog('T-0001', 'agent wt-1');
+      expect(await logOf('T-0001'), contains('in ${path('wt-1')} branch agent/T-0001'));
+      expect(logs, contains(contains('detached wt-2 from agent/T-0001 for T-0001 in wt-1')));
+      await finish('T-0001', 0);
+    });
+
+    test('a busy or dirty one is not touched: the item is held once, even for replies, until it is free', () async {
+      await branchInWt2();
+      File(path('wt-2/scratch.txt')).writeAsStringSync('x');
+      final resume = (await plan()).assignments.single;
+      await expectLater(launcher.launch(resume), throwsA(isA<UnavailableException>()));
+      expect(await ProcessAgentLauncher.worktreeBranch(path('wt-2')), 'agent/T-0001');
+      expect((await planned('T-0001')).claim, isNull);
+      expect((await notes()).single.text, contains('the branch agent/T-0001 is checked out in the worktree wt-2'));
+
+      // No loop: the reply does not start it again by itself.
+      var next = await plan();
+      expect(next.assignments, isEmpty);
+      expect(next.held.single.reason, contains('which has uncommitted changes'));
+      // Starting it by hand fails the same way, without another note.
+      await expectLater(launcher.launch(next.assignmentFor('T-0001')), throwsA(isA<UnavailableException>()));
+      expect(await notes(), hasLength(1));
+
+      // Busy (a live claim under its name) is no better than dirty.
+      File(path('wt-2/scratch.txt')).deleteSync();
+      await backlog.items.create(const NewItem(title: 'B', status: 'todo'));
+      await backlog.claims.claim('T-0002', 'wt-2');
+      next = await plan();
+      expect(next.assignments.map((a) => a.key), isNot(contains(startsWith('T-0001'))));
+      expect(next.held.map((h) => h.item.id), contains(ItemId('T-0001')));
+
+      // Free and clean: the hold goes away and the reply starts the agent, which frees the branch.
+      await backlog.claims.release('T-0002', agent: 'wt-2');
+      next = await plan();
+      final again = next.assignments.firstWhere((a) => a.id == ItemId('T-0001'));
+      expect(again.key, 'T-0001@wt-1+resume');
+      await launcher.launch(again);
+      expect(await ProcessAgentLauncher.worktreeBranch(path('wt-2')), isNull);
+      await finish('T-0001', 3);
+      expect(await notes(), hasLength(1));
+    });
+
+    test('a prompt action fails for good instead of waiting', () async {
+      await branchInWt2();
+      File(path('wt-2/scratch.txt')).writeAsStringSync('x');
+      await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+      final start = (await plan()).actionStart('T-0001', 'Fix').agent!;
+      await expectLater(launcher.launch(start), throwsA(isA<InvalidInputException>()));
+      expect(
+        File(p.join(stateDir, 'agents', 'demo', 'T-0001.hold.json')).existsSync(),
+        isTrue,
+        reason: 'the hold of the unfinished agent stays',
+      );
+      expect((await planned('T-0001')).claim, isNull);
+    });
+  });
+
   group('actions', () {
     /// T-0001 worked on by an agent in wt-1 and handed over for review.
     Future<void> reviewed() async {

@@ -75,6 +75,7 @@ final class DispatchConditions {
   const DispatchConditions({
     this.unavailable = const {},
     this.held = const {},
+    this.blocked = const {},
     this.runs = const [],
     this.sessions = const {},
     this.created = const [],
@@ -93,6 +94,11 @@ final class DispatchConditions {
   /// agent ended without finishing, or a person stopped it) → why. A manual
   /// start still works.
   final Map<ItemId, String> held;
+
+  /// Held items that a person's reply does not start either: their branch
+  /// is checked out in another worktree the dispatcher cannot free, so the
+  /// start would fail. A manual start still tries.
+  final Set<ItemId> blocked;
 
   /// Agents running now.
   final List<AgentRun> runs;
@@ -119,6 +125,7 @@ final class DispatchConditions {
   DispatchConditions withPending(List<PendingAction> pending) => DispatchConditions(
     unavailable: unavailable,
     held: held,
+    blocked: blocked,
     runs: runs,
     sessions: sessions,
     created: created,
@@ -534,10 +541,14 @@ final class DispatchPlan {
     final free = [...worktrees.where((w) => w.isFree), ...spare];
     final slots = (config.maxAgents - running).clamp(0, free.length);
     final runningItems = {for (final run in conditions.runs) run.item};
-    // A person wrote to an agent whose session can go on: first, even when held.
+    // A person wrote to an agent whose session can go on: first, even when held
+    // (unless its branch is stuck in another worktree).
     final replied = [
       for (final planned in snapshot.items)
-        if (!runningItems.contains(planned.id) && hasReplies(planned, sessions[planned.id], config)) planned,
+        if (!runningItems.contains(planned.id) &&
+            !conditions.blocked.contains(planned.id) &&
+            hasReplies(planned, sessions[planned.id], config))
+          planned,
     ];
     final ready = [
       ...replied,
