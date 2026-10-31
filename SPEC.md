@@ -27,6 +27,23 @@ Everything derived (ready, blocked, progress, …) is computed from the files on
 
 In this order: `-C/--dir`, `$BACKLOG_DIR`, then from the current folder upwards the first folder that contains `backlog.yaml` or has a `backlog/` subfolder containing it. The second rule lets every sibling worktree find a shared `../backlog`.
 
+### 1.2 Project registry
+
+One machine usually has several backlogs (one per project). The registry lists them for `backlog-server` (§8), which hosts all of them at once. It is a YAML file, by default `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` (`~/.config/kanban-ai/projects.yaml` without `XDG_CONFIG_HOME`), elsewhere with `$BACKLOG_PROJECTS` or `--projects <file>`:
+
+```yaml
+projects:
+  - id: kanban-ai                  # optional: slug of the project folder
+    name: kanban-ai                # optional: the project folder's name
+    path: ~/p/kanban-ai/backlog    # absolute, ~/… or relative to this file
+  - path: ~/p/hobbyo/backlog       # → id hobbyo
+```
+
+- **Project folder** is the backlog folder itself, or its parent when the folder is called `backlog` (`~/p/hobbyo/backlog` → `hobbyo`).
+- **id** — lower-case letters, digits, `-`, `_`, starting with a letter or digit; unique within the registry (a repeated or invalid id makes the whole file invalid). It appears in URLs (`/api/p/<id>/…`).
+- **Order** matters: the first project is the *default project*.
+- Unknown keys and comments are kept; `backlog projects add/remove` edit the file in place. A missing file is an empty registry.
+
 ## 2. Configuration — `backlog.yaml`
 
 ```yaml
@@ -201,6 +218,9 @@ Global options: `-C/--dir <folder>`, `--json` (machine-readable output; JSON fie
 | `view [name]` | run a saved view; without a name list views grouped by section |
 | `lint` | check the backlog; exit 1 on errors |
 | `instructions` | print the workflow guide for agents (Markdown, for CLAUDE.md / AGENTS.md) |
+| `projects [list] [--projects f]` | the project registry (§1.2): id, name, path, the default project and why a backlog cannot be opened; JSON `[{id, name, path, default, error}]` |
+| `projects add [path] [--id i] [--name n]` | register a backlog (default: the one found as in §1.1; a given folder may also be the project folder with `backlog/` inside); it must open; without `--id` the derived id gets `-2`, `-3`, … when taken; the entry is written with its `id` |
+| `projects remove <id>` | unregister a backlog (its files stay) |
 
 `--where` conditions: `field=a,b` (any of), `field!=a`, `field~text` (contains, ignoring case), `field?` (has a value), `!field?` (has none); repeatable (AND). Any field from §3 / §6.2 works, including custom keys.
 

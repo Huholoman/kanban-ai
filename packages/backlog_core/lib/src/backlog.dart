@@ -107,6 +107,18 @@ final class Backlog {
     return layout;
   }
 
+  /// Why the backlog at [root] cannot be opened (missing folder, no or a
+  /// broken `backlog.yaml`), or null when it opens.
+  static Future<String?> problem(String root) async {
+    if (!await Directory(root).exists()) return 'Folder ${BacklogLayout(root).root} does not exist.';
+    try {
+      await open(root);
+      return null;
+    } on BacklogException catch (error) {
+      return error.message;
+    }
+  }
+
   /// See [BacklogLayout.locate].
   static String? locate(String start) => BacklogLayout.locate(start);
 
