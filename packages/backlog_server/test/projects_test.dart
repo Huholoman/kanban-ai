@@ -108,6 +108,27 @@ projects:
     expect((await fallback.workflow()).priorities, isNotEmpty);
   });
 
+  test('each project reads its own files; edits on disk and of backlog.yaml are seen', () async {
+    final alpha = api.project('alpha');
+    final beta = api.project('b');
+    void write(String project, String id, String title) => File(
+      p.join(dir.path, project, 'backlog', 'items', 'same-name.md'),
+    ).writeAsStringSync('---\nid: $id\ntitle: $title\n---\n');
+
+    write('alpha', 'A-1', 'Alpha 1');
+    write('beta', 'B-1', 'Beta 1');
+    expect((await alpha.items()).map((item) => item.title), ['Alpha 1']);
+    expect((await beta.items()).map((item) => item.title), ['Beta 1']);
+    write('alpha', 'A-1', 'Alpha 2');
+    expect((await alpha.items()).map((item) => item.title), ['Alpha 2']);
+    expect((await beta.items()).map((item) => item.title), ['Beta 1']);
+
+    final config = File(p.join(dir.path, 'beta', 'backlog', 'backlog.yaml'));
+    config.writeAsStringSync(config.readAsStringSync().replaceFirst('priority: p2', 'priority: p0'));
+    await eventually(() async => expect((await beta.items()).single.priority, 'p0'));
+    expect((await alpha.items()).single.priority, 'p2');
+  });
+
   test('unknown projects are not_found; broken ones answer with their error; the token applies', () async {
     expect(() => api.project('nope').items(), throwsA(apiError(404, 'not_found')));
     expect(() => api.project('broken').items(), throwsA(apiError(500, 'configuration')));

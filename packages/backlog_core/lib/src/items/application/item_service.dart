@@ -69,6 +69,10 @@ final class ItemService {
 
   Future<String?> locate(String reference) async => _repository.locationOf((await get(reference)).id);
 
+  /// Where item [id] is stored. Without reading the items again when they
+  /// were just loaded (e.g. by a snapshot that found [id]).
+  Future<String?> locationOf(ItemId id) => _repository.locationOf(id);
+
   Future<Item> create(NewItem draft) async {
     final items = (await _repository.load()).items;
     final known = {for (final item in items) item.id};

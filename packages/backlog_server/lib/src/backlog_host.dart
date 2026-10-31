@@ -3,6 +3,9 @@ import 'package:backlog_core/backlog_core.dart';
 /// Keeps the opened [Backlog] of one folder and reopens it after
 /// `backlog.yaml` changes, so that edits of the workflow apply without a
 /// restart.
+///
+/// The backlog caches parsed item files (validated by `stat` on every read,
+/// see `FileSystemItemRepository`); reopening it drops that cache.
 final class BacklogHost {
   BacklogHost(this.root, {this.clock = const SystemClock()});
 
@@ -14,7 +17,7 @@ final class BacklogHost {
 
   Future<Backlog> _open() async {
     try {
-      return await Backlog.open(root, clock: clock);
+      return await Backlog.open(root, clock: clock, cacheItems: true);
     } catch (_) {
       // A broken configuration must not stay cached once it is fixed.
       _current = null;

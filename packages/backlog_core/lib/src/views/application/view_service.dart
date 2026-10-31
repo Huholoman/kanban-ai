@@ -14,6 +14,15 @@ final class ViewService {
 
   Future<List<ViewDefinition>> all() async => (await _views.load()).views;
 
+  /// Every saved view with the number of distinct items it shows, all
+  /// evaluated on one snapshot (one read of the items for any number of views).
+  Future<List<(ViewDefinition, int)>> counts() async {
+    final views = await all();
+    if (views.isEmpty) return const [];
+    final snapshot = await _planning.snapshot();
+    return [for (final view in views) (view, ViewEngine.evaluate(view, snapshot).items.toSet().length)];
+  }
+
   /// Runs view [id]; with [groupBy] grouped by that field for this run only
   /// (empty string: ungrouped), the saved definition stays as it is.
   Future<ViewResult> run(String id, {String? groupBy}) async {

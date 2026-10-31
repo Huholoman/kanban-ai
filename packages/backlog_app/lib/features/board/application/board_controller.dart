@@ -254,12 +254,26 @@ class BoardController extends ChangeNotifier {
       notifyListeners();
     }
     try {
-      final loadedWorkflow = await _api.workflow();
-      final loadedViews = await _api.views();
-      final loadedLint = await _api.lint();
-      final loadedItems = await _api.items(includeDone: true);
+      // The requests are independent, so they run at the same time. The
+      // current view is asked for right away too; its answer is used only when
+      // it is still the view to show (it may have been deleted meanwhile).
+      final groupBy = groupByOverride;
+      final guessed = selectedViewId;
+      final early = guessed == null ? null : _api.view(guessed, groupBy: groupBy);
+      unawaited(early?.then<void>((_) {}, onError: (Object _) {})); // an unused answer may fail silently
+      final workflowRequest = _api.workflow();
+      final viewsRequest = _api.views();
+      final lintRequest = _api.lint();
+      final itemsRequest = _api.items(includeDone: true);
+      await Future.wait([workflowRequest, viewsRequest, lintRequest, itemsRequest]);
+      final loadedWorkflow = await workflowRequest;
+      final loadedViews = await viewsRequest;
+      final loadedLint = await lintRequest;
+      final loadedItems = await itemsRequest;
       final id = _pickView(loadedViews);
-      final loadedResult = id == null ? null : await _api.view(id, groupBy: groupByOverride);
+      final loadedResult = id == null
+          ? null
+          : await (id == guessed && early != null ? early : _api.view(id, groupBy: groupBy));
       if (generation != _generation) return; // a newer refresh won
       workflow = loadedWorkflow;
       views = loadedViews;

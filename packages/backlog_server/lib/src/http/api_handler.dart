@@ -104,11 +104,8 @@ final class ApiHandler {
   }
 
   Future<Response> _views(Request request) async {
-    final service = (await _host.backlog).views;
-    return _json([
-      for (final view in await service.all())
-        DtoMapper.viewSummary(view, count: (await service.evaluate(view)).items.toSet().length).toJson(),
-    ]);
+    final counts = await (await _host.backlog).views.counts();
+    return _json([for (final (view, count) in counts) DtoMapper.viewSummary(view, count: count).toJson()]);
   }
 
   Future<Response> _view(Request request, String id) async => _json(
@@ -149,7 +146,7 @@ final class ApiHandler {
   Future<Response> _detailOf(Backlog backlog, String ref, {int status = 200}) async {
     final snapshot = await backlog.planning.snapshot();
     final planned = snapshot[ItemReference.resolve(ref, snapshot.ids)]!;
-    final location = await backlog.items.locate(planned.id.value);
+    final location = await backlog.items.locationOf(planned.id);
     final path = location == null ? null : backlog.layout.relative(location);
     return _json(DtoMapper.detail(planned, snapshot, path: path).toJson(), status: status);
   }

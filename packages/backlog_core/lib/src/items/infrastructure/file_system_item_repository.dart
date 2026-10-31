@@ -14,30 +14,116 @@ import 'markdown_item_codec.dart';
 ///
 /// The id inside the front matter is the source of truth; the file name is
 /// only a convenience and is never renamed.
+///
+/// With [cache] (for long-running processes such as the server) the parsed
+/// files are kept in memory and [load] parses again only what changed. Every
+/// [load] still lists the folder and `stat`s each file, so changes made by
+/// anyone (agents, editors, `git checkout`, renames, deletions) are seen
+/// without a watcher. A cached file is reused only when its modification
+/// time, change time (ctime) and size are the same as when it was read, and
+/// both times were at least [settle] older than that read: file times have a
+/// coarse resolution (milliseconds in Dart, up to 2 s on some file systems),
+/// so a file written again in the same tick with the same size keeps its
+/// stamp. Such a recently changed file is read again on every load until it
+/// settles and parsed again only when its text differs. Writes through [save]
+/// drop the file from the cache.
 final class FileSystemItemRepository implements ItemRepository {
-  FileSystemItemRepository(this._layout, this._codec);
+  FileSystemItemRepository(this._layout, this._codec, {bool cache = false, this.settle = const Duration(seconds: 3)})
+    : _cache = cache ? {} : null;
 
   final BacklogLayout _layout;
   final MarkdownItemCodec _codec;
   final Map<ItemId, String> _paths = {};
 
+  /// Parsed files by path; null without caching.
+  final Map<String, _CachedFile>? _cache;
+
+  /// How much older than the read a file's times must be for its stamp to be
+  /// trusted (see the class documentation).
+  final Duration settle;
+
+  /// Files parsed since this repository was created (for tests and
+  /// diagnostics of the cache).
+  int get parsed => _parsed;
+  int _parsed = 0;
+
+  /// Reads every item file (only the changed ones with [cache]).
+  ///
+  /// Listing and reading are synchronous on purpose: for thousands of small
+  /// files the asynchronous calls cost several times more than the reading
+  /// itself (5 000 items: ~0.9 s file by file, ~0.45 s all at once, ~0.1 s
+  /// synchronously), and the decoding that follows blocks the isolate anyway.
+  /// Being synchronous, a load also cannot interleave with another one.
   @override
   Future<ItemCatalog> load() async {
     final items = <Item>[];
     final problems = <LoadProblem>[];
     _paths.clear();
-    for (final file in await _itemFiles()) {
-      try {
-        final item = _codec.decode(await file.readAsString());
+    final cache = _cache;
+    final List<File> files;
+    try {
+      files = _itemFiles();
+    } on FileSystemException {
+      cache?.clear(); // unsure what is there: start over next time
+      rethrow;
+    }
+    final readAt = DateTime.now();
+    for (final file in files) {
+      final (item, problem) = cache == null ? _uncached(file) : _cached(cache, file, readAt);
+      if (item != null) {
         items.add(item);
         _paths.putIfAbsent(item.id, () => file.path);
-      } on FormatException catch (e) {
-        problems.add(LoadProblem(_layout.relative(file.path), e.message));
-      } on FileSystemException catch (e) {
-        problems.add(LoadProblem(_layout.relative(file.path), e.message));
+      } else if (problem != null) {
+        problems.add(LoadProblem(_layout.relative(file.path), problem));
       }
     }
+    if (cache != null && cache.length > files.length) {
+      final present = {for (final file in files) file.path};
+      cache.removeWhere((path, _) => !present.contains(path));
+    }
     return ItemCatalog(items, problems);
+  }
+
+  (Item?, String?) _uncached(File file) {
+    try {
+      return _parse(file.readAsStringSync());
+    } on FileSystemException catch (e) {
+      return (null, e.message);
+    }
+  }
+
+  /// The item or the problem of one file, from the cache when its stamp says
+  /// it is unchanged.
+  (Item?, String?) _cached(Map<String, _CachedFile> cache, File file, DateTime readAt) {
+    final cached = cache[file.path];
+    final FileStat stat;
+    final String text;
+    try {
+      stat = file.statSync();
+      if (stat.type == FileSystemEntityType.notFound) throw FileSystemException('Cannot read file', file.path);
+      if (cached != null && cached.trusted && cached.sameStamp(stat)) return cached.result;
+      text = file.readAsStringSync();
+    } on FileSystemException catch (e) {
+      cache.remove(file.path);
+      return (null, e.message);
+    }
+    final result = cached != null && cached.text == text ? cached.result : _parse(text);
+    cache[file.path] = _CachedFile(stat, text, result, trusted: _settled(stat, readAt));
+    return result;
+  }
+
+  bool _settled(FileStat stat, DateTime readAt) {
+    final latest = stat.modified.isAfter(stat.changed) ? stat.modified : stat.changed;
+    return readAt.difference(latest) > settle;
+  }
+
+  (Item?, String?) _parse(String text) {
+    _parsed++;
+    try {
+      return (_codec.decode(text), null);
+    } on FormatException catch (e) {
+      return (null, e.message);
+    }
   }
 
   @override
@@ -49,7 +135,9 @@ final class FileSystemItemRepository implements ItemRepository {
     }
     final file = File(path ?? p.join(_layout.itemsDir, _fileName(item)));
     final content = path == null ? _codec.encode(item) : _codec.update(await file.readAsString(), item);
+    _cache?.remove(file.path);
     await writeAtomically(file, content);
+    _cache?.remove(file.path);
     _paths[item.id] = file.path;
   }
 
@@ -59,18 +147,18 @@ final class FileSystemItemRepository implements ItemRepository {
     return _paths[id];
   }
 
-  Future<List<File>> _itemFiles() async {
+  List<File> _itemFiles() {
     final dir = Directory(_layout.itemsDir);
-    if (!await dir.exists()) return const [];
+    if (!dir.existsSync()) return const [];
     final files = <File>[];
-    await for (final entity in dir.list(followLinks: false)) {
+    for (final entity in dir.listSync(followLinks: false)) {
       final name = p.basename(entity.path);
       if (name.startsWith('.')) continue;
       if (entity is File && name.endsWith('.md')) {
         files.add(entity);
       } else if (entity is Directory) {
         final index = File(p.join(entity.path, 'index.md'));
-        if (await index.exists()) files.add(index);
+        if (index.existsSync()) files.add(index);
       }
     }
     return files..sort((a, b) => a.path.compareTo(b.path));
@@ -80,4 +168,24 @@ final class FileSystemItemRepository implements ItemRepository {
     final slug = slugify(item.title);
     return slug.isEmpty ? '${item.id}.md' : '${item.id}-$slug.md';
   }
+}
+
+/// One parsed file and the stamp it had when it was read.
+final class _CachedFile {
+  _CachedFile(FileStat stat, this.text, this.result, {required this.trusted})
+    : modified = stat.modified,
+      changed = stat.changed,
+      size = stat.size;
+
+  final DateTime modified;
+  final DateTime changed;
+  final int size;
+  final String text;
+  final (Item?, String?) result;
+
+  /// The times were settled when the file was read, so any later write
+  /// changes the stamp.
+  final bool trusted;
+
+  bool sameStamp(FileStat stat) => stat.size == size && stat.modified == modified && stat.changed == changed;
 }

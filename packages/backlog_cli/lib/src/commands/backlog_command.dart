@@ -70,11 +70,18 @@ abstract class BacklogCommand extends Command<int> {
   void emitItems(List<PlannedItem> items) =>
       json ? emitJson([for (final item in items) JsonOutput.item(item)]) : lines(TextOutput.rows(items));
 
-  /// Re-reads the item so that the output includes derived state.
-  Future<void> emitItem(Backlog backlog, ItemId id, {bool detail = false, String? message}) async {
-    final snapshot = await backlog.planning.snapshot();
+  /// Re-reads the item (unless [snapshot] is given) so that the output
+  /// includes derived state.
+  Future<void> emitItem(
+    Backlog backlog,
+    ItemId id, {
+    bool detail = false,
+    String? message,
+    BacklogSnapshot? snapshot,
+  }) async {
+    snapshot ??= await backlog.planning.snapshot();
     final planned = snapshot[id]!;
-    final path = await backlog.items.locate(id.value);
+    final path = await backlog.items.locationOf(id);
     if (json) {
       emitJson(JsonOutput.item(planned, path: path, withBody: detail));
     } else if (detail) {

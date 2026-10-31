@@ -115,7 +115,7 @@ final class NewCommand extends BacklogCommand {
         body: body,
       ),
     );
-    await emitItem(backlog, item.id, message: 'Created ${await backlog.items.locate(item.id.value)}');
+    await emitItem(backlog, item.id, message: 'Created ${await backlog.items.locationOf(item.id)}');
     return 0;
   }
 }
@@ -175,8 +175,9 @@ final class ShowCommand extends BacklogCommand {
   @override
   Future<int> run() async {
     final backlog = await openBacklog();
-    final item = await backlog.items.get(singleArgument('item id'));
-    await emitItem(backlog, item.id, detail: true);
+    final snapshot = await backlog.planning.snapshot();
+    final id = ItemReference.resolve(singleArgument('item id'), snapshot.ids);
+    await emitItem(backlog, id, detail: true, snapshot: snapshot);
     return 0;
   }
 }

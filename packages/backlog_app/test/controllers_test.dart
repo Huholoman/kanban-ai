@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/appearance_controller.dart';
 import 'package:backlog_app/features/board/application/board_controller.dart';
@@ -123,6 +125,36 @@ void main() {
       expect(broken.result, isNull);
       expect(broken.loading, isFalse);
     });
+
+    test('refresh sends its requests at the same time; a failure keeps the shown content', () async {
+      final gated = _GatedApi(api);
+      final controller = BoardController(gated);
+      addTearDown(controller.dispose);
+
+      // First load: the view to show is known only from the list of views.
+      final first = controller.start();
+      await Future<void>.delayed(Duration.zero);
+      expect(gated.requests, unorderedEquals(['workflow', 'views', 'lint', 'items']));
+      gated.open();
+      await Future<void>.delayed(Duration.zero);
+      expect(gated.requests.last, 'view board');
+      gated.open();
+      await first;
+      expect(controller.result!.id, 'board');
+
+      // Later refreshes ask for the current view right away as well.
+      gated.requests.clear();
+      final quiet = controller.refresh(quiet: true);
+      await Future<void>.delayed(Duration.zero);
+      expect(gated.requests, unorderedEquals(['view board', 'workflow', 'views', 'lint', 'items']));
+      expect(controller.loading, isFalse, reason: 'a quiet refresh keeps the content visible');
+      gated.failViews = const BacklogApiException(500, 'internal', 'boom');
+      gated.open();
+      await quiet;
+      expect(controller.error, isA<BacklogApiException>());
+      expect(controller.result!.id, 'board', reason: 'the last good content stays');
+      expect(controller.loading, isFalse);
+    });
   });
 
   group('ItemController', () {
@@ -215,7 +247,51 @@ final class _UnreachableApi implements BacklogApi {
   final BacklogApi _inner;
 
   @override
-  Future<WorkflowDto> workflow() => Future.error(const BacklogApiException(0, 'network', 'unreachable'));
+  Stream<BacklogChangeEvent> changes() => _inner.changes();
+
+  /// Every request fails as without a network.
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      Future<Never>.error(const BacklogApiException(0, 'network', 'unreachable'));
+}
+
+/// Holds every answer of [_inner] until [open]; records the requests.
+final class _GatedApi implements BacklogApi {
+  _GatedApi(this._inner);
+
+  final FakeBacklogApi _inner;
+  final requests = <String>[];
+  var _gate = Completer<void>();
+  Object? failViews;
+
+  void open() {
+    _gate.complete();
+    _gate = Completer<void>();
+  }
+
+  Future<T> _held<T>(String name, Future<T> Function() answer) async {
+    requests.add(name);
+    await _gate.future;
+    return answer();
+  }
+
+  @override
+  Future<WorkflowDto> workflow() => _held('workflow', _inner.workflow);
+
+  @override
+  Future<List<ViewSummaryDto>> views() =>
+      _held('views', () => failViews == null ? _inner.views() : Future.error(failViews!));
+
+  @override
+  Future<List<LintIssueDto>> lint() => _held('lint', _inner.lint);
+
+  @override
+  Future<List<ItemDto>> items({bool includeDone = false}) =>
+      _held('items', () => _inner.items(includeDone: includeDone));
+
+  @override
+  Future<ViewResultDto> view(String id, {String? groupBy}) =>
+      _held('view $id', () => _inner.view(id, groupBy: groupBy));
 
   @override
   Stream<BacklogChangeEvent> changes() => _inner.changes();
