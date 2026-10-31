@@ -146,7 +146,7 @@ final class ApiHandler {
   Future<Response> _detailOf(Backlog backlog, String ref, {int status = 200}) async {
     final snapshot = await backlog.planning.snapshot();
     final planned = snapshot[ItemReference.resolve(ref, snapshot.ids)]!;
-    final location = await backlog.items.locate(planned.id.value);
+    final location = await backlog.items.locationOf(planned.id);
     final path = location == null ? null : backlog.layout.relative(location);
     return _json(DtoMapper.detail(planned, snapshot, path: path).toJson(), status: status);
   }
