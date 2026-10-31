@@ -173,6 +173,7 @@ backlog next                    # claim the most urgent ready item (exit 2 = not
 backlog show MA-7f3a            # details, dependencies, file path
 backlog heartbeat MA-7f3a       # renew the claim (default lease 4 h)
 backlog set MA-7f3a branch=feat/x status=review
+backlog check MA-7f3a 2         # tick checklist item 2 (or by its text); `uncheck` undoes, no number lists them
 backlog pr MA-7f3a --description "What, why, how verified"   # push the branch, open the PR (with dispatcher.pr)
 backlog done MA-7f3a            # finished: drops the claim, prints what got unblocked
 backlog release MA-7f3a         # give it back unfinished
@@ -180,6 +181,8 @@ backlog ask MA-7f3a "CSV or JSON?"   # a question for a person; then stop
 backlog comment MA-7f3a "Done, see the commit."   # a comment in the item's discussion
 backlog lint                    # before ending the session
 ```
+
+**Checklist:** `backlog check <id> <n|text>` / `backlog uncheck …` tick the `- [ ]` lines of an item's body by number or text and change nothing else in the file, so an agent never needs to edit an item file outside its worktree (the default prompts say so); `backlog check <id>` lists the numbered checklist.
 
 **Claims:** `claim` and `next` atomically create `.locks/<id>.lock` (O_EXCL), so when several agents race for an item exactly one wins. This is verified by a test with 12 isolates and by hand with 10 parallel processes. Without a `heartbeat` the lock expires after its lease and another agent may take the item over. The item file mirrors `status: in-progress` and `assignee`, so humans see who works on what. Locks are machine-local state (gitignored) and work on a local disk, not on network file systems.
 

@@ -233,6 +233,41 @@ void main() {
     final run = await backlog(['instructions']);
     expect(run.out, contains('backlog next'));
     expect(run.out, contains('BACKLOG_AGENT'));
+    expect(run.out, contains('backlog check T-7f3a'));
+  });
+
+  test('check and uncheck tick checklist items by number or text and keep the file as it was', () async {
+    final id = await create('Export', ['--body', '## Checklist\n\n- [ ] CSV export\n- [ ] JSON export # later\n']);
+    final file = File(p.join(backlogDir, 'items', '$id-export.md'));
+    file.writeAsStringSync(file.readAsStringSync().replaceFirst('title:', '# hand comment\ntitle:'));
+    final before = file.readAsStringSync();
+
+    final listed = await backlog(['check', id]);
+    expect(listed.out, 'Checklist of $id (0/2):\n  1. [ ] CSV export\n  2. [ ] JSON export # later\n');
+
+    final byText = await backlog(['check', id, 'csv', 'EXPORT']);
+    expect(byText.exitCode, 0, reason: '$byText');
+    expect(byText.out, startsWith('Checked 1 on $id.\nChecklist of $id (1/2):\n  1. [x] CSV export\n'));
+    expect(file.readAsStringSync(), before.replaceFirst('- [ ] CSV', '- [x] CSV'));
+
+    final json = await backlog(['--json', 'check', id, '1', '2']);
+    expect((json.json! as Map)['changed'], [2]);
+    expect((json.json! as Map)['progress'], {'done': 2, 'total': 2});
+    expect((json.json! as Map)['checklist'], [
+      {'number': 1, 'text': 'CSV export', 'done': true},
+      {'number': 2, 'text': 'JSON export # later', 'done': true},
+    ]);
+    expect((await backlog(['check', id, '2'])).out, startsWith('2 was checked already.\n'));
+
+    expect((await backlog(['uncheck', id, '2'])).out, startsWith('Unchecked 2 on $id.\n'));
+    expect(file.readAsStringSync(), before.replaceFirst('- [ ] CSV', '- [x] CSV'));
+    final show = await backlog(['--json', 'show', id]);
+    expect(((show.json! as Map)['checklist'] as List).map((e) => (e as Map)['done']), [true, false]);
+
+    expect((await backlog(['check', id, '3'])).exitCode, ExitCode.notFound);
+    expect((await backlog(['check', id, 'export'])).err, contains('matches 2 checklist items'));
+    expect((await backlog(['check', await create('Empty'), '1'])).err, contains('has no checklist'));
+    expect((await backlog(['check'])).exitCode, ExitCode.usage);
   });
 
   test('projects: add the backlog found here or a given one, list, remove', () async {
