@@ -12,6 +12,7 @@ export 'src/items/domain/checklist.dart';
 export 'src/items/domain/item.dart';
 export 'src/items/domain/item_id.dart';
 export 'src/items/domain/item_repository.dart';
+export 'src/items/domain/path_glob.dart';
 export 'src/items/infrastructure/markdown_item_codec.dart';
 export 'src/planning/application/planning_service.dart';
 export 'src/planning/domain/backlog_snapshot.dart';
