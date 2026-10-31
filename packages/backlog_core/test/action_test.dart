@@ -242,7 +242,7 @@ void main() {
   group('Dispatcher actions', () {
     late Backlog backlog;
     late _ActionLauncher launcher;
-    late MemoryActionStateStore store;
+    late ActionStateStore store;
     late _MemoryRequests requests;
     late List<String> notes;
 
@@ -257,7 +257,8 @@ dispatcher:
   command: agent {id}
 $_actions''',
         );
-        store = MemoryActionStateStore();
+        // On disk, as in the server: times come back in UTC.
+        store = FileActionStateStore(stateDir: '${backlog.root}/.state', project: 'demo');
         requests = _MemoryRequests();
         notes = [];
         launcher = _ActionLauncher(backlog);

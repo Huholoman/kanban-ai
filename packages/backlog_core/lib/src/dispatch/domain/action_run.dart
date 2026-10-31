@@ -89,7 +89,7 @@ final class ActionState {
         if (previous == null || previous == status) continue;
         for (final action in actions) {
           if (action.onEnter == status) {
-            queued.add(PendingAction(item: planned.id, action: action.name, status: status, since: now));
+            queued.add(PendingAction(item: planned.id, action: action.name, status: status, since: now.toUtc()));
           }
         }
       }

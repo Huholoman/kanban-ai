@@ -234,7 +234,7 @@ final class Dispatcher {
     var changed = false;
     // Started or dropped; re-planning after a start may queue new ones.
     final done = <String>{};
-    String key(PendingAction action) => '${action.item}|${action.action}|${action.since.toIso8601String()}';
+    String key(PendingAction action) => '${action.item}|${action.action}|${action.since.toUtc().toIso8601String()}';
     Future<void> forget(PendingAction action) async {
       done.add(key(action));
       changed = true;
