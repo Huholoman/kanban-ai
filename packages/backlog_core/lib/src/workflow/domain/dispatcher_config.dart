@@ -249,9 +249,11 @@ final class AgentProfile {
   final bool verified;
 
   /// Tools Claude Code may use without asking: the backlog CLI, git, mise
-  /// tasks and the file tools. Everything else is refused (nobody answers
+  /// tasks, the project's own scripts (`./greet.sh`, `./tool/x.sh`) and the
+  /// file tools. Everything else is refused (nobody answers
   /// permission prompts in headless mode); pushing is forbidden outright.
-  static const claudeAllowedTools = 'Bash(backlog *) Bash(git *) Bash(mise run *) Read Edit Write Grep Glob TodoWrite';
+  static const claudeAllowedTools =
+      'Bash(backlog *) Bash(git *) Bash(mise run *) Bash(./*) Read Edit Write Grep Glob TodoWrite';
 
   /// The profiles usable without defining them. Only `claude` is verified
   /// (Claude Code 2.1); the others are presets after the CLIs' documentation.

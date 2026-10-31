@@ -142,6 +142,10 @@ dispatcher:
       final claude = byDefault.command.arguments;
       expect(claude.take(3), ['claude', '-p', '{prompt}']);
       expect(claude, containsAllInOrder(['--permission-mode', 'acceptEdits', '--allowedTools']));
+      final allowed = claude[claude.indexOf('--allowedTools') + 1];
+      for (final tool in ['Bash(backlog *)', 'Bash(git *)', 'Bash(mise run *)', 'Bash(./*)', 'Edit']) {
+        expect(allowed, contains(tool), reason: 'the project\'s scripts (./greet.sh) run too');
+      }
       expect(claude, isNot(contains('--bare')));
       expect(claude, isNot(contains('--dangerously-skip-permissions')));
 
