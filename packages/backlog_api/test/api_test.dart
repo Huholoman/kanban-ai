@@ -27,6 +27,9 @@ void main() {
       extra: const {'estimate': '3d'},
       blocked: true,
       blockedBy: const ['T-2'],
+      touches: const ['lib/*.{dart,yaml}'],
+      conflicting: true,
+      conflictsWith: const ['T-3'],
       children: const Progress(1, 3),
       checklist: const Progress(2, 5),
       claim: claim,
@@ -48,6 +51,8 @@ void main() {
         item: item,
         parent: const ItemLinkDto(id: 'T-0', title: 'Epic', status: 'todo', category: StatusCategoryDto.open),
         dependencies: const [ItemLinkDto(id: 'T-9')],
+        conflicts: const [ItemLinkDto(id: 'T-3', title: 'Other', status: 'review')],
+        waiting: const [ItemLinkDto(id: 'T-4', title: 'Later', status: 'todo')],
       );
       final detailCopy = roundTrip(detail.toJson(), ItemDetailDto.fromJson);
       expect(detailCopy.toJson(), detail.toJson());

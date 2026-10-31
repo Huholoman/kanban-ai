@@ -385,7 +385,7 @@ There is no event bus or event sourcing: the state lives in files and git keeps 
 
 **The REST API** (`/api/…`):
 - `workflow`, `items` (`?all=true`)
-- `items/<id>`: GET, and PATCH `{changes: ["status=done"], body}`
+- `items/<id>`: GET (with its relations and the items it waits for or holds up through `touches`), and PATCH `{changes: ["status=done"], body}`
 - `items/<id>/claim|release|done`: POST `{agent, status, force}`
 - `views`: GET, and POST `{name, section?, base?, conditions: [filter expressions]}` (save a filter as a view)
 - `views/<id>`: GET (`?group_by=field` regroups it for that request), and PATCH `{section?, columns?}` (only the given keys change; null removes them)

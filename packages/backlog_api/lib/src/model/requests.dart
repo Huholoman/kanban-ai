@@ -10,6 +10,7 @@ final class NewItemRequest {
     this.parent,
     this.dependsOn = const [],
     this.labels = const [],
+    this.touches = const [],
     this.body = '',
   });
 
@@ -22,6 +23,7 @@ final class NewItemRequest {
     parent: json.optionalString('parent'),
     dependsOn: json.strings('depends_on'),
     labels: json.strings('labels'),
+    touches: json.strings('touches'),
     body: json.optionalString('body') ?? '',
   );
 
@@ -33,6 +35,7 @@ final class NewItemRequest {
   final String? parent;
   final List<String> dependsOn;
   final List<String> labels;
+  final List<String> touches;
   final String body;
 
   Json toJson() => {
@@ -44,6 +47,7 @@ final class NewItemRequest {
     'parent': ?parent,
     'depends_on': dependsOn,
     'labels': labels,
+    'touches': touches,
     'body': body,
   };
 }

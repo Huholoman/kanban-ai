@@ -62,6 +62,7 @@ final class ApiHandler {
         parent: payload.parent,
         dependsOn: payload.dependsOn,
         labels: payload.labels,
+        touches: payload.touches,
         body: payload.body,
       ),
     );

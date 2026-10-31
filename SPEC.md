@@ -255,8 +255,8 @@ At start it prints the board URLs (with the token). The web app is served with `
 | `GET /api/health` | — (no token needed) | `{"ok": true}` |
 | `GET /api/workflow` | | statuses, priorities, types, milestones, defaults, appearance |
 | `GET /api/items` | `?all=true` includes done | items (same shape as `backlog --json list`) |
-| `POST /api/items` | `{title, type?, status?, priority?, milestone?, parent?, depends_on[], labels[], body}` | detail (201) |
-| `GET /api/items/<ref>` | | `{item, parent, children[], dependencies[], dependents[], related[]}` |
+| `POST /api/items` | `{title, type?, status?, priority?, milestone?, parent?, depends_on[], labels[], touches[], body}` | detail (201) |
+| `GET /api/items/<ref>` | | `{item, parent, children[], dependencies[], dependents[], related[], conflicts[], waiting[]}` — `conflicts`: active items it waits for, `waiting`: open items waiting for it (§3.2) |
 | `PATCH /api/items/<ref>` | `{changes: ["status=done", "labels+=ui"], body?}` | detail |
 | `POST /api/items/<ref>/claim` \| `release` \| `done` | `{agent?, status?, force}` | detail |
 | `GET /api/views` | | `[{id, name, layout, group_by, section}]` |

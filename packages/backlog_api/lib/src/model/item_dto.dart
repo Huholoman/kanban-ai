@@ -71,12 +71,15 @@ final class ItemDto {
     this.pr,
     this.labels = const [],
     this.docs = const [],
+    this.touches = const [],
     this.created,
     this.updated,
     this.extra = const {},
     this.ready = false,
     this.blocked = false,
     this.blockedBy = const [],
+    this.conflicting = false,
+    this.conflictsWith = const [],
     this.children = Progress.none,
     this.checklist = Progress.none,
     this.claim,
@@ -106,12 +109,15 @@ final class ItemDto {
       pr: json.optionalString('pr'),
       labels: json.strings('labels'),
       docs: json.strings('docs'),
+      touches: json.strings('touches'),
       created: json.optionalString('created'),
       updated: json.optionalString('updated'),
       extra: json.optionalObject('extra') ?? const {},
       ready: json.boolean('ready'),
       blocked: json.boolean('blocked'),
       blockedBy: json.strings('blocked_by'),
+      conflicting: json.boolean('conflicting'),
+      conflictsWith: json.strings('conflicts_with'),
       children: Progress(total - children.integer('open'), total),
       checklist: Progress(progress.integer('done'), progress.integer('total')),
       claim: claim == null ? null : ClaimDto.fromJson(claim),
@@ -137,12 +143,20 @@ final class ItemDto {
   final String? pr;
   final List<String> labels;
   final List<String> docs;
+
+  /// Paths and globs in the code repository the work will change.
+  final List<String> touches;
   final String? created;
   final String? updated;
   final Json extra;
   final bool ready;
   final bool blocked;
   final List<String> blockedBy;
+
+  /// Open, and its [touches] overlap work in progress: it waits for
+  /// [conflictsWith].
+  final bool conflicting;
+  final List<String> conflictsWith;
   final Progress children;
   final Progress checklist;
   final ClaimDto? claim;
@@ -174,12 +188,15 @@ final class ItemDto {
     'pr': pr,
     'labels': labels,
     'docs': docs,
+    'touches': touches,
     'created': created,
     'updated': updated,
     'extra': extra,
     'ready': ready,
     'blocked': blocked,
     'blocked_by': blockedBy,
+    'conflicting': conflicting,
+    'conflicts_with': conflictsWith,
     'children': {'total': children.total, 'open': children.total - children.done},
     'progress': {'done': checklist.done, 'total': checklist.total},
     'claim': claim?.toJson(),
@@ -223,6 +240,8 @@ final class ItemDetailDto {
     this.dependencies = const [],
     this.dependents = const [],
     this.related = const [],
+    this.conflicts = const [],
+    this.waiting = const [],
   });
 
   factory ItemDetailDto.fromJson(Json json) {
@@ -235,6 +254,8 @@ final class ItemDetailDto {
       dependencies: links('dependencies'),
       dependents: links('dependents'),
       related: links('related'),
+      conflicts: links('conflicts'),
+      waiting: links('waiting'),
     );
   }
 
@@ -247,6 +268,12 @@ final class ItemDetailDto {
   final List<ItemLinkDto> dependents;
   final List<ItemLinkDto> related;
 
+  /// Active items this one waits for because their `touches` overlap.
+  final List<ItemLinkDto> conflicts;
+
+  /// Open items waiting for this (active) one because of overlapping `touches`.
+  final List<ItemLinkDto> waiting;
+
   Json toJson() => {
     'item': item.toJson(),
     'parent': parent?.toJson(),
@@ -254,5 +281,7 @@ final class ItemDetailDto {
     'dependencies': [for (final link in dependencies) link.toJson()],
     'dependents': [for (final link in dependents) link.toJson()],
     'related': [for (final link in related) link.toJson()],
+    'conflicts': [for (final link in conflicts) link.toJson()],
+    'waiting': [for (final link in waiting) link.toJson()],
   };
 }

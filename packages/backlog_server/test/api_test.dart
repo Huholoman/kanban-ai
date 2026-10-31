@@ -85,6 +85,32 @@ void main() {
     expect(detail.item.body, '');
   });
 
+  test('touches: created, edited, and an overlapping open item waits', () async {
+    final doing = await api.createItem(const NewItemRequest(title: 'Payments', touches: ['lib/pay/']));
+    await api.claim(doing.item.id, const ClaimRequest(agent: 'm2'));
+    final waiting = await api.createItem(
+      const NewItemRequest(title: 'Stripe', status: 'todo', touches: ['lib/pay/stripe.dart']),
+    );
+    expect(waiting.item.touches, ['lib/pay/stripe.dart']);
+    expect(waiting.item.conflicting, isTrue);
+    expect(waiting.item.conflictsWith, [doing.item.id]);
+    expect(waiting.item.ready, isFalse);
+    expect(waiting.conflicts.single.title, 'Payments');
+    expect((await api.item(doing.item.id)).waiting.single.id, waiting.item.id);
+
+    final moved = await api.updateItem(
+      waiting.item.id,
+      ItemUpdateRequest(
+        changes: [
+          ItemUpdateRequest.set('touches', ['lib/stripe/', 'docs/*.{md,txt}']),
+        ],
+      ),
+    );
+    expect(moved.item.touches, ['lib/stripe/', 'docs/*.{md,txt}']);
+    expect(moved.item.conflicting, isFalse);
+    expect(moved.item.ready, isTrue);
+  });
+
   test('update edits fields and body and keeps the file tidy', () async {
     final created = await api.createItem(const NewItemRequest(title: 'Edit me', labels: ['ui']));
     final updated = await api.updateItem(
