@@ -261,7 +261,8 @@ final class AgentProfile {
   /// options (`git -C . push`, `git --no-pager push`, `git -c … push`,
   /// all of which a `Bash(git push *)` rule alone lets through, verified
   /// with Claude Code 2.1.312), the plumbing `git send-pack`, and aliases
-  /// that would rename push.
+  /// that would rename push. An agent's work leaves the worktree only
+  /// through `backlog pr`, which pushes the item's branch and nothing else.
   static const claudeDisallowedTools = 'Bash(git push *) Bash(git -*) Bash(git send-pack *) Bash(git config *alias*)';
 
   /// The profiles usable without defining them. Only `claude` is verified
@@ -331,6 +332,7 @@ final class DispatcherConfig {
     int? maxAgents,
     String base = 'main',
     NewWorktrees? newWorktrees,
+    PullRequestConfig? pr,
   }) {
     if (worktrees.isEmpty && newWorktrees == null) {
       throw const ConfigurationException(
@@ -354,13 +356,23 @@ final class DispatcherConfig {
     return DispatcherConfig._(
       List.unmodifiable(worktrees),
       agent,
-      prompt ?? TextTemplate(defaultPrompt, known: promptPlaceholders, label: 'dispatcher.prompt'),
+      prompt ??
+          TextTemplate(
+            pr == null ? defaultPrompt : defaultPullRequestPrompt,
+            known: promptPlaceholders,
+            label: 'dispatcher.prompt',
+          ),
       resumePrompt ??
-          TextTemplate(defaultResumePrompt, known: resumePromptPlaceholders, label: 'dispatcher.resume_prompt'),
+          TextTemplate(
+            pr == null ? defaultResumePrompt : defaultPullRequestResumePrompt,
+            known: resumePromptPlaceholders,
+            label: 'dispatcher.resume_prompt',
+          ),
       mode,
       limit,
       base,
       newWorktrees,
+      pr,
     );
   }
 
@@ -373,6 +385,7 @@ final class DispatcherConfig {
     this.maxAgents,
     this.base,
     this.newWorktrees,
+    this.pr,
   );
 
   /// What the prompt may refer to: the item id and title, the worktree name,
@@ -417,6 +430,45 @@ final class DispatcherConfig {
       'above `## Discussion` (never edit the comments) and say so in your comment.\n'
       '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.';
 
+  /// The prompt every agent gets when the project opens pull requests
+  /// (`dispatcher.pr`) unless `dispatcher.prompt` replaces it: the agent
+  /// hands its work over with `backlog pr`, which pushes only its branch.
+  static const defaultPullRequestPrompt =
+      'You are the coding agent {worktree}, working on backlog item {id} ("{title}") in this git worktree.\n'
+      '1. First run `backlog instructions` and `backlog show {id}` and follow them. The item is already claimed '
+      'for you (BACKLOG_AGENT={worktree}); do not take other items.\n'
+      '2. The worktree is on branch {branch}, prepared for this item: commit there and do not switch branches. '
+      'Make small commits; every commit message contains {id}.\n'
+      '3. When the work is finished, open a pull request: write its description yourself (what changed and why, '
+      'how you verified it, and that it implements backlog item {id}) and run '
+      '`backlog pr {id} --description "<description>"`. It pushes {branch} and opens the pull request (when one '
+      'exists already, it only pushes). Then run `backlog set {id} status=review`.\n'
+      '4. Never run `git push` yourself, never push other branches and never merge: `backlog pr {id}` is the only '
+      'way your work leaves this worktree. If it fails, say why with `backlog comment {id} "…"` and still set the '
+      'status to review.\n'
+      '5. If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"`, leave the status as '
+      'it is and stop; you will be resumed with the answer. Use `backlog comment {id} "…"` for notes a person '
+      'should read.\n'
+      '6. If a discussion in the item changes what it asks for, update its description or acceptance criteria in '
+      'the body above the `## Discussion` section (never edit the comments) and say so in a comment.';
+
+  /// The resume prompt when the project opens pull requests (`dispatcher.pr`).
+  static const defaultPullRequestResumePrompt =
+      'You are the coding agent {worktree} again, continuing your earlier session on backlog item {id} ("{title}"). '
+      'The item is claimed for you again and the worktree is on branch {branch}.\n'
+      'Since your last run: {news}\n'
+      'Run `backlog show {id}` to see the item as it is now. Then:\n'
+      '- If the new comments only ask you something (e.g. why you did something), answer with '
+      '`backlog comment {id} "…"` and stop: change no code and leave the status as it is.\n'
+      '- If they answer your question or ask for changes, reply briefly with `backlog comment {id} "…"` and '
+      'continue the work under the same rules as before: small commits containing {id} on {branch}; when finished, '
+      '`backlog pr {id}` (it pushes {branch} and opens the pull request when there is none yet; give '
+      '`--description "…"` then) and `backlog set {id} status=review`; never run `git push` yourself.\n'
+      '- Without new comments, continue the work under the same rules.\n'
+      '- If the discussion changed what the item asks for, update its description or acceptance criteria in the body '
+      'above `## Discussion` (never edit the comments) and say so in your comment.\n'
+      '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.';
+
   /// In order of preference: free work goes to the first free worktree.
   final List<WorktreeDefinition> worktrees;
 
@@ -442,6 +494,10 @@ final class DispatcherConfig {
   /// is free (`dispatcher.repo`); null when it only uses [worktrees].
   final NewWorktrees? newWorktrees;
 
+  /// How finished work becomes a pull request (`dispatcher.pr`); null when
+  /// the project opens none (the default prompt then forbids pushing).
+  final PullRequestConfig? pr;
+
   /// The command of [agent].
   CommandTemplate get command => agent.command;
 
@@ -456,6 +512,7 @@ final class DispatcherConfig {
     maxAgents,
     base,
     newWorktrees,
+    pr,
   );
 
   WorktreeDefinition? worktree(String name) {
@@ -517,4 +574,60 @@ final class NewWorktrees {
   /// The worktree called [worktreeName]: a folder next to the primary clone.
   WorktreeDefinition worktree(String worktreeName, String backlogRoot) =>
       WorktreeDefinition(worktreeName, p.join(p.dirname(resolveRepo(backlogRoot)), worktreeName));
+}
+
+/// How an agent's branch becomes a pull request (`dispatcher.pr`): the
+/// branch is pushed to [remote], then [create] runs (no shell) in the
+/// worktree with the description on its standard input, and the pull
+/// request's URL is taken from its output with [urlPattern]. [find], when
+/// given, prints the URL of an open pull request of the branch (nothing
+/// when there is none), so that one made outside the board is not made
+/// twice.
+final class PullRequestConfig {
+  PullRequestConfig({this.remote = 'origin', required this.create, this.find, String? urlPattern})
+    : urlPattern = _pattern(urlPattern) {
+    if (remote.isEmpty || remote.startsWith('-') || remote.contains(RegExp(r'\s'))) {
+      throw ConfigurationException('dispatcher.pr.remote "$remote" is not a remote name.');
+    }
+  }
+
+  static RegExp _pattern(String? source) {
+    if (source == null) return defaultUrlPattern;
+    try {
+      return RegExp(source, multiLine: true);
+    } on FormatException catch (error) {
+      throw ConfigurationException('dispatcher.pr.url_pattern is not a regular expression: ${error.message}.');
+    }
+  }
+
+  /// What [create] and [find] may refer to: the item id and title, the
+  /// branch, the base branch, the remote and the description (which
+  /// [create] also gets on its standard input).
+  static const placeholders = ['id', 'title', 'branch', 'base', 'remote', 'description'];
+
+  /// The first http(s) URL.
+  static final defaultUrlPattern = RegExp(r'https?://[^\s<>"`)\]]+');
+
+  /// Where the branch is pushed (`dispatcher.pr.remote`, default `origin`).
+  final String remote;
+
+  /// Opens the pull request (`dispatcher.pr.create`).
+  final CommandTemplate create;
+
+  /// Prints the URL of an open pull request of the branch
+  /// (`dispatcher.pr.find`); null when not configured.
+  final CommandTemplate? find;
+
+  /// Finds the URL in the output of [create] or [find]: its first group,
+  /// else the whole match.
+  final RegExp urlPattern;
+
+  /// The pull request's URL in [output] (terminal colour codes removed);
+  /// null when there is none.
+  String? urlIn(String output) {
+    final match = urlPattern.firstMatch(output.replaceAll(RegExp(r'\x1B\[[0-9;?]*[A-Za-z]'), ''));
+    if (match == null) return null;
+    final url = (match.groupCount > 0 ? match.group(1) : match.group(0))?.trim();
+    return url == null || url.isEmpty ? null : url;
+  }
 }

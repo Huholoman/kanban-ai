@@ -10,6 +10,7 @@ export 'src/dispatch/domain/agent_log_format.dart';
 export 'src/dispatch/domain/agent_session.dart';
 export 'src/dispatch/domain/dispatch_plan.dart';
 export 'src/dispatch/infrastructure/process_agent_launcher.dart';
+export 'src/dispatch/infrastructure/pull_request_opener.dart';
 export 'src/dispatch/infrastructure/worktree_provisioner.dart';
 export 'src/infrastructure/backlog_layout.dart' show BacklogLayout;
 export 'src/items/application/field_change.dart';

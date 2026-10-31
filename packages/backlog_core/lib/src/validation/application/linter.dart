@@ -190,6 +190,20 @@ final class Linter {
           ),
         );
       }
+      if (dispatcher.pr case final pr?) {
+        for (final command in [pr.create, ?pr.find]) {
+          if (!await programExists(command.executable)) {
+            issues.add(
+              LintIssue(
+                Severity.warning,
+                'dispatcher-pr',
+                'dispatcher.pr runs "${command.executable}", which is not on the PATH; pull requests cannot be opened.',
+                location: 'backlog.yaml',
+              ),
+            );
+          }
+        }
+      }
       if (!agent.verified) {
         issues.add(
           LintIssue(

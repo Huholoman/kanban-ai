@@ -173,6 +173,7 @@ backlog next                    # claim the most urgent ready item (exit 2 = not
 backlog show MA-7f3a            # details, dependencies, file path
 backlog heartbeat MA-7f3a       # renew the claim (default lease 4 h)
 backlog set MA-7f3a branch=feat/x status=review
+backlog pr MA-7f3a --description "What, why, how verified"   # push the branch, open the PR (with dispatcher.pr)
 backlog done MA-7f3a            # finished: drops the claim, prints what got unblocked
 backlog release MA-7f3a         # give it back unfinished
 backlog ask MA-7f3a "CSV or JSON?"   # a question for a person; then stop
@@ -362,6 +363,12 @@ dispatcher:
     You are {worktree}. Work on backlog item {id}: run backlog show {id} first.
   resume_prompt: |      # optional; when an agent continues its session
     Continue on {id}. Since your last run: {news}
+  pr:                   # optional: agents push their branch and open a pull request
+    remote: origin      # default
+    create: 'tea pulls create --head {branch} --base {base} --title "{id}: {title}" --description-file -'
+    # create: 'gh pr create --head {branch} --base {base} --title "{id}: {title}" --body-file -'
+    # find: 'gh pr list --head {branch} --json url --jq ".[0].url"'   # optional: a PR opened elsewhere
+    # url_pattern: 'https://\S+/pulls/\d+'   # optional; default: the first URL in the output
 ```
 
 **Agent profiles.** A profile is a command template, extra environment (`env`) and the format of its output. Built in:
@@ -375,7 +382,9 @@ dispatcher:
 
 The `claude` profile runs Claude Code headless on your subscription login: no API key, never `--bare` (it ignores the login) and never `--dangerously-skip-permissions` — edits are accepted, a whitelist of tools is allowed (`backlog`, `git`, `mise run`, the project's own scripts run as `./…`, the file tools), everything else is refused and pushing is forbidden: `git push`, but also git with global options in front (`git -C . push` slips past a plain `Bash(git push *)` rule, so `git -C`, `git -c`, `git --no-pager` … are refused altogether), `git send-pack` and git aliases. This guards against mistakes, not against an agent set on pushing (it may run the project's own scripts); protect your base branch on the server too. It is also the one profile that can **resume**: its `resume` arguments (`--resume {session}`) continue an earlier session. For other tools (tests of another language, …) define your own profile. The unverified presets follow the CLIs' documentation and have not been run here; `lint` reminds you of that.
 
-**The prompt** (`dispatcher.prompt`) is shared by all profiles and fills `{prompt}`. By default it tells the agent its name and item, to run `backlog instructions` and `backlog show {id}` first, to commit on the branch prepared for it in small commits with the item id, to finish with `backlog set {id} status=review`, never to push, when something is unclear to ask with `backlog ask` and stop, and to update the description when a discussion changes the assignment.
+**The prompt** (`dispatcher.prompt`) is shared by all profiles and fills `{prompt}`. By default it tells the agent its name and item, to run `backlog instructions` and `backlog show {id}` first, to commit on the branch prepared for it in small commits with the item id, to finish with `backlog set {id} status=review`, never to push (with `pr`: to open the pull request with `backlog pr`, see below), when something is unclear to ask with `backlog ask` and stop, and to update the description when a discussion changes the assignment.
+
+**Pull requests** (`dispatcher.pr`). Without it agents never push: the work stays on the item's branch in the worktree and a person merges it. With it, the default prompt asks the agent to finish by writing a pull request description (what and why, how it was verified, the item) and running `backlog pr <id> --description "…"`, then `backlog set <id> status=review`. `backlog pr` pushes the item's branch (its `branch` field, else the checked-out branch) to `remote` — under its own name, never forced, and never the `base` branch — then runs `create` in the worktree with the description on its standard input (and in `{description}`), takes the pull request's URL from the output (`url_pattern`, default the first URL) and writes it into the item's `pr` field, which the board shows as a link on the card and in the detail. It is idempotent: when `pr` is set (or `find` prints the URL of a pull request opened elsewhere) it only pushes, so new commits after a review reach the open pull request. Placeholders: `{id}`, `{title}`, `{branch}`, `{base}`, `{remote}`, `{description}`; no shell runs the commands. The built-in `claude` profile still cannot run `git push` itself — `backlog pr` is the agent's only way out of the worktree; protecting the base branch on the server (Gitea, GitHub) is still recommended. `lint` warns when the `create` or `find` program is not on the `PATH`.
 
 **Continuing a session.** Starting the same item again — after *Stop*, after an agent ended without finishing, or by hand later — continues its last agent's session instead of starting a new one, when the profile can resume (`resume:`; only `claude`, whose session id kanban-ai reads from the `claude-stream-json` output) and that session's worktree is free: the agent sessions live per folder, so it runs in the same worktree again (other items leave that worktree to it when they can, also while its agent waits for an answer). It then gets `dispatcher.resume_prompt` (default: you are continuing item {id}, `{news}` — how the last run ended —, look at the item again and go on under the same rules). Otherwise, or with *Start fresh* (`POST /api/dispatch/start {"item", "fresh": true}`), a new session starts.
 
@@ -420,8 +429,9 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `claim / heartbeat / release / done <id> --as <agent>` | work with claims (`--force` overrides the checks) |
 | `claims` | who works on what |
 | `comment <id> "text" [--as a] [--note]`, `ask <id> "question" [--as a]` | add to the item's discussion; `ask` makes it need a person until answered, `--note` neither answers nor wakes the agent (text `-` reads stdin) |
+| `pr <id> [--description text \| --description-file f\|-]` | push the item's branch and open its pull request (`dispatcher.pr`), URL into `pr`; with a PR already, only push |
 | `view [name]` | saved views |
-| `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches, dispatcher worktrees and agent (exit 1 on errors) |
+| `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches, dispatcher worktrees, agent and pull request commands (exit 1 on errors) |
 | `instructions` | the guide for agents, in Markdown |
 | `projects`, `projects add [dir] [--id] [--name]`, `projects remove <id>` | the registry of backlogs on this machine (`~/.config/kanban-ai/projects.yaml`), see below |
 

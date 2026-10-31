@@ -134,6 +134,64 @@ dispatcher:
       expect(dispatcher.command.render({'id': 'X-1'}), ['sh', '-c', 'echo {literal} X-1']);
     });
 
+    test('dispatcher.pr: create, find, remote and url_pattern; the default prompts follow it', () {
+      final plain = parseWorkflowYaml('dispatcher: {worktrees: [a]}').dispatcher!;
+      expect(plain.pr, isNull);
+      expect(plain.prompt.text, contains('Never push'));
+      expect(plain.prompt.text, isNot(contains('backlog pr')));
+
+      final tea = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  pr:
+    create: 'tea pulls create --head {branch} --base {base} --title "{id}: {title}" --description-file -'
+''').dispatcher!;
+      final pr = tea.pr!;
+      expect(pr.remote, 'origin');
+      expect(pr.find, isNull);
+      expect(pr.create.render({'id': 'X-1', 'title': 'Do it', 'branch': 'agent/X-1', 'base': 'main'}), [
+        'tea', 'pulls', 'create', '--head', 'agent/X-1', '--base', 'main', '--title', 'X-1: Do it', //
+        '--description-file', '-',
+      ]);
+      expect(tea.prompt.text, DispatcherConfig.defaultPullRequestPrompt);
+      expect(tea.prompt.text, allOf(contains('backlog pr {id} --description'), contains('Never run `git push`')));
+      expect(tea.resumePrompt.text, contains('backlog pr {id}'));
+      expect(
+        pr.urlIn('\x1B[1m#12\x1B[0m Do it\nhttps://git.example/o/r/pulls/12\n'),
+        'https://git.example/o/r/pulls/12',
+      );
+      expect(pr.urlIn('no link'), isNull);
+
+      final custom = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  prompt: Mine {id}
+  pr:
+    remote: upstream
+    create: [gh, pr, create, --body-file, "-"]
+    find: [gh, pr, list, --head, "{branch}", --json, url, --jq, ".[0].url"]
+    url_pattern: 'see (\\S+) for'
+''').dispatcher!;
+      expect(custom.prompt.text, 'Mine {id}', reason: 'an own prompt wins');
+      expect(custom.pr!.remote, 'upstream');
+      expect(custom.pr!.find!.arguments, contains('{branch}'));
+      expect(
+        custom.pr!.urlIn('https://x.example/a see https://x.example/pull/1 for details'),
+        'https://x.example/pull/1',
+      );
+
+      void rejects(String pr, String message) => expect(
+        () => parseWorkflowYaml('dispatcher:\n  worktrees: [a]\n  pr: $pr\n'),
+        throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
+      );
+      rejects('{remote: origin}', 'dispatcher.pr.create is required');
+      rejects('{create: x, merge: y}', 'unknown key "dispatcher.pr.merge"');
+      rejects('{create: "tea {worktree}"}', 'unknown placeholder "{worktree}"');
+      rejects('{create: x, remote: --force}', 'not a remote name');
+      rejects('{create: x, url_pattern: "("}', 'url_pattern is not a regular expression');
+      rejects('{create: ""}', 'must not be empty');
+    });
+
     test('agent profiles: claude by default, built-in by name, own ones in agents', () {
       final byDefault = parseWorkflowYaml('dispatcher: {worktrees: [a]}').dispatcher!;
       expect(byDefault.agent.name, 'claude');

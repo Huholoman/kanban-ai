@@ -31,7 +31,12 @@ have not claimed; if `claim` reports a conflict, someone else has it.
     backlog heartbeat T-7f3a     # renew the claim (expires after the lease)
     backlog set T-7f3a branch=feat/reports
     backlog set T-7f3a status=review
-    backlog set T-7f3a pr=https://github.com/org/repo/pull/42   # once the PR exists
+    backlog pr T-7f3a --description "What, why, how verified"   # push the branch, open its PR
+    backlog set T-7f3a pr=https://github.com/org/repo/pull/42   # a PR opened by hand
+
+`backlog pr` works when `backlog.yaml` configures `dispatcher.pr`: it pushes
+the item's branch (never the base branch) and opens the pull request, or only
+pushes when the item has one already. Push only this way.
 
 Edit the body of your item file directly (context, plan, checklist with
 `- [ ]` / `- [x]`, notes). Do not edit `status`, `assignee` or `id` by hand.

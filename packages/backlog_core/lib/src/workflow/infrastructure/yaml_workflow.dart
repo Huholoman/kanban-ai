@@ -93,6 +93,7 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     'prompt',
     'resume_prompt',
     'command',
+    'pr',
   };
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
@@ -117,6 +118,7 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
       newWorktrees: newWorktrees,
       base: yaml['base'] == null ? 'main' : _base(_string(yaml['base'], 'dispatcher.base', origin)),
       agent: _agent(yaml, origin),
+      pr: _pullRequest(yaml['pr'], origin),
       prompt: prompt == null
           ? null
           : TextTemplate(
@@ -177,6 +179,38 @@ NewWorktrees? _newWorktrees(YamlMap yaml, String origin) {
     name: yaml['worktree_name'] == null ? null : _string(yaml['worktree_name'], 'dispatcher.worktree_name', origin),
     maxWorktrees: max,
     cleanupAfter: days == null ? null : Duration(days: days),
+  );
+}
+
+/// `dispatcher.pr`: remote, the `create` and optional `find` commands and
+/// `url_pattern`; null without it.
+PullRequestConfig? _pullRequest(Object? node, String origin) {
+  if (node == null) return null;
+  final yaml = _map(node, 'dispatcher.pr', origin);
+  const known = {'remote', 'create', 'find', 'url_pattern'};
+  for (final key in yaml.keys) {
+    if (!known.contains('$key')) {
+      throw ConfigurationException('unknown key "dispatcher.pr.$key" (expected ${known.join(', ')}).');
+    }
+  }
+  CommandTemplate? command(String key) => switch (yaml[key]) {
+    null => null,
+    final List<Object?> list => CommandTemplate(
+      _strings(list, 'dispatcher.pr.$key', origin),
+      label: 'dispatcher.pr.$key',
+      known: PullRequestConfig.placeholders,
+    ),
+    final Object text => CommandTemplate.parse(
+      _string(text, 'dispatcher.pr.$key', origin),
+      label: 'dispatcher.pr.$key',
+      known: PullRequestConfig.placeholders,
+    ),
+  };
+  return PullRequestConfig(
+    remote: yaml['remote'] == null ? 'origin' : _string(yaml['remote'], 'dispatcher.pr.remote', origin),
+    create: command('create') ?? (throw const ConfigurationException('dispatcher.pr.create is required.')),
+    find: command('find'),
+    urlPattern: yaml['url_pattern'] == null ? null : _string(yaml['url_pattern'], 'dispatcher.pr.url_pattern', origin),
   );
 }
 
@@ -414,4 +448,15 @@ claims:
 #   # The prompt when an agent continues its last session on the item; {news}
 #   # tells what happened since (how the run ended, new comments):
 #   resume_prompt: "Continue on {id}. Since your last run: {news}"
+#   # Pull requests: the agent finishes with `backlog pr <id>`, which pushes
+#   # its branch to remote and runs create (no shell; the description on
+#   # stdin) unless the item's pr field is set; the URL goes into pr. Without
+#   # this section agents never push. Placeholders: {id}, {title}, {branch},
+#   # {base}, {remote}, {description}.
+#   pr:
+#     remote: origin
+#     create: 'tea pulls create --head {branch} --base {base} --title "{id}: {title}" --description-file -'
+#     # create: 'gh pr create --head {branch} --base {base} --title "{id}: {title}" --body-file -'
+#     # find: 'gh pr list --head {branch} --json url --jq ".[0].url"'   # an open PR made elsewhere
+#     # url_pattern: 'https://\\S+/pulls/\\d+'   # default: the first URL in the output
 ''';
