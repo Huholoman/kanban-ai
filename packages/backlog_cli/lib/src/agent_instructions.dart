@@ -36,7 +36,9 @@ have not claimed; if `claim` reports a conflict, someone else has it.
 
 `backlog pr` works when `backlog.yaml` configures `dispatcher.pr`: it pushes
 the item's branch (never the base branch) and opens the pull request, or only
-pushes when the item has one already. Push only this way.
+pushes when the item has one already. Push only this way. After rebasing the
+branch (e.g. to resolve conflicts with the base), `backlog pr T-7f3a --force`
+replaces the remote branch (with a lease; never the base branch).
 
 Edit the body of your item file directly (context, plan, checklist with
 `- [ ]` / `- [x]`, notes). Do not edit `status`, `assignee` or `id` by hand.

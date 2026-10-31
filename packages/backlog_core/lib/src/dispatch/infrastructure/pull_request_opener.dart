@@ -46,11 +46,15 @@ final class PullRequestOpener {
   /// worktree at [workingDirectory]. [description] is the pull request's
   /// text; without one a minimal one is made from the item and its commits.
   /// The branch is the item's `branch` field, else the one checked out.
+  /// [force] replaces the remote branch after a rebase
+  /// (`--force-with-lease`: only when it is still what was last fetched or
+  /// pushed from here) — the item's own branch only, never the base.
   Future<PullRequestOutcome> open(
     Backlog backlog,
     String reference, {
     required String workingDirectory,
     String? description,
+    bool force = false,
   }) async {
     final dispatcher = backlog.workflow.dispatcher;
     final config =
@@ -71,16 +75,22 @@ final class PullRequestOpener {
     if (known.exitCode != 0) throw InvalidInputException('There is no branch $branch in $workingDirectory.');
 
     // An explicit refspec without "+": the branch under its own name, no
-    // force, whatever push.default or the branch's upstream say.
+    // force (unless asked for, and then only with a lease), whatever
+    // push.default or the branch's upstream say.
     final push = await _git(workingDirectory, [
       'push',
       '--set-upstream',
+      if (force) '--force-with-lease=refs/heads/$branch',
       '--',
       config.remote,
       'refs/heads/$branch:refs/heads/$branch',
     ]);
     if (push.exitCode != 0) {
-      throw UnavailableException('git push ${config.remote} $branch failed: ${_lastLines('${push.stderr}')}');
+      final rejected = !force && '${push.stderr}'.contains(RegExp('non-fast-forward|fetch first|rejected'));
+      throw UnavailableException(
+        'git push ${config.remote} $branch failed: ${_lastLines('${push.stderr}')}'
+        '${rejected ? ' (after a rebase, push with `backlog pr ${item.id} --force`)' : ''}',
+      );
     }
     PullRequestOutcome outcome(String url, {required bool created}) =>
         PullRequestOutcome(url: url, created: created, branch: branch, base: base, remote: config.remote);

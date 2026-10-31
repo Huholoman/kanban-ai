@@ -171,6 +171,35 @@ void main() {
     expect(await File(calls).readAsLines(), ['agent/work'], reason: 'only find ran');
   });
 
+  test('after a rebase only --force (with a lease) replaces the remote branch', () async {
+    final create = await script('fake-tea.sh', 'https://git.example/o/r/pulls/7');
+    await configure('  pr:\n    create: [sh, $create]\n');
+    final id = await newItem('Export CSV', branch: 'agent/work');
+    expect((await backlog(['pr', id])).code, 0);
+
+    await git(repo, ['switch', '-q', 'main']);
+    await git(repo, ['commit', '-q', '--allow-empty', '-m', 'Meanwhile on main']);
+    await git(repo, ['switch', '-q', 'agent/work']);
+    await git(repo, ['rebase', '-q', 'main']);
+    final plain = await backlog(['pr', id]);
+    expect(plain.code, isNot(0));
+    expect(plain.err, contains('backlog pr $id --force'));
+
+    final forced = await backlog(['pr', id, '--force']);
+    expect(forced.code, 0, reason: forced.err);
+    expect(await git(remote, ['rev-parse', 'agent/work']), await git(repo, ['rev-parse', 'agent/work']));
+    expect(await git(remote, ['log', '-1', '--format=%s', 'main']), 'init', reason: 'the base is never pushed');
+
+    // Someone else pushed to the branch in the meantime: the lease refuses.
+    final other = p.join(workspace.path, 'other');
+    await git(workspace.path, ['clone', '-q', '-b', 'agent/work', remote, other]);
+    await git(other, ['commit', '-q', '--allow-empty', '-m', 'Not seen here']);
+    await git(other, ['push', '-q', 'origin', 'agent/work']);
+    await git(repo, ['commit', '--amend', '-q', '--allow-empty', '-m', 'Rewritten']);
+    expect((await backlog(['pr', id, '--force'])).code, isNot(0));
+    expect(await git(remote, ['log', '-1', '--format=%s', 'agent/work']), 'Not seen here');
+  });
+
   test('never pushes the base branch', () async {
     final create = await script('fake-tea.sh', 'https://git.example/o/r/pulls/7');
     await configure('  pr:\n    create: [sh, $create]\n');

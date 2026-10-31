@@ -232,6 +232,13 @@ final class PrCommand extends BacklogCommand {
         'description-file',
         help: 'Read the description from a file (- reads standard input).',
         valueHelp: 'file',
+      )
+      ..addFlag(
+        'force',
+        negatable: false,
+        help:
+            'After a rebase: replace the remote branch (--force-with-lease; only the item\'s branch, never the '
+            'base).',
       );
   }
 
@@ -244,7 +251,7 @@ final class PrCommand extends BacklogCommand {
       'When the item has one already, it only pushes. Run it in the item\'s worktree.';
 
   @override
-  String get invocation => 'backlog pr <id> [--description "<text>" | --description-file <file|->]';
+  String get invocation => 'backlog pr <id> [--description "<text>" | --description-file <file|->] [--force]';
 
   @override
   Future<int> run() async {
@@ -264,7 +271,7 @@ final class PrCommand extends BacklogCommand {
     final backlog = await openBacklog();
     final outcome = await PullRequestOpener(
       environment: context.environment.isEmpty ? null : context.environment,
-    ).open(backlog, id, workingDirectory: context.cwd, description: description);
+    ).open(backlog, id, workingDirectory: context.cwd, description: description, force: args.flag('force'));
     if (json) {
       emitJson({
         'url': outcome.url,
