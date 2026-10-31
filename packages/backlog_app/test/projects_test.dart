@@ -132,8 +132,9 @@ void main() {
       BacklogApi? api,
       String? route,
       ProjectMemory? memory,
+      double width = 1400,
     }) async {
-      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.physicalSize = Size(width, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       announced = [];
@@ -226,6 +227,73 @@ void main() {
       await tester.tap(find.text('Retry'));
       await tester.pumpAndSettle();
       expect(find.text('Item A-1'), findsOneWidget);
+    });
+
+    group('switcher', () {
+      testWidgets('lists the projects: the open one ticked, a broken one with its error and disabled', (tester) async {
+        await pumpApp(tester, projects: threeProjects(brokenFirst: true), route: '/p/b');
+        expect(find.byKey(const ValueKey('project-name')), findsOneWidget);
+        expect(find.text('Project b'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('project-switcher')));
+        await tester.pumpAndSettle();
+        MenuItemButton entry(String id) => tester.widget<MenuItemButton>(find.byKey(ValueKey('project-$id')));
+        expect(entry('a').onPressed, isNull, reason: 'the backlog cannot be opened');
+        expect(find.text('No backlog.yaml in /srv/a/backlog.'), findsOneWidget);
+        expect(entry('b').onPressed, isNull, reason: 'already open');
+        expect(
+          find.descendant(of: find.byKey(const ValueKey('project-b')), matching: find.byIcon(Icons.check)),
+          findsOneWidget,
+        );
+        expect(entry('c').onPressed, isNotNull);
+
+        await tester.tap(find.byKey(const ValueKey('project-a')), warnIfMissed: false);
+        await tester.pumpAndSettle();
+        expect(find.text('Item B-1'), findsOneWidget, reason: 'tapping a broken project does nothing');
+      });
+
+      testWidgets('choosing a project swaps the board, closes the open item and remembers it', (tester) async {
+        final api = threeProjects();
+        final memory = InMemoryProjectMemory();
+        await pumpApp(tester, projects: api, route: '/p/a', memory: memory);
+        await tester.tap(find.text('Item A-1'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('detail-A-1')), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('project-switcher')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('project-c')));
+        await tester.pumpAndSettle();
+        expect(find.text('Item C-1'), findsOneWidget);
+        expect(find.text('Item A-1'), findsNothing);
+        expect(find.byKey(const ValueKey('detail-A-1')), findsNothing);
+        expect(api.backlogs['a']!.listening, isFalse);
+        expect(memory.read(), 'c');
+        expect(announced.last, '/p/c');
+        expect(find.text('Project c'), findsOneWidget);
+      });
+
+      testWidgets('with one project the navigation shows just its name', (tester) async {
+        await pumpApp(
+          tester,
+          projects: FakeProjectsApi({
+            'solo': FakeBacklogApi([item('S-1')]),
+          }),
+        );
+        expect(find.text('Project solo'), findsOneWidget);
+        expect(find.byKey(const ValueKey('project-switcher')), findsNothing);
+      });
+
+      testWidgets('on a phone the switcher is in the drawer', (tester) async {
+        await pumpApp(tester, projects: threeProjects(), route: '/p/a', width: 400);
+        await tester.tap(find.byKey(const ValueKey('bottom-more')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('project-switcher')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('project-b')));
+        await tester.pumpAndSettle();
+        expect(find.text('Item B-1'), findsOneWidget);
+        expect(find.byType(Drawer), findsNothing, reason: 'the new project starts with the drawer closed');
+      });
     });
   });
 }

@@ -202,6 +202,7 @@ The open project is in the URL after `#`: `http://host:8640/?token=…#/p/kanban
 
 **Features:**
 - **Layout:** from 1200 px the views are in a left panel and the open item in a panel on the right; on tablets the views are tabs under the header and the item is a bottom sheet; on phones a bottom bar holds the pinned views. On very wide screens (from 2000 px, e.g. 27" 4K) text is 15 % larger.
+- **Projects:** the project's name tops the left panel (and the drawer on tablets and phones); with several projects on the server it is a menu for switching between them. A project the server cannot open is listed with the reason and cannot be chosen.
 - **Left panel:** saved views with their item counts and a button for new items. Views with a `section` are listed under foldable section headings. The ⋮ menu of a view moves it to an existing or new section, and the server writes `section:` into its YAML. Below 1200 px the views are tabs under the header (and in a drawer behind ☰); on phones a bottom bar shows the views pinned with the ⋮ menu ("Pin to bottom bar") plus *More*.
 - **Cards:** id and priority on top, the title, and one meta line that tells the state: *Ready*, *Blocked by …*, *Waits for …* (touches overlap work in progress), the claim holder with the time left, an expired claim (faint, dashed border) or else the labels; a thin bar shows progress of the checklist or children.
 - **Ids:** clicking an item id (on a card or in the detail) copies it to the clipboard.

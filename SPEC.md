@@ -300,6 +300,7 @@ URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from t
 **Layout** (responsive): from 1200 px a left panel with views (208 px, 240 px from 2000 px) and the open item as a panel on the right; 840–1199 px view tabs under the header (☰ opens a drawer with the full navigation) and the open item as a bottom sheet; below 840 px the open item is a full page; below 600 px the header has ☰ and a view dropdown and a bottom bar shows the pinned views (up to three; the first two views when none are pinned) plus *More* (the drawer). *New item* is a floating button outside the left panel. From 2000 px wide (27" 4K and similar) text is 15 % larger.
 
 **Left panel**
+- On top the open project's name; with more than one project it opens a menu of all registered projects (the open one ticked; one the server cannot open greyed out with its error and not selectable). The drawer has the same switcher on narrower windows and phones.
 - *New item* button (dialog: title, type, status, priority, milestone, parent, labels, body).
 - Saved views with their item count; views with `section` grouped under foldable section headings; the ⋮ menu of a view moves it to an existing or new section (persisted to the YAML) or pins it to the phone's bottom bar.
 - *People*: agents holding a live claim with how many items each holds (busiest first); a click narrows the board to that agent's items (the People filter).
