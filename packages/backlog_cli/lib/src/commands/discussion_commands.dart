@@ -152,6 +152,8 @@ final class ReviewCommand extends BacklogCommand {
       final comment = outcome.comment;
       final of = comment.commit == null ? '' : ' of ${comment.commit}';
       line(ok ? 'Reviewed $id$of: ok.' : 'Reviewed $id$of: changes needed (${comment.findings} numbered finding(s)).');
+      if (outcome.posted case final pr?) line('Posted the review to $pr.');
+      if (outcome.postError case final error?) line('Could not post the review to ${outcome.item.pr}: $error (noted).');
       lines(TextOutput.rows([snapshot[id]!]));
     }
     return 0;

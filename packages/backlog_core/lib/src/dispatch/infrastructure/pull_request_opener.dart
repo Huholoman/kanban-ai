@@ -80,7 +80,7 @@ final class PullRequestOpener {
       'refs/heads/$branch:refs/heads/$branch',
     ]);
     if (push.exitCode != 0) {
-      throw UnavailableException('git push ${config.remote} $branch failed: ${_lastLines('${push.stderr}')}');
+      throw UnavailableException('git push ${config.remote} $branch failed: ${lastLines('${push.stderr}')}');
     }
     PullRequestOutcome outcome(String url, {required bool created}) =>
         PullRequestOutcome(url: url, created: created, branch: branch, base: base, remote: config.remote);
@@ -98,7 +98,7 @@ final class PullRequestOpener {
       'description': text,
     };
     if (config.find case final find?) {
-      final found = await _run(find.render(values), workingDirectory, label: 'dispatcher.pr.find');
+      final found = await runCommand(find.render(values), workingDirectory, label: 'dispatcher.pr.find');
       if (found.exitCode == 0) {
         if (config.urlIn(found.output) case final url?) {
           await _record(backlog, item, url);
@@ -106,7 +106,7 @@ final class PullRequestOpener {
         }
       }
     }
-    final created = await _run(
+    final created = await runCommand(
       config.create.render(values),
       workingDirectory,
       label: 'dispatcher.pr.create',
@@ -115,7 +115,7 @@ final class PullRequestOpener {
     if (created.exitCode != 0) {
       throw UnavailableException(
         'Pushed $branch, but opening the pull request failed (exit code ${created.exitCode}): '
-        '${_lastLines(created.output)}',
+        '${lastLines(created.output)}',
       );
     }
     final url = config.urlIn(created.output);
@@ -123,7 +123,7 @@ final class PullRequestOpener {
       throw UnavailableException(
         'Pushed $branch and ran dispatcher.pr.create, but its output has no pull request URL '
         '(adjust dispatcher.pr.url_pattern, or set it with `backlog set ${item.id} pr=<url>`): '
-        '${_lastLines(created.output)}',
+        '${lastLines(created.output)}',
       );
     }
     await _record(backlog, item, url);
@@ -159,8 +159,9 @@ final class PullRequestOpener {
       Process.run('git', arguments, workingDirectory: path, environment: _environment).timeout(timeout);
 
   /// Runs [command] (no shell) in [path] with [input] on its standard input;
-  /// standard output and error together.
-  Future<({int exitCode, String output})> _run(
+  /// standard output and error together. Fails with `UnavailableException`
+  /// when it cannot start or does not finish within [timeout].
+  Future<({int exitCode, String output})> runCommand(
     List<String> command,
     String path, {
     required String label,
@@ -199,7 +200,7 @@ final class PullRequestOpener {
     return (exitCode: exitCode, output: '$output');
   }
 
-  static String _lastLines(String text, [int count = 5]) {
+  static String lastLines(String text, [int count = 5]) {
     final lines = LineSplitter.split(text.trim()).where((line) => line.trim().isNotEmpty).toList();
     return lines.length <= count ? lines.join(' | ') : lines.sublist(lines.length - count).join(' | ');
   }

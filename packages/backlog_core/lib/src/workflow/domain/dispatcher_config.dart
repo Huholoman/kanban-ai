@@ -621,7 +621,7 @@ final class NewWorktrees {
 /// when there is none), so that one made outside the board is not made
 /// twice.
 final class PullRequestConfig {
-  PullRequestConfig({this.remote = 'origin', required this.create, this.find, String? urlPattern})
+  PullRequestConfig({this.remote = 'origin', required this.create, this.find, this.review, String? urlPattern})
     : urlPattern = _pattern(urlPattern) {
     if (remote.isEmpty || remote.startsWith('-') || remote.contains(RegExp(r'\s'))) {
       throw ConfigurationException('dispatcher.pr.remote "$remote" is not a remote name.');
@@ -642,6 +642,16 @@ final class PullRequestConfig {
   /// [create] also gets on its standard input).
   static const placeholders = ['id', 'title', 'branch', 'base', 'remote', 'description'];
 
+  /// What [review] may refer to: the item id and title, the branch, the base
+  /// branch, the remote, the pull request (`{pr}`: the item's `pr` field,
+  /// `{pr_number}`: the number in it), the verdict (`ok`, `changes`) and the
+  /// text posted (`{body}`, also on its standard input).
+  static const reviewPlaceholders = ['id', 'title', 'branch', 'base', 'remote', 'pr', 'pr_number', 'verdict', 'body'];
+
+  /// The number of the pull request at [url] (`…/pulls/7`, `…/pull/7`,
+  /// `#7`, `7`); null when it names none.
+  static String? numberIn(String url) => RegExp(r'(?:^#?|/)(\d+)/?(?:[?#].*)?$').firstMatch(url.trim())?.group(1);
+
   /// The first http(s) URL.
   static final defaultUrlPattern = RegExp(r'https?://[^\s<>"`)\]]+');
 
@@ -654,6 +664,11 @@ final class PullRequestConfig {
   /// Prints the URL of an open pull request of the branch
   /// (`dispatcher.pr.find`); null when not configured.
   final CommandTemplate? find;
+
+  /// Posts the summary of a review (`backlog review`) to the item's pull
+  /// request as a comment (`dispatcher.pr.review`); null when not
+  /// configured.
+  final CommandTemplate? review;
 
   /// Finds the URL in the output of [create] or [find]: its first group,
   /// else the whole match.

@@ -193,29 +193,34 @@ NewWorktrees? _newWorktrees(YamlMap yaml, String origin) {
 PullRequestConfig? _pullRequest(Object? node, String origin) {
   if (node == null) return null;
   final yaml = _map(node, 'dispatcher.pr', origin);
-  const known = {'remote', 'create', 'find', 'url_pattern'};
+  const known = {'remote', 'create', 'find', 'review', 'url_pattern'};
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
       throw ConfigurationException('unknown key "dispatcher.pr.$key" (expected ${known.join(', ')}).');
     }
   }
-  CommandTemplate? command(String key) => switch (yaml[key]) {
-    null => null,
-    final List<Object?> list => CommandTemplate(
-      _strings(list, 'dispatcher.pr.$key', origin),
-      label: 'dispatcher.pr.$key',
-      known: PullRequestConfig.placeholders,
-    ),
-    final Object text => CommandTemplate.parse(
-      _string(text, 'dispatcher.pr.$key', origin),
-      label: 'dispatcher.pr.$key',
-      known: PullRequestConfig.placeholders,
-    ),
-  };
+  CommandTemplate? command(String key) {
+    final known = key == 'review' ? PullRequestConfig.reviewPlaceholders : PullRequestConfig.placeholders;
+    return switch (yaml[key]) {
+      null => null,
+      final List<Object?> list => CommandTemplate(
+        _strings(list, 'dispatcher.pr.$key', origin),
+        label: 'dispatcher.pr.$key',
+        known: known,
+      ),
+      final Object text => CommandTemplate.parse(
+        _string(text, 'dispatcher.pr.$key', origin),
+        label: 'dispatcher.pr.$key',
+        known: known,
+      ),
+    };
+  }
+
   return PullRequestConfig(
     remote: yaml['remote'] == null ? 'origin' : _string(yaml['remote'], 'dispatcher.pr.remote', origin),
     create: command('create') ?? (throw const ConfigurationException('dispatcher.pr.create is required.')),
     find: command('find'),
+    review: command('review'),
     urlPattern: yaml['url_pattern'] == null ? null : _string(yaml['url_pattern'], 'dispatcher.pr.url_pattern', origin),
   );
 }
@@ -538,4 +543,9 @@ claims:
 #     # create: 'gh pr create --head {branch} --base {base} --title "{id}: {title}" --body-file -'
 #     # find: 'gh pr list --head {branch} --json url --jq ".[0].url"'   # an open PR made elsewhere
 #     # url_pattern: 'https://\\S+/pulls/\\d+'   # default: the first URL in the output
+#     # backlog review also posts the review to the pull request (body on
+#     # stdin and in {body}; also {pr}, {pr_number}, {verdict}); a failure
+#     # is only a note in the item's discussion:
+#     # review: 'tea comment {pr_number}'
+#     # review: 'gh pr review {pr} --comment --body-file -'
 ''';

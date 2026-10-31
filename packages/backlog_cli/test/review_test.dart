@@ -151,4 +151,62 @@ void main() {
     expect((await backlog(['review', id, '--changes'])).code, ExitCode.failure, reason: 'changes need findings');
     expect((await backlog(['review', id, '--ok', '--commit', 'nope'])).code, ExitCode.failure);
   });
+
+  test('with dispatcher.pr.review the review goes to the pull request too; a failure is only a note', () async {
+    final calls = p.join(workspace.path, 'calls');
+    final tea = File(p.join(workspace.path, 'fake-tea.sh'))
+      ..writeAsStringSync(
+        'printf "%s\\n" "\$*" >> "$calls"\n'
+        'cat >> "$calls.stdin"\n'
+        '[ "\$FAIL" = 1 ] && { echo "tea: 401 Unauthorized"; exit 1; }\n'
+        'echo ok\n',
+      );
+    final config = File(p.join(backlogDir, 'backlog.yaml'));
+    config.writeAsStringSync(
+      '${config.readAsStringSync()}\ndispatcher:\n  worktrees: [{name: repo, path: ../repo}]\n'
+      '  pr:\n    create: tea pulls create\n    review: [sh, ${tea.path}, comment, "{pr_number}", "{verdict}", "{id}"]\n',
+    );
+    final id = await newItem('Export CSV', branch: 'agent/work');
+    final withoutPr = await backlog(['review', id, '--ok', 'Fine.']);
+    expect(withoutPr.out, isNot(contains('Posted')), reason: 'no pr, nothing posted');
+    expect(File(calls).existsSync(), isFalse);
+
+    final set = await backlog(['set', id, 'pr=https://git.example/o/r/pulls/7']);
+    expect(set.code, 0, reason: '${set.out}${set.err}');
+    final posted = await backlog(['review', id, '--changes', '1. Off by one.']);
+    expect(posted.code, 0, reason: posted.err);
+    expect(posted.out, contains('Posted the review to https://git.example/o/r/pulls/7.'));
+    expect(File(calls).readAsStringSync(), 'comment 7 changes $id\n');
+    final head = (await git(repo, ['rev-parse', 'agent/work'])).substring(0, 12);
+    expect(
+      File('$calls.stdin').readAsStringSync(),
+      '**Review** by reviewer of $head: changes requested\n\n1. Off by one.\n\n'
+      '_Backlog item $id. This review approves nothing; a person decides._\n',
+    );
+
+    final failed = await backlog(
+      ['--json', 'review', id, '--ok'],
+      env: const {'BACKLOG_AGENT': 'reviewer', 'FAIL': '1'},
+    );
+    expect(failed.code, 0, reason: 'best effort');
+    final discussion = (jsonDecode(failed.out) as Map)['discussion'] as List;
+    expect(discussion[discussion.length - 2], containsPair('review', 'ok'));
+    expect(discussion.last, containsPair('note', true));
+    expect(
+      (discussion.last as Map)['text'],
+      'Could not post the review of reviewer to the pull request https://git.example/o/r/pulls/7: '
+      'dispatcher.pr.review exited with code 1: tea: 401 Unauthorized',
+    );
+    final item = (jsonDecode(failed.out) as Map);
+    expect(item['review'], 'ok', reason: 'the note does not change the review state');
+  });
+
+  test('pull request numbers', () {
+    expect(PullRequestConfig.numberIn('https://git.example/o/r/pulls/7'), '7');
+    expect(PullRequestConfig.numberIn('https://github.com/o/r/pull/12/'), '12');
+    expect(PullRequestConfig.numberIn('#3'), '3');
+    expect(PullRequestConfig.numberIn('42'), '42');
+    expect(PullRequestConfig.numberIn('https://git.example/o/r/pulls/7?tab=files'), '7');
+    expect(PullRequestConfig.numberIn('https://git.example/o/r'), isNull);
+  });
 }

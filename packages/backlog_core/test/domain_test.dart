@@ -192,6 +192,14 @@ dispatcher:
       rejects('{remote: origin}', 'dispatcher.pr.create is required');
       rejects('{create: x, merge: y}', 'unknown key "dispatcher.pr.merge"');
       rejects('{create: "tea {worktree}"}', 'unknown placeholder "{worktree}"');
+      rejects('{create: "tea {pr_number}"}', 'unknown placeholder "{pr_number}"');
+      rejects('{create: x, review: "tea comment {description}"}', 'unknown placeholder "{description}"');
+      expect(
+        parseWorkflowYaml(
+          'dispatcher:\n  worktrees: [a]\n  pr: {create: x, review: "tea comment {pr_number} {body} {verdict} {pr}"}\n',
+        ).dispatcher!.pr!.review!.executable,
+        'tea',
+      );
       rejects('{create: x, remote: --force}', 'not a remote name');
       rejects('{create: x, url_pattern: "("}', 'url_pattern is not a regular expression');
       rejects('{create: ""}', 'must not be empty');
