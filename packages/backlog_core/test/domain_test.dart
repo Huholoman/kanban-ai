@@ -148,6 +148,10 @@ dispatcher:
       }
       expect(claude, isNot(contains('--bare')));
       expect(claude, isNot(contains('--dangerously-skip-permissions')));
+      final denied = claude[claude.indexOf('--disallowedTools') + 1];
+      for (final rule in ['Bash(git push *)', 'Bash(git -*)', 'Bash(git send-pack *)', 'Bash(git config *alias*)']) {
+        expect(denied, contains(rule), reason: '`git -C . push` slips past Bash(git push *) alone');
+      }
 
       expect(parseWorkflowYaml('dispatcher: {agent: codex, worktrees: [a]}').dispatcher!.agent.verified, isFalse);
 

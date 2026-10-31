@@ -251,9 +251,18 @@ final class AgentProfile {
   /// Tools Claude Code may use without asking: the backlog CLI, git, mise
   /// tasks, the project's own scripts (`./greet.sh`, `./tool/x.sh`) and the
   /// file tools. Everything else is refused (nobody answers
-  /// permission prompts in headless mode); pushing is forbidden outright.
+  /// permission prompts in headless mode); pushing is forbidden outright
+  /// ([claudeDisallowedTools]).
   static const claudeAllowedTools =
       'Bash(backlog *) Bash(git *) Bash(mise run *) Bash(./*) Read Edit Write Grep Glob TodoWrite';
+
+  /// What Claude Code must never run, even though `Bash(git *)` allows git:
+  /// pushing in any spelling — `git push`, but also behind git's global
+  /// options (`git -C . push`, `git --no-pager push`, `git -c … push`,
+  /// all of which a `Bash(git push *)` rule alone lets through, verified
+  /// with Claude Code 2.1.312), the plumbing `git send-pack`, and aliases
+  /// that would rename push.
+  static const claudeDisallowedTools = 'Bash(git push *) Bash(git -*) Bash(git send-pack *) Bash(git config *alias*)';
 
   /// The profiles usable without defining them. Only `claude` is verified
   /// (Claude Code 2.1); the others are presets after the CLIs' documentation.
@@ -276,7 +285,7 @@ final class AgentProfile {
         '--allowedTools',
         claudeAllowedTools,
         '--disallowedTools',
-        'Bash(git push *)',
+        claudeDisallowedTools,
       ], label: 'agent claude'),
       output: AgentOutput.claudeStreamJson,
       resume: CommandTemplate(
