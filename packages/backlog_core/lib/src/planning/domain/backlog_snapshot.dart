@@ -78,6 +78,8 @@ final class BacklogSnapshot {
       final conflicts = conflictsOf(item);
       final needsHuman = category != StatusCategory.done && item.discussion.openQuestion != null;
       final branch = item.branch?.trim();
+      final head = branchHeads[branch == null || branch.isEmpty ? 'agent/${item.id}' : branch];
+      final review = ReviewState.of(item, head);
       planned[item.id] = PlannedItem(
         item: item,
         category: category,
@@ -96,7 +98,8 @@ final class BacklogSnapshot {
           for (final id in [item.id, ...ancestors])
             if (byId[id]?.type == 'epic') id,
         ],
-        review: ReviewState.of(item, branchHeads[branch == null || branch.isEmpty ? 'agent/${item.id}' : branch]),
+        review: review,
+        reviewedHead: head != null && (review == ReviewState.ok || review == ReviewState.changes),
       );
     }
 

@@ -24,6 +24,7 @@ final class PlannedItem {
     this.ancestors = const [],
     this.epics = const [],
     this.review = ReviewState.none,
+    this.reviewedHead = false,
   });
 
   final Item item;
@@ -66,6 +67,10 @@ final class PlannedItem {
   /// Where the review of its work stands ([ReviewState.of]); never
   /// [ReviewState.running] here, only a dispatcher knows that.
   final ReviewState review;
+
+  /// The latest review looked at the current head of the item's branch,
+  /// and that head is known: a new review would see nothing new.
+  final bool reviewedHead;
 
   /// The findings of the latest review when it asks for changes
   /// ([Comment.findings]); 0 otherwise.

@@ -635,6 +635,38 @@ dispatcher:
       expect(launcher.started, hasLength(3));
     });
 
+    test('entering the status again runs the review only for a new head; the button always', () async {
+      await setUpLoop(autoFix: 0);
+      final first = await commit('Work');
+      Future<void> back() async {
+        await backlog.items.update('T-0001', [FieldChange.parse('status=in-progress')]);
+        await tick();
+        await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+        await tick();
+        await tick();
+      }
+
+      await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+      await tick();
+      expect(launcher.started, ['T-0001 AI review on_enter']);
+      await review(ReviewVerdict.changes, first);
+      await launcher.finish('T-0001');
+
+      await back(); // e.g. a failed merge, nothing new on the branch
+      expect(launcher.started, hasLength(1), reason: 'the review saw this head already');
+      expect(dispatcher.current!.pending, isEmpty, reason: 'dropped, not waiting');
+
+      await dispatcher.runAction('T-0001', 'AI review');
+      expect(launcher.started.last, 'T-0001 AI review request', reason: 'a person may always ask');
+      await review(ReviewVerdict.ok, first);
+      await launcher.finish('T-0001');
+
+      await commit('Fix');
+      await back();
+      expect(launcher.started.last, 'T-0001 AI review on_enter', reason: 'a new head is reviewed');
+      expect(launcher.started, hasLength(3));
+    });
+
     test('without auto_fix a review asking for changes wakes nobody, also in auto mode', () async {
       await setUpLoop(autoFix: 0, mode: 'auto', status: 'review');
       final first = await commit('Work');

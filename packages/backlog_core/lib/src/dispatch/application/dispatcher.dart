@@ -236,7 +236,9 @@ final class Dispatcher {
   /// the last start, or null when nothing started.
   ///
   /// A pending action is dropped when its item left the status it entered
-  /// (or is gone) or the action is no longer configured, and waits while
+  /// (or is gone) or the action is no longer configured, an AI review also
+  /// when the latest review saw the head of the item's branch
+  /// ([PlannedItem.reviewedHead]); it waits while
   /// anything runs for the item, a prompt action also while the item is
   /// claimed or no worktree is free. Other failures drop it with a note in
   /// the item's discussion, as do failed requests.
@@ -269,6 +271,16 @@ final class Dispatcher {
         continue;
       }
       if (current.runFor(pending.item) != null || (action.kind == ActionKind.prompt && planned.isClaimed)) continue;
+      if (action.review && planned.reviewedHead) {
+        // Back in the status without new commits (e.g. after a failed
+        // merge): the review would see the same branch again.
+        _log(
+          'Dispatcher: skipped the action "${pending.action}" for ${pending.item}: '
+          'the latest review already looked at the head of its branch.',
+        );
+        await forget(pending);
+        continue;
+      }
       try {
         final started = await _startAction(
           current,
