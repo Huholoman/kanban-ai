@@ -49,6 +49,32 @@ abstract final class TextOutput {
     ReviewState.stale => 'review outdated (newer commits)',
   };
 
+  /// The implementation of an epic: verdict, problems and warnings, then
+  /// its items in work order with their state and what they wait for.
+  static List<String> epic(EpicPlan plan) {
+    final members = plan.members;
+    final idWidth = members.isEmpty ? 0 : members.map((m) => m.id.value.length).reduce((a, b) => a > b ? a : b);
+    final stateWidth = members.isEmpty ? 0 : members.map((m) => m.state.id.length).reduce((a, b) => a > b ? a : b);
+    final next = plan.next?.id;
+    return [
+      '${plan.id}  ${plan.epic.item.title}  (branch ${plan.branch})',
+      switch (plan.verdict) {
+        EpicVerdict.ok => 'Can be implemented in one go.',
+        EpicVerdict.warning => 'Can start, with warnings:',
+        EpicVerdict.forbidden => 'Cannot start:',
+      },
+      for (final problem in plan.problems) '  ✗ $problem',
+      for (final warning in plan.warnings) '  ! $warning',
+      '${plan.count(EpicMemberState.done)} done, ${plan.count(EpicMemberState.handedOver)} handed over, '
+          '${plan.count(EpicMemberState.inProgress)} in progress, ${plan.count(EpicMemberState.remaining)} to do:',
+      for (final member in members)
+        '${member.id == next ? '→' : ' '} ${member.id.value.padRight(idWidth)}  '
+            '${member.state.id.padRight(stateWidth)}  ${member.item.item.title}'
+            '${member.after.isEmpty ? '' : '  after ${member.after.join(', ')}'}'
+            '${member.waits.isEmpty ? '' : '  waits for ${member.waits.join(', ')}'}',
+    ];
+  }
+
   static List<String> detail(PlannedItem planned, BacklogSnapshot snapshot, {String? path}) {
     final item = planned.item;
     String describe(ItemId id) {

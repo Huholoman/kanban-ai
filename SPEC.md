@@ -274,6 +274,18 @@ Ready work (`ready`, `backlog next`, the dispatcher's order, §8.2) goes by mile
 
 `lint` warns (`invalid-touches`) about an unclosed `[` or `{`, a stray `}`, a trailing `\`, `..` segments and patterns covering the whole repository (`**`, `*`, `.`).
 
+### 3.3 Implementing an epic on one branch
+
+An epic (any item with children; the type does not matter) can be implemented by one agent in one session on one branch (§8.2 *Implementing an epic*). `EpicPlan` (computed from a snapshot) describes that:
+
+- **Members** — the items under it at any depth, in **work order**: an item comes after its dependencies and its children among the members, otherwise in the default order (§3.1); a cycle is cut where it is found.
+- **State** of each member: `done` (done category), `handed-over` (an active status after the first one, e.g. `review`), `in-progress` (the first active status) or `to-do` (open, also not pickable — implementing the epic plans its items). A handed-over member counts as finished for the members after it: its work is on the epic's branch.
+- **after** — the members a `to-do` member waits for: its dependencies and open children that are not done or handed over.
+- **waits** — what outside the epic keeps a `to-do` member from starting: an unfinished dependency outside the epic (the epic's own `depends_on` count for every member) as `X-1 (todo)`, an open question (`a person's answer to its question`), an active item outside the epic its `touches` overlap (`X-2 (touches the same files)`; overlaps among the members do not count — one agent does them one after another), a live claim of another agent, an unknown status.
+- **Verdict** — `forbidden` with **problems**: the epic is done, claimed by another agent, has no members, nothing left (every member done or handed over), a dependency outside the epic that does not exist or is open but not pickable (not even planned), a dependency cycle among members; else `warning` with **warnings**: a dependency outside the epic that is planned (pickable or active) but not done, a member waiting for a person, overlapping work outside the epic, a member claimed (or in progress) by another agent, an unknown status; else `ok`.
+- **Next** — the member the agent goes on with: one `in-progress` that no other agent holds a live claim on, else the first `to-do` member without `after` and `waits`.
+- **Branch** — the epic's `branch`, else `agent/<epic id>`.
+
 ## 4. Claims — parallel work without collisions
 
 A claim is an agent's exclusive, time-limited lock on an item, stored as `.locks/<id>.lock` (JSON: item, agent, claimed_at, heartbeat_at, expires_at).
@@ -304,6 +316,8 @@ Global options: `-C/--dir <folder>`, `--json` (machine-readable output; JSON fie
 | `ready [-w cond]` | items that can be started now (`list -w conflicting=true` shows the ones waiting for overlapping work) |
 | `blocked` | unfinished items waiting for others |
 | `next [--as a] [-w cond]` | claim the most urgent ready item; exit 2 when there is none |
+| `epic <id> [--as a]` | the implementation of an epic (or any item with children) by one agent on one branch (§3.3); text: the verdict, problems (`✗`), warnings (`!`), counts and the items in work order with state, `after` and `waits for`, `→` marking the next one; JSON `{epic, title, branch, verdict: ok\|warning\|forbidden, problems[], warnings[], finished, next, members: [{id, title, status, state: done\|handed-over\|in-progress\|to-do, after[], waits[]}]}`; `--as` makes the agent's own claims count as its own |
+| `epic <id> --next [--as a]` | claim the next item of the epic (§3.3) for the agent, without the readiness checks of `claim` (items handed over count as done), and set its `branch` to the epic's branch; prints it like `next` (JSON `{item, epic}`, `item` with the body); exit 2 when nothing can start (text: why, then the report; JSON `{item: null, epic}`); an epic that is done is `invalid_input` |
 | `claim <id> [--as a] [--force]` | take an item |
 | `heartbeat <id> [--as a]` | extend the claim |
 | `release <id> [--as a] [--status s] [--force]` | give it back unfinished |

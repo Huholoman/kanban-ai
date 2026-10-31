@@ -2,6 +2,7 @@ import '../../items/domain/item.dart';
 import '../../items/domain/item_id.dart';
 import '../../items/domain/item_repository.dart';
 import '../../planning/application/planning_service.dart';
+import '../../planning/domain/epic_plan.dart';
 import '../../planning/domain/planned_item.dart';
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
@@ -76,6 +77,32 @@ final class ClaimService {
     return null;
   }
 
+  /// The implementation of the epic [reference] as [agent] sees it
+  /// ([EpicPlan]).
+  Future<EpicPlan> epic(String reference, {String? agent}) async {
+    final snapshot = await _planning.snapshot();
+    return EpicPlan.of(
+      snapshot,
+      ItemReference.resolve(reference, snapshot.ids),
+      agent: agent == null ? null : Claim.validateAgent(agent),
+    );
+  }
+
+  /// Claims the next item of the epic [reference] for [agent]
+  /// ([EpicPlan.next]: the one it has in progress, else the first that can
+  /// start) and puts it on the epic's branch ([EpicPlan.branch]); items of
+  /// the epic that are handed over count as done for it, so it is claimed
+  /// even when the snapshot calls it blocked. Returns the plan and the
+  /// claim, which is null when nothing can start.
+  Future<({EpicPlan plan, ClaimOutcome? outcome})> claimInEpic(String reference, String agent) async {
+    agent = Claim.validateAgent(agent);
+    final plan = await epic(reference, agent: agent);
+    if (plan.epic.isDone) throw InvalidInputException('${plan.id} is already ${plan.epic.item.status}.');
+    final next = plan.next;
+    if (next == null) return (plan: plan, outcome: null);
+    return (plan: plan, outcome: await _acquire(next.item, agent, branch: plan.branch));
+  }
+
   /// Extends the claim so that it does not expire while work continues.
   Future<Claim> heartbeat(String reference, String agent) async {
     agent = Claim.validateAgent(agent);
@@ -137,7 +164,7 @@ final class ClaimService {
     return finished;
   }
 
-  Future<ClaimOutcome> _acquire(PlannedItem planned, String agent, {bool mirror = true}) async {
+  Future<ClaimOutcome> _acquire(PlannedItem planned, String agent, {bool mirror = true, String? branch}) async {
     final id = planned.id;
     final now = _clock.now();
     final fresh = Claim(itemId: id, agent: agent, claimedAt: now, heartbeatAt: now, lease: _workflow.claimLease);
@@ -167,6 +194,7 @@ final class ClaimService {
       final item = planned.item.copyWith(
         status: planned.category == StatusCategory.open ? _workflow.activeStatus : null,
         assignee: () => agent,
+        branch: branch == null ? null : () => branch,
         updated: () => formatDay(now),
       );
       await _items.save(item);

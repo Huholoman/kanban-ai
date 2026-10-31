@@ -98,6 +98,42 @@ void main() {
     expect(shown['claim'], isNull);
   });
 
+  test('epic checks an epic and hands out its items one by one on its branch', () async {
+    final epic = await create('Payments', ['-t', 'epic']);
+    final first = await create('Model', ['--parent', epic, '-s', 'todo']);
+    final second = await create('API', ['--parent', epic, '-d', first]);
+    final outside = await create('Outside', ['-s', 'backlog']);
+
+    final check = await backlog(['--json', 'epic', epic]);
+    expect(check.exitCode, 0, reason: '$check');
+    final plan = check.json! as Map;
+    expect(plan['verdict'], 'ok');
+    expect(plan['branch'], 'agent/$epic');
+    expect(plan['next'], first);
+    expect((plan['members'] as List).map((m) => (m as Map)['id']), [first, second]);
+    expect(((plan['members'] as List)[1] as Map)['after'], [first]);
+
+    final env = {'BACKLOG_AGENT': 'w1'};
+    final next = await backlog(['epic', epic, '--next'], env: env);
+    expect(next.exitCode, 0, reason: '$next');
+    expect(next.out, contains('Claimed $first for w1, on the branch agent/$epic of $epic.'));
+    expect((await backlog(['set', first, 'status=review'])).exitCode, 0);
+
+    final again = (await backlog(['--json', 'epic', epic, '--next'], env: env)).json! as Map;
+    expect((again['item'] as Map)['id'], second);
+    expect((again['item'] as Map)['branch'], 'agent/$epic');
+    expect((await backlog(['set', second, 'status=review'])).exitCode, 0);
+
+    final none = await backlog(['epic', epic, '--next'], env: env);
+    expect(none.exitCode, ExitCode.nothingToDo);
+    expect(none.out, contains('Nothing left in $epic: every item is handed over or done.'));
+
+    expect((await backlog(['set', epic, 'depends_on+=$outside'])).exitCode, 0);
+    final text = await backlog(['epic', epic]);
+    expect(text.out, contains('Cannot start:'));
+    expect(text.out, contains('✗ Nothing left to implement'));
+  });
+
   test('show prints relations, claim and body', () async {
     final epic = await create('Data security', ['-t', 'epic']);
     final task = await create('Disk encryption in production', [

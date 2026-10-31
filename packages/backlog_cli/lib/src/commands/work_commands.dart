@@ -72,6 +72,67 @@ final class NextCommand extends BacklogCommand {
   }
 }
 
+final class EpicCommand extends BacklogCommand {
+  EpicCommand(super.context) {
+    addAgentOption(mandatory: false);
+    argParser.addFlag(
+      'next',
+      negatable: false,
+      help:
+          'Claim the next item of the epic (the one you have in progress, else the first that can start) and put '
+          'it on the epic\'s branch. Exits with 2 when nothing can start.',
+    );
+  }
+
+  @override
+  String get name => 'epic';
+
+  @override
+  String get description =>
+      'Implementing an epic (or any item with children) on one branch: whether it can start, what is done, what '
+      'is next.';
+
+  @override
+  String get invocation => 'backlog epic <id> [--next --as <agent>]';
+
+  @override
+  Future<int> run() async {
+    final backlog = await openBacklog();
+    final reference = singleArgument('item id');
+    if (!args.flag('next')) {
+      final plan = await backlog.claims.epic(reference, agent: optionalAgent);
+      json ? emitJson(JsonOutput.epic(plan)) : lines(TextOutput.epic(plan));
+      return 0;
+    }
+    final (:plan, :outcome) = await backlog.claims.claimInEpic(reference, agent);
+    if (outcome == null) {
+      if (json) {
+        emitJson({'item': null, 'epic': JsonOutput.epic(plan)});
+      } else {
+        line(
+          plan.finished
+              ? 'Nothing left in ${plan.id}: every item is handed over or done.'
+              : 'Nothing in ${plan.id} can start now.',
+        );
+        lines(TextOutput.epic(plan));
+      }
+      return 2;
+    }
+    final snapshot = await backlog.planning.snapshot();
+    final id = outcome.item.id;
+    if (json) {
+      emitJson({
+        'item': JsonOutput.item(snapshot[id]!, path: await backlog.items.locationOf(id), withBody: true),
+        'epic': JsonOutput.epic(EpicPlan.of(snapshot, plan.id, agent: plan.agent)),
+      });
+    } else {
+      line('Claimed $id for ${outcome.claim.agent}, on the branch ${plan.branch} of ${plan.id}.');
+      await emitItem(backlog, id, detail: true, snapshot: snapshot);
+    }
+    return 0;
+  }
+}
+
 final class ClaimCommand extends BacklogCommand {
   ClaimCommand(super.context) {
     addAgentOption();

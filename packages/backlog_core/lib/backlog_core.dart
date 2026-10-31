@@ -30,6 +30,7 @@ export 'src/items/domain/path_glob.dart';
 export 'src/items/infrastructure/markdown_item_codec.dart';
 export 'src/planning/application/planning_service.dart';
 export 'src/planning/domain/backlog_snapshot.dart';
+export 'src/planning/domain/epic_plan.dart';
 export 'src/planning/domain/planned_item.dart';
 export 'src/planning/domain/review_state.dart';
 export 'src/planning/infrastructure/git_branch_heads.dart';

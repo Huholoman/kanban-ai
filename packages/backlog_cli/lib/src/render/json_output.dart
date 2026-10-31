@@ -87,6 +87,28 @@ abstract final class JsonOutput {
     ],
   };
 
+  static Map<String, Object?> epic(EpicPlan plan) => {
+    'epic': plan.id.value,
+    'title': plan.epic.item.title,
+    'branch': plan.branch,
+    'verdict': plan.verdict.name,
+    'problems': plan.problems,
+    'warnings': plan.warnings,
+    'finished': plan.finished,
+    'next': plan.next?.id.value,
+    'members': [
+      for (final member in plan.members)
+        {
+          'id': member.id.value,
+          'title': member.item.item.title,
+          'status': member.item.item.status,
+          'state': member.state.id,
+          'after': [for (final id in member.after) id.value],
+          'waits': member.waits,
+        },
+    ],
+  };
+
   static Map<String, Object?> lintIssue(LintIssue issue) => {
     'severity': issue.severity.name,
     'code': issue.code,
