@@ -32,6 +32,7 @@ final class ActionDefinition {
     this.agent,
     bool fresh = false,
     this.review = false,
+    this.autoFix = 0,
   }) : statuses = statuses == null ? null : List.unmodifiable(statuses),
        fresh = fresh || review {
     final label = 'dispatcher.actions "$name"';
@@ -50,6 +51,8 @@ final class ActionDefinition {
         'a command is a list, e.g. run: [sh, -c, "make test"].',
       );
     }
+    if (autoFix < 0) throw ConfigurationException('$label: auto_fix must be 0 or more rounds.');
+    if (autoFix > 0 && !review) throw ConfigurationException('$label: auto_fix only applies to a review.');
     if (kind != ActionKind.prompt && (agent != null || fresh)) {
       throw ConfigurationException('$label: agent and fresh only apply to prompt actions.');
     }
@@ -118,6 +121,11 @@ final class ActionDefinition {
   /// the item's review state `running`.
   final bool review;
 
+  /// For a [review]: when it asks for changes, the dispatcher wakes the
+  /// item's agent to fix them and reviews again, at most this many rounds
+  /// (0: never, the default).
+  final int autoFix;
+
   ActionKind get kind => prompt != null || review
       ? ActionKind.prompt
       : command != null
@@ -161,7 +169,7 @@ final class ActionDefinition {
   /// One line for logs and lists: `prompt`, `run: sh -c …`, `run: merge`.
   String get summary => switch (kind) {
     ActionKind.prompt =>
-      '${review ? 'AI review, ' : ''}agent${agent == null ? '' : ' $agent'}${fresh ? ', new session' : ''}',
+      '${review ? 'AI review${autoFix > 0 ? ' (auto-fix $autoFix)' : ''}, ' : ''}agent${agent == null ? '' : ' $agent'}${fresh ? ', new session' : ''}',
     ActionKind.command => 'run: $command',
     ActionKind.builtIn => 'run: $builtIn',
   };

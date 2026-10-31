@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:backlog_core/backlog_core.dart';
 import 'package:test/test.dart';
@@ -68,6 +69,8 @@ AgentSession _session(String id, String worktree) => AgentSession(
 );
 
 void main() {
+  _reviewLoopTests();
+
   test('every built-in action backlog.yaml accepts has an implementation', () {
     expect(BuiltInActions.standard.keys.toSet(), ActionDefinition.builtIns.keys.toSet());
     for (final MapEntry(:key, :value) in BuiltInActions.standard.entries) {
@@ -106,10 +109,21 @@ void main() {
       final state = ActionState(
         statuses: {ItemId('T-1'): 'review'},
         pending: [PendingAction(item: ItemId('T-1'), action: 'AI review', status: 'review', since: now)],
+        loops: {
+          ItemId('T-2'): ReviewLoop(
+            item: ItemId('T-2'),
+            action: 'AI review',
+            round: 1,
+            phase: ReviewLoopPhase.fixing,
+            since: now,
+          ),
+        },
       );
       final back = ActionState.fromJson(state.toJson());
       expect(back.statuses, state.statuses);
       expect(back.pending.single.toJson(), state.pending.single.toJson());
+      expect(back.loops[ItemId('T-2')]!.toJson(), state.loops[ItemId('T-2')]!.toJson());
+      expect(back.withPending(const []).loops, hasLength(1), reason: 'loops survive other changes');
       expect(ActionState.fromJson(const {}).statuses, isNull);
     });
   });
@@ -404,17 +418,26 @@ final class _ActionLauncher extends AgentLauncher {
 
   final Backlog backlog;
   final started = <String>[];
+  final prompts = <String>[];
   final _runs = <ItemId, AgentRun>{};
+  Map<ItemId, AgentSession> sessions = const {};
 
   @override
   Future<DispatchConditions> conditions(DispatcherConfig config, String backlogRoot, BacklogSnapshot snapshot) async =>
-      DispatchConditions(runs: [..._runs.values]);
+      DispatchConditions(runs: [..._runs.values], sessions: sessions);
 
   @override
   Future<void> launch(DispatchAssignment assignment) async {
     final action = assignment.action;
     await backlog.claims.claim('${assignment.id}', assignment.agent, force: action != null, mirror: action == null);
-    started.add(action == null ? '${assignment.id} agent' : '${assignment.id} ${action.name} ${assignment.trigger.id}');
+    started.add(
+      assignment.fix != null
+          ? '${assignment.id} fix ${assignment.fix!.round}${assignment.resume == null ? '' : ' resumed'}'
+          : action == null
+          ? '${assignment.id} agent'
+          : '${assignment.id} ${action.name} ${assignment.trigger.id}',
+    );
+    prompts.add(assignment.prompt);
     _runs[assignment.id] = AgentRun(
       item: assignment.id,
       worktree: assignment.agent,
@@ -445,6 +468,190 @@ final class _ActionLauncher extends AgentLauncher {
     final run = _runs.remove(ItemId(id))!;
     await backlog.claims.drop(id, run.worktree);
   }
+}
+
+void _reviewLoopTests() {
+  group('Review loop (auto_fix)', () {
+    late Backlog backlog;
+    late FixedClock clock;
+    late _ActionLauncher launcher;
+    late List<String> notes;
+    late Dispatcher dispatcher;
+
+    Future<String> git(List<String> args) async {
+      final result = await Process.run('git', [
+        '-c',
+        'user.name=T',
+        '-c',
+        'user.email=t@example.com',
+        ...args,
+      ], workingDirectory: backlog.root);
+      expect(result.exitCode, 0, reason: '${result.stderr}');
+      return '${result.stdout}'.trim();
+    }
+
+    /// A new commit on the item's branch; its id.
+    Future<String> commit(String message) async {
+      await git(['commit', '-q', '--allow-empty', '-m', message]);
+      return git(['rev-parse', 'HEAD']);
+    }
+
+    Future<void> review(ReviewVerdict verdict, String commit, {String text = '1. Off by one.\n2. No test.'}) async {
+      clock.advance(const Duration(minutes: 1));
+      await backlog.items.comment('T-0001', author: 'w2', text: text, review: verdict, commit: commit.substring(0, 12));
+    }
+
+    Future<void> tick() async {
+      clock.advance(const Duration(minutes: 1));
+      await dispatcher.evaluate();
+    }
+
+    Future<void> setUpLoop({int autoFix = 2, String mode = 'manual', String status = 'in-progress'}) async {
+      (backlog, clock) = await tempBacklog(
+        config:
+            '''
+dispatcher:
+  mode: $mode
+  worktrees: [w1, w2]
+  agent: bot
+  agents:
+    bot: {command: "bot -p {prompt}", output: claude-stream-json, resume: "--resume {session}"}
+  actions:
+    - {name: AI review, review: true, on_enter: review${autoFix == 0 ? '' : ', auto_fix: $autoFix'}}
+''',
+      );
+      // The backlog folder is the code repository here: branch heads for stale reviews.
+      await git(['init', '-q', '-b', 'main']);
+      await git(['commit', '-q', '--allow-empty', '-m', 'init']);
+      await git(['switch', '-q', '-c', 'agent/T-0001']);
+      notes = [];
+      launcher = _ActionLauncher(backlog);
+      dispatcher = Dispatcher(
+        snapshot: backlog.planning.snapshot,
+        backlogRoot: backlog.root,
+        launcher: launcher,
+        clock: clock,
+        timer: (_, _) => Timer(const Duration(days: 1), () {}),
+        onError: (error, _) => fail('$error'),
+        actions: FileActionStateStore(stateDir: '${backlog.root}/.state', project: 'demo'),
+        note: (item, text) async => notes.add(text),
+      );
+      addTearDown(dispatcher.close);
+      await backlog.items.create(NewItem(title: 'A', status: status));
+      await backlog.items.update('T-0001', [FieldChange.parse('branch=agent/T-0001')]);
+      launcher.sessions = {
+        ItemId('T-0001'): AgentSession(
+          item: ItemId('T-0001'),
+          id: 'sess-1',
+          worktree: 'w1',
+          agent: 'bot',
+          startedAt: clock.now(),
+          endedAt: clock.now(),
+        ),
+      };
+      await dispatcher.evaluate();
+    }
+
+    test('changes wake the item agent in its session; its new commits are reviewed again; then a person', () async {
+      await setUpLoop();
+      final first = await commit('Work');
+      await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+      await tick();
+      expect(launcher.started, ['T-0001 AI review on_enter']);
+      expect(dispatcher.current!.reviewOf(dispatcher.current!.snapshot[ItemId('T-0001')]!), ReviewState.running);
+
+      await review(ReviewVerdict.changes, first);
+      await tick();
+      expect(launcher.started, hasLength(1), reason: 'the review still runs');
+      await launcher.finish('T-0001');
+      await tick();
+      expect(launcher.started.last, 'T-0001 fix 1 resumed');
+      final prompt = launcher.prompts.last;
+      expect(prompt, contains('An AI review of your work asks for changes (automatic fix round 1 of 2)'));
+      expect(prompt, contains('1. Off by one.\n2. No test.'));
+      expect(prompt, contains('The review by w2 (of commit ${first.substring(0, 12)})'));
+      expect(prompt, contains('run `backlog set T-0001 status=review` and stop'));
+      expect(prompt, contains('Never push.'));
+      expect(notes.last, contains('started the agent in w1 to fix them (automatic round 1 of 2)'));
+      final item = (await backlog.planning.snapshot())[ItemId('T-0001')]!;
+      expect((item.item.status, item.claim!.agent), ('review', 'w1'), reason: 'the agent took it in review');
+
+      await tick();
+      expect(launcher.started, hasLength(2), reason: 'nothing while the agent fixes');
+      final second = await commit('Fix');
+      await launcher.finish('T-0001');
+      await tick();
+      expect(launcher.started.last, 'T-0001 AI review on_enter', reason: 'new commits: review again');
+
+      await review(ReviewVerdict.changes, second);
+      await launcher.finish('T-0001');
+      await tick();
+      expect(launcher.started.last, 'T-0001 fix 2 resumed');
+      final third = await commit('Fix again');
+      await launcher.finish('T-0001');
+      await tick();
+      expect(launcher.started.last, 'T-0001 AI review on_enter');
+      await review(ReviewVerdict.changes, third);
+      await launcher.finish('T-0001');
+      await tick();
+      await tick();
+      expect(launcher.started, hasLength(5), reason: 'two rounds, then it stops');
+      expect(
+        notes.last,
+        'The AI review still asks for changes after 2 automatic fix rounds (auto_fix: 2); '
+        'a person decides now.',
+      );
+
+      // A person asks for a review again: a new loop.
+      await dispatcher.runAction('T-0001', 'AI review');
+      await review(ReviewVerdict.ok, third, text: 'Fine.');
+      await launcher.finish('T-0001');
+      await tick();
+      expect(launcher.started.last, 'T-0001 AI review request', reason: 'ok ends the loop');
+      expect(launcher.started, hasLength(6));
+    });
+
+    test('a fix without new commits ends the loop; ok and a missing verdict end it too', () async {
+      await setUpLoop(autoFix: 3, status: 'review');
+      final first = await commit('Work');
+      await dispatcher.runAction('T-0001', 'AI review');
+      await review(ReviewVerdict.changes, first);
+      await launcher.finish('T-0001');
+      await tick();
+      expect(launcher.started.last, 'T-0001 fix 1 resumed');
+      await launcher.finish('T-0001');
+      await tick();
+      expect(notes.last, contains('without new commits; the automatic fixes stop here'));
+      expect(launcher.started, hasLength(2));
+
+      await dispatcher.runAction('T-0001', 'AI review');
+      await launcher.finish('T-0001'); // ended without backlog review
+      await tick();
+      expect(launcher.started, hasLength(3));
+    });
+
+    test('without auto_fix a review asking for changes wakes nobody, also in auto mode', () async {
+      await setUpLoop(autoFix: 0, mode: 'auto', status: 'review');
+      final first = await commit('Work');
+      await dispatcher.runAction('T-0001', 'AI review');
+      await review(ReviewVerdict.changes, first);
+      await launcher.finish('T-0001');
+      await tick();
+      await tick();
+      expect(launcher.started, ['T-0001 AI review request']);
+      expect(dispatcher.current!.assignments, isEmpty, reason: 'a review is no reply for the agent');
+      final planned = dispatcher.current!.snapshot[ItemId('T-0001')]!;
+      expect((planned.review, dispatcher.current!.reviewOf(planned)), (ReviewState.changes, ReviewState.changes));
+
+      // A person's comment is a reply; the resumed agent sees the review.
+      clock.advance(const Duration(minutes: 1));
+      await backlog.items.comment('T-0001', author: 'tobik', text: 'Please fix finding 1.');
+      await tick();
+      expect(launcher.started.last, 'T-0001 agent');
+      expect(launcher.prompts.last, contains('### w2 · '));
+      expect(launcher.prompts.last, contains('· review changes @'));
+    });
+  });
 }
 
 final class _MemoryRequests implements ActionRequests {

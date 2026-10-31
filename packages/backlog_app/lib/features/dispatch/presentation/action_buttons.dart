@@ -20,7 +20,8 @@ IconData actionIcon(ActionDto action) => switch (action.kind) {
 String actionHint(ActionDto action) => switch (action.kind) {
   _ when action.review =>
     'Starts ${action.agent ?? 'the agent'} in a new session to review the item\'s branch; it changes nothing and '
-        'records its verdict in the discussion',
+        'records its verdict in the discussion'
+        '${action.autoFix > 0 ? '; on changes the item\'s agent fixes them, up to ${action.autoFix} rounds' : ''}',
   'prompt' =>
     'Starts ${action.agent ?? 'the agent'} on this item'
         '${action.fresh ? ' in a new session' : ', continuing its session when it can'}; the status stays',

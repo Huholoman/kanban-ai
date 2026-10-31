@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 
+import '../../items/domain/discussion.dart';
 import '../../items/domain/item_id.dart';
 import '../../planning/domain/backlog_snapshot.dart';
+import '../../planning/domain/review_state.dart';
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/action_definition.dart';
@@ -208,6 +210,10 @@ final class Dispatcher {
       try {
         // After a launch the plan is stale; the launch's change comes back here.
         if (!launched) {
+          if (await _runLoops(plan) case final after?) {
+            if (!after.sameDecisionAs(plan)) _plans.add(after);
+            _current = plan = after;
+          }
           if (await _runActions(plan) case final after?) {
             if (!after.sameDecisionAs(plan)) _plans.add(after);
             _current = plan = after;
@@ -295,6 +301,151 @@ final class Dispatcher {
     return changed ? await _plan() ?? current : null;
   }
 
+  /// Moves the review ↔ fix loops of AI reviews with `auto_fix` on, in
+  /// either mode (see [ReviewLoop]); returns the plan after a change, or
+  /// null when nothing happened.
+  ///
+  /// Nothing happens while anything runs or is queued for the item. After a
+  /// review: `ok` (or no verdict at all) ends the loop; `changes` wakes the
+  /// item's agent to fix them ([DispatchPlan.fixStart], waiting for a free
+  /// worktree), unless `auto_fix` rounds ran already — then the loop is
+  /// exhausted and a person decides. After a fix: new commits on the
+  /// branch (the review is `stale`) queue the review again; none end the
+  /// loop.
+  Future<DispatchPlan?> _runLoops(DispatchPlan plan) async {
+    final state = await _actions.load();
+    if (state.loops.isEmpty) return null;
+    final loops = {...state.loops};
+    final queued = <PendingAction>[];
+    var changed = false;
+    var current = plan;
+    final now = _clock.now();
+    for (final MapEntry(key: id, value: loop) in state.loops.entries) {
+      final planned = current.snapshot[id];
+      final action = current.config.action(loop.action);
+      if (planned == null || planned.isDone || action == null || !action.review || action.autoFix == 0) {
+        loops.remove(id);
+        changed = true;
+        continue;
+      }
+      if (loop.phase == ReviewLoopPhase.exhausted) continue;
+      if (current.runFor(id) != null || current.pending.any((p) => p.item == id)) continue;
+      final rounds = action.autoFix;
+      if (loop.phase == ReviewLoopPhase.fixing) {
+        changed = true;
+        if (planned.review == ReviewState.stale) {
+          queued.add(PendingAction(item: id, action: action.name, status: planned.item.status, since: now.toUtc()));
+          loops[id] = loop.to(ReviewLoopPhase.reviewing, now);
+          _log('Dispatcher: $id has new commits after the fix; queued the action "${action.name}" again.');
+        } else {
+          loops.remove(id);
+          await _say(
+            id,
+            'The agent ended the fix round ${loop.round} of the AI review without new commits; '
+            'the automatic fixes stop here.',
+          );
+        }
+        continue;
+      }
+      // Reviewing, and the review has ended.
+      final review = planned.item.discussion.lastReview;
+      final since = DateTime.fromMillisecondsSinceEpoch(
+        loop.since.millisecondsSinceEpoch ~/ 1000 * 1000,
+        isUtc: true,
+      ); // comments have seconds
+      if (review == null || review.at.isBefore(since) || review.review == ReviewVerdict.ok) {
+        loops.remove(id);
+        changed = true;
+        _log(
+          'Dispatcher: the review loop of $id ends: '
+          '${review == null || review.at.isBefore(since) ? 'the review gave no verdict' : 'the review is ok'}.',
+        );
+        continue;
+      }
+      if (loop.round >= rounds) {
+        loops[id] = loop.to(ReviewLoopPhase.exhausted, now);
+        changed = true;
+        await _say(
+          id,
+          'The AI review still asks for changes after $rounds automatic fix round${rounds == 1 ? '' : 's'} '
+          '(auto_fix: $rounds); a person decides now.',
+        );
+        continue;
+      }
+      final DispatchAssignment assignment;
+      try {
+        assignment = current.fixStart(id, review: review, round: loop.round + 1, rounds: rounds);
+        await _launcher.launch(assignment);
+      } on UnavailableException {
+        continue; // waits for a free worktree
+      } on ClaimConflictException {
+        continue; // waits until the claim is gone
+      } on BacklogException catch (error) {
+        loops.remove(id);
+        changed = true;
+        await _say(id, 'Could not wake the agent to fix the findings of the AI review: ${error.message}');
+        continue;
+      }
+      _launched.add(assignment.key);
+      loops[id] = loop.to(ReviewLoopPhase.fixing, _clock.now(), round: loop.round + 1);
+      changed = true;
+      _log(
+        'Dispatcher: the AI review of $id asks for changes; started its agent in ${assignment.agent} to fix them '
+        '(round ${loop.round + 1} of $rounds${assignment.resume == null ? '' : ', continuing its session'}).',
+      );
+      await _say(
+        id,
+        'The AI review asks for changes: started the agent in ${assignment.agent} to fix them '
+        '(automatic round ${loop.round + 1} of $rounds).',
+      );
+      current = await _plan() ?? current;
+    }
+    if (!changed) return null;
+    final latest = await _actions.load();
+    await _actions.save(
+      latest
+          .withPending([
+            ...latest.pending,
+            for (final action in queued)
+              if (!latest.pending.any((p) => p.item == action.item && p.action == action.action)) action,
+          ])
+          .withLoops(loops),
+    );
+    return await _plan() ?? current;
+  }
+
+  /// Starts or continues the review loop of [item] when the review [action]
+  /// with `auto_fix` starts for it: a loop in progress keeps its rounds, a
+  /// new one (or after an exhausted one) starts from zero.
+  Future<void> _reviewStarted(ItemId item, ActionDefinition action) async {
+    if (!action.review || action.autoFix == 0) return;
+    final state = await _actions.load();
+    final existing = state.loops[item];
+    final round = existing == null || existing.phase == ReviewLoopPhase.exhausted ? 0 : existing.round;
+    await _actions.save(
+      state.withLoops({
+        ...state.loops,
+        item: ReviewLoop(
+          item: item,
+          action: action.name,
+          round: round,
+          phase: ReviewLoopPhase.reviewing,
+          since: _clock.now(),
+        ),
+      }),
+    );
+  }
+
+  /// A note on [item] by the dispatcher, and the same in the log.
+  Future<void> _say(ItemId item, String text) async {
+    _log('Dispatcher: $item: $text');
+    try {
+      await _note?.call(item, text);
+    } on BacklogException catch (error) {
+      _log('Dispatcher: could not add a note to $item: ${error.message}');
+    }
+  }
+
   Future<void> _failed(ItemId item, String action, String message, String why) async {
     _log('Dispatcher: the action "$action" for $item ($why) could not start: $message');
     try {
@@ -310,6 +461,7 @@ final class Dispatcher {
     if (start.agent case final assignment?) {
       await _launcher.launch(assignment);
       _launched.add(assignment.key);
+      await _reviewStarted(assignment.id, assignment.action!);
       return 'agent ${assignment.agentProfile.name} in ${assignment.agent}'
           '${assignment.resume == null ? '' : ', continuing its session'}';
     }

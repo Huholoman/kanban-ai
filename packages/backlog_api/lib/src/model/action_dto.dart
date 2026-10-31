@@ -11,6 +11,7 @@ final class ActionDto {
     this.agent,
     this.fresh = false,
     this.review = false,
+    this.autoFix = 0,
   });
 
   factory ActionDto.fromJson(Json json) => ActionDto(
@@ -21,6 +22,7 @@ final class ActionDto {
     agent: json.optionalString('agent'),
     fresh: json.boolean('fresh'),
     review: json.boolean('review'),
+    autoFix: json['auto_fix'] == null ? 0 : json.integer('auto_fix'),
   );
 
   final String name;
@@ -45,6 +47,10 @@ final class ActionDto {
   /// task that ends with `backlog review`.
   final bool review;
 
+  /// For a [review]: at most this many automatic fix rounds by the item's
+  /// agent when it asks for changes (0: none).
+  final int autoFix;
+
   bool get isPrompt => kind == 'prompt';
 
   /// Whether items in [status] show it as a button.
@@ -61,6 +67,7 @@ final class ActionDto {
     'agent': agent,
     'fresh': fresh,
     'review': review,
+    'auto_fix': autoFix,
   };
 }
 

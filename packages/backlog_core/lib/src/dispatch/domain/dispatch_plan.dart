@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 
 import '../../claims/domain/claim.dart';
+import '../../items/domain/discussion.dart';
 import '../../items/domain/item_id.dart';
 import '../../planning/domain/backlog_snapshot.dart';
 import '../../planning/domain/planned_item.dart';
@@ -189,6 +190,7 @@ final class DispatchAssignment {
     this.createFrom,
     this.action,
     this.trigger = ActionTrigger.request,
+    this.fix,
   });
 
   /// Fills the [config]'s prompt, command and environment for [item] in
@@ -210,6 +212,7 @@ final class DispatchAssignment {
     bool create = false,
     ActionDefinition? action,
     ActionTrigger trigger = ActionTrigger.request,
+    ReviewFix? fix,
   }) {
     final branch = branchFor(item);
     final values = {
@@ -224,7 +227,24 @@ final class DispatchAssignment {
     final session = resume != null && resume.resumableBy(profile, worktree.name) ? resume : null;
     final news = session?.news(session.commentsIn(item.item));
     final String prompt;
-    if (action == null) {
+    if (fix != null) {
+      prompt = fixFrame.render({
+        ...values,
+        'status': item.item.status,
+        'context': session == null
+            ? 'Run `backlog instructions` and `backlog show ${item.id}` first.'
+            : 'You continue your earlier session on this item; run `backlog show ${item.id}` to see it as it is now.',
+        'round': '${fix.round}',
+        'rounds': '${fix.rounds}',
+        'publish': config.pr == null
+            ? 'Never push.'
+            : 'Publish your commits with `backlog pr ${item.id}` (it pushes your branch and updates the pull '
+                  'request); never run `git push`.',
+        'reviewer': fix.review.author,
+        'reviewed': fix.review.commit == null ? 'no commit named' : 'of commit ${fix.review.commit}',
+        'review': fix.review.text,
+      });
+    } else if (action == null) {
       prompt = session == null ? config.prompt.render(values) : config.resumePrompt.render({...values, 'news': news!});
     } else {
       final actionValues = {
@@ -274,8 +294,36 @@ final class DispatchAssignment {
       createFrom: create ? config.newWorktrees?.resolveRepo(backlogRoot) : null,
       action: action,
       trigger: trigger,
+      fix: fix,
     );
   }
+
+  /// What the item's agent is told when an AI review with `auto_fix` asks
+  /// for changes: fix the findings of the review (`{review}`), publish
+  /// (`{publish}`), comment, set the status again and stop.
+  static final fixFrame = TextTemplate(
+    'You are the agent {worktree} on backlog item {id} ("{title}") in this git worktree, on branch {branch}. The '
+    'item is claimed for you (BACKLOG_AGENT={worktree}) while you work; it stays in status {status}.\n'
+    '{context}\n\n'
+    'An AI review of your work asks for changes (automatic fix round {round} of {rounds}). Fix its findings '
+    'below in small commits whose messages contain {id}. Where a finding is wrong, do not change the code; say '
+    'why instead. {publish} Then say briefly what you fixed (and what not, and why) with '
+    '`backlog comment {id} "…"`, run `backlog set {id} status={status}` and stop. If something is unclear, ask '
+    'with `backlog ask {id} "<your question>"` and stop.\n\n'
+    'The review by {reviewer} ({reviewed}):\n\n{review}',
+    known: const [
+      ...DispatcherConfig.promptPlaceholders,
+      'status',
+      'context',
+      'round',
+      'rounds',
+      'publish',
+      'reviewer',
+      'reviewed',
+      'review',
+    ],
+    label: 'fix prompt',
+  );
 
   /// What the agent of a prompt action is told: who and where it is, that
   /// the item keeps its status, the item's context, the action's text
@@ -344,6 +392,10 @@ final class DispatchAssignment {
   /// Why the [action] runs.
   final ActionTrigger trigger;
 
+  /// The item's own agent is woken to fix the findings of an AI review
+  /// (`auto_fix`); null otherwise.
+  final ReviewFix? fix;
+
   ItemId get id => item.id;
 
   /// The name the claim is taken under.
@@ -351,7 +403,19 @@ final class DispatchAssignment {
 
   /// `<id>@<worktree>` (with `+resume` when continuing a session); equal
   /// keys mean the same decision.
-  String get key => '$id@${worktree.name}${resume == null ? '' : '+resume'}${action == null ? '' : ':${action!.name}'}';
+  String get key =>
+      '$id@${worktree.name}${resume == null ? '' : '+resume'}${action == null ? '' : ':${action!.name}'}'
+      '${fix == null ? '' : '+fix'}';
+}
+
+/// Round [round] of [rounds] (`auto_fix`) of fixing the findings of the AI
+/// [review].
+final class ReviewFix {
+  const ReviewFix({required this.review, required this.round, required this.rounds});
+
+  final Comment review;
+  final int round;
+  final int rounds;
 }
 
 /// What the dispatcher would do with one [BacklogSnapshot]: which ready items
@@ -692,6 +756,38 @@ final class DispatchPlan {
           'KANBAN_AI_ACTION': action.name,
         },
       ),
+    );
+  }
+
+  /// The item's own agent, woken to fix the findings of an AI [review]
+  /// (`auto_fix` round [round] of [rounds]): it continues the item's
+  /// session in its worktree when it can, else starts a new one where the
+  /// item's branch is checked out, else in any free (or new) worktree.
+  /// Fails with `UnavailableException` while something runs for the item or
+  /// no worktree is free, `ClaimConflictException` when it is claimed.
+  DispatchAssignment fixStart(ItemId id, {required Comment review, required int round, required int rounds}) {
+    final planned = snapshot[id] ?? (throw NotFoundException('No item $id.'));
+    if (runFor(id) case final run?) {
+      throw UnavailableException('${run.action ?? 'An agent'} already runs for $id.');
+    }
+    if (planned.isClaimed) throw ClaimConflictException('$id is claimed by ${planned.claim!.agent}.');
+    final free = available;
+    if (free.isEmpty || capacity == 0) {
+      throw UnavailableException('No free worktree to fix the review of $id ($running/${config.maxAgents} running).');
+    }
+    final session = sessions[id];
+    final own = _resumableIn(session, config.agent, free);
+    final branch = DispatchAssignment.branchFor(planned);
+    final target = own ?? free.firstWhereOrNull((w) => !w.isNew && branches[w.name] == branch) ?? free.first;
+    return DispatchAssignment.render(
+      config,
+      item: planned,
+      worktree: target.worktree,
+      path: target.path,
+      backlogRoot: backlogRoot,
+      resume: own == null ? null : session,
+      create: target.isNew,
+      fix: ReviewFix(review: review, round: round, rounds: rounds),
     );
   }
 

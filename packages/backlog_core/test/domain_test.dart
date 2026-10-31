@@ -348,11 +348,13 @@ dispatcher:
   worktrees: [a]
   actions:
     - {name: AI review, review: true, on_enter: review}
-    - {name: Security review, review: true, statuses: [review], agent: claude, prompt: "Focus on {branch}."}
+    - {name: Security review, review: true, statuses: [review], agent: claude, prompt: "Focus on {branch}.", auto_fix: 2}
 ''').dispatcher!.actions;
       expect((builtIn.kind, builtIn.review, builtIn.fresh, builtIn.prompt), (ActionKind.prompt, true, true, null));
       expect(builtIn.summary, 'AI review, agent, new session');
-      expect((extra.review, extra.prompt!.render({'branch': 'b'})), (true, 'Focus on b.'));
+      expect(builtIn.autoFix, 0);
+      expect((extra.review, extra.prompt!.render({'branch': 'b'}), extra.autoFix), (true, 'Focus on b.', 2));
+      expect(extra.summary, 'AI review (auto-fix 2), agent claude, new session');
       expect(dispatcher.action('merge'), isNull);
     });
 
@@ -366,6 +368,9 @@ dispatcher:
       rejects('{name: A, review: true, run: noop}', 'a review runs an agent; it takes no run');
       rejects('{name: A, review: true, fresh: false}', 'a review always runs in a new session');
       rejects('{name: A, review: yes please}', 'review must be true or false');
+      rejects('{name: A, prompt: x, auto_fix: 2}', 'auto_fix only applies to a review');
+      rejects('{name: A, review: true, auto_fix: -1}', 'auto_fix must be 0 or more rounds');
+      rejects('{name: A, review: true, auto_fix: two}', 'auto_fix must be a number of rounds');
       rejects('{name: A, run: "mise run check"}', 'unknown built-in action "mise run check" (known: noop)');
       rejects('{name: A, prompt: x}, {name: A, run: noop}', 'Duplicate dispatcher action "A"');
       rejects('{name: A, prompt: x, on_enter: reviewed}', 'unknown status "reviewed"');
