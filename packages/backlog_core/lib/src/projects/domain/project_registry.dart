@@ -6,11 +6,11 @@ import '../../shared/slug.dart';
 /// One backlog in the project registry.
 final class ProjectEntry {
   /// [path] must be absolute; ids are checked by [ProjectRegistry].
-  const ProjectEntry({required this.id, required this.path, this.name});
+  const ProjectEntry({required this.id, required this.path, this.name, this.pinned = false});
 
   /// An entry whose id is derived from [path] (see [ProjectRegistry.deriveId]).
-  factory ProjectEntry.at(String path, {String? id, String? name}) =>
-      ProjectEntry(id: id ?? ProjectRegistry.deriveId(path), path: path, name: name);
+  factory ProjectEntry.at(String path, {String? id, String? name, bool pinned = false}) =>
+      ProjectEntry(id: id ?? ProjectRegistry.deriveId(path), path: path, name: name, pinned: pinned);
 
   /// Stable slug used in URLs (`/api/p/<id>/…`).
   final String id;
@@ -21,14 +21,19 @@ final class ProjectEntry {
   /// Display name as written in the registry; null when not given.
   final String? name;
 
+  /// `pinned: true` in the registry, for clients that offer pinned projects
+  /// first.
+  final bool pinned;
+
   /// [name], or the project folder's name.
   String get displayName => name ?? ProjectRegistry.projectFolderName(path);
 
   @override
-  bool operator ==(Object other) => other is ProjectEntry && other.id == id && other.path == path && other.name == name;
+  bool operator ==(Object other) =>
+      other is ProjectEntry && other.id == id && other.path == path && other.name == name && other.pinned == pinned;
 
   @override
-  int get hashCode => Object.hash(id, path, name);
+  int get hashCode => Object.hash(id, path, name, pinned);
 
   @override
   String toString() => '$id ($path)';

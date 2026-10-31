@@ -55,11 +55,14 @@ ProjectRegistry parseProjectRegistryYaml(String source, {required String baseDir
     }
 
     final raw = text('path') ?? (throw ConfigurationException('$at: `path` is missing.'));
+    final pinned = node['pinned'] ?? false;
+    if (pinned is! bool) throw ConfigurationException('$at: `pinned` must be true or false.');
     entries.add(
       ProjectEntry.at(
         resolveRegistryPath(raw, baseDir: baseDir, home: home),
         id: text('id'),
         name: text('name'),
+        pinned: pinned,
       ),
     );
   }
@@ -106,7 +109,12 @@ final class YamlProjectRegistryStore implements ProjectRegistryStore {
   @override
   Future<void> append(ProjectEntry entry) async {
     final source = await _read() ?? '';
-    final node = {'id': entry.id, if (entry.name != null) 'name': entry.name, 'path': _written(entry.path)};
+    final node = {
+      'id': entry.id,
+      if (entry.name != null) 'name': entry.name,
+      'path': _written(entry.path),
+      if (entry.pinned) 'pinned': true,
+    };
     final String updated;
     if (loadYaml(source) case {'projects': final YamlList list} when list.isNotEmpty) {
       updated = (YamlEditor(source)..appendToList(['projects'], node)).toString();

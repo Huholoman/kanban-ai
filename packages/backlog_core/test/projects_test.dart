@@ -78,12 +78,13 @@ projects:
   - id: tools
     name: Tools
     path: ../tools
+    pinned: true
     color: red                 # unknown keys are kept
 ''');
       final registry = await service.registry();
-      expect(registry.entries.map((e) => (e.id, e.displayName, e.path)), [
-        ('hobbyo', 'hobbyo', p.join(dir.path, 'home', 'p', 'hobbyo', 'backlog')),
-        ('tools', 'Tools', p.join(dir.path, 'tools')),
+      expect(registry.entries.map((e) => (e.id, e.displayName, e.path, e.pinned)), [
+        ('hobbyo', 'hobbyo', p.join(dir.path, 'home', 'p', 'hobbyo', 'backlog'), false),
+        ('tools', 'Tools', p.join(dir.path, 'tools'), true),
       ]);
 
       await service.add(p.join(dir.path, 'new'));
@@ -91,6 +92,8 @@ projects:
       final text = File(file).readAsStringSync();
       expect(text, contains('# my projects'));
       expect(text, contains('color: red                 # unknown keys are kept'));
+      expect(text, contains('pinned: true'));
+      expect((await service.registry()).entries.map((e) => e.pinned), [true, false]);
       expect(text, isNot(contains('hobbyo')));
       expect((await service.registry()).entries.map((e) => e.id), ['tools', 'new']);
       expect(() => service.remove('hobbyo'), throwsA(isA<NotFoundException>()));
@@ -112,6 +115,7 @@ projects:
         'projects:\n  - id: x\n',
         '- a\n',
         'projects: [{path: a}, {path: b/a}]',
+        'projects: [{path: a, pinned: maybe}]',
       ]) {
         File(file).writeAsStringSync(source);
         expect(service.registry(), throwsA(isA<ConfigurationException>()), reason: source);

@@ -42,6 +42,7 @@ projects:
 - **Project folder** is the backlog folder itself, or its parent when the folder is called `backlog` (`~/p/hobbyo/backlog` → `hobbyo`).
 - **id** — lower-case letters, digits, `-`, `_`, starting with a letter or digit; unique within the registry (a repeated or invalid id makes the whole file invalid). It appears in URLs (`/api/p/<id>/…`).
 - **Order** matters: the first project is the *default project*.
+- **pinned** — optional `true`/`false` (default false), read and written back; meant for clients that offer pinned projects first (not used yet).
 - Unknown keys and comments are kept; `backlog projects add/remove` edit the file in place. A missing file is an empty registry.
 
 ## 2. Configuration — `backlog.yaml`
