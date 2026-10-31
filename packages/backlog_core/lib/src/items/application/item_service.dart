@@ -127,16 +127,27 @@ final class ItemService {
   /// Adds a comment by [author] to the item's discussion (the `## Discussion`
   /// section of its body); a [question] makes the item wait for a person
   /// until someone else comments; a [note] neither answers it nor wakes the
-  /// item's agent.
+  /// item's agent; a [review] records the verdict of a review of the item's
+  /// work (optionally of [commit]), which neither answers nor wakes either.
   Future<Item> comment(
     String reference, {
     required String author,
     required String text,
     bool question = false,
     bool note = false,
+    ReviewVerdict? review,
+    String? commit,
   }) async {
     final item = await get(reference);
-    final comment = Comment(author: author, at: _clock.now(), text: text, question: question, note: note);
+    final comment = Comment(
+      author: author,
+      at: _clock.now(),
+      text: text,
+      question: question,
+      note: note,
+      review: review,
+      commit: commit,
+    );
     return update(item.id.value, const [], body: Discussion.append(item.body, comment));
   }
 

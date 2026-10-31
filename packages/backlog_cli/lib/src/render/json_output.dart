@@ -49,6 +49,8 @@ abstract final class JsonOutput {
     'text': comment.text,
     'question': comment.question,
     'note': comment.note,
+    'review': comment.review?.name,
+    'commit': comment.commit,
   };
 
   static Map<String, Object?> claim(Claim claim, {bool? expired}) => {

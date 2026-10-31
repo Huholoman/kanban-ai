@@ -14,6 +14,7 @@ export 'src/dispatch/infrastructure/action_files.dart';
 export 'src/dispatch/infrastructure/built_in_actions.dart';
 export 'src/dispatch/infrastructure/process_agent_launcher.dart';
 export 'src/dispatch/infrastructure/pull_request_opener.dart';
+export 'src/dispatch/infrastructure/review_recorder.dart';
 export 'src/dispatch/infrastructure/worktree_provisioner.dart';
 export 'src/infrastructure/backlog_layout.dart' show BacklogLayout;
 export 'src/items/application/field_change.dart';

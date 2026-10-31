@@ -185,7 +185,7 @@ backlog lint                    # before ending the session
 
 **Ready** means the status is `pickable` (`todo` by default), all `depends_on` items are done, there are no open children, nobody holds a claim, the item's `touches` do not overlap an item in progress, and no question in it waits for a person.
 
-**Discussion:** `backlog comment <id> "text"` and `backlog ask <id> "question"` append to a `## Discussion` section at the end of the item's body (author = `--as`, `BACKLOG_AGENT` or `$USER`; text `-` reads stdin). A question that nobody else has answered yet makes the item **need a person** (`needs_human`): it is not ready, so `next` and the dispatcher skip it, until someone answers with a comment. `backlog comment --note` adds only a note: it answers no question and does not wake the item's agent (see *Talking to the agent*). `backlog list -w needs_human=true` lists them; `show` says `NEEDS A PERSON`. When a discussion changes what the item asks for, the description or acceptance criteria above `## Discussion` are updated and the comments stay as the history.
+**Discussion:** `backlog comment <id> "text"` and `backlog ask <id> "question"` append to a `## Discussion` section at the end of the item's body (author = `--as`, `BACKLOG_AGENT` or `$USER`; text `-` reads stdin). A question that nobody else has answered yet makes the item **need a person** (`needs_human`): it is not ready, so `next` and the dispatcher skip it, until someone answers with a comment. `backlog comment --note` adds only a note: it answers no question and does not wake the item's agent (see *Talking to the agent*). `backlog review <id> --ok "…"` / `--changes "…"` records the verdict of a review (by an AI review agent or a person) the same way, naming the reviewed commit of the item's branch. `backlog list -w needs_human=true` lists them; `show` says `NEEDS A PERSON`. When a discussion changes what the item asks for, the description or acceptance criteria above `## Discussion` are updated and the comments stay as the history.
 
 **Touches keep agents apart:** an open item whose `touches` overlap the `touches` of an item in an active status (in progress, review) *waits for* it — `backlog list` shows `waits for MA-7f3a (touches overlap)`, JSON has `conflicting` and `conflicts_with`. It is not ready, so `next` skips it and `claim` needs `--force`, until the other item is done or released. Items without `touches` never wait. Two items in progress that overlap are a lint warning.
 
@@ -311,7 +311,7 @@ The hierarchy comes from `parent`. The type is just a label, so you can define y
 
 Files may be edited by hand. When the tool writes a file, it keeps comments, key order and unknown keys and changes only what changed, so git diffs stay small. Ids can be shortened: `7f3a` or `MA-7f` is enough when unambiguous.
 
-**The discussion** is the last section, `## Discussion`, written by `backlog comment` / `backlog ask` (and the board): one `### <author> · <date time> UTC` heading per comment, ` · question` for a question that waits for a person, ` · note` for a note. It is plain Markdown, so it can be read and edited by hand (seconds and `UTC` may be left out); a comment ends at the next comment heading, the section at the next `#`/`##` heading.
+**The discussion** is the last section, `## Discussion`, written by `backlog comment` / `backlog ask` (and the board): one `### <author> · <date time> UTC` heading per comment, ` · question` for a question that waits for a person, ` · note` for a note, ` · review ok` / ` · review changes @<commit>` for a review (its numbered list items are its findings). It is plain Markdown, so it can be read and edited by hand (seconds and `UTC` may be left out); a comment ends at the next comment heading, the section at the next `#`/`##` heading.
 
 Derived properties are computed, never stored: `blocked`, `conflicting` (waits for overlapping work in progress), `needs_human` (an unanswered question), `ready`, and the progress of the checklist and of the children.
 
@@ -447,6 +447,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `claim / heartbeat / release / done <id> --as <agent>` | work with claims (`--force` overrides the checks) |
 | `claims` | who works on what |
 | `comment <id> "text" [--as a] [--note]`, `ask <id> "question" [--as a]` | add to the item's discussion; `ask` makes it need a person until answered, `--note` neither answers nor wakes the agent (text `-` reads stdin) |
+| `review <id> --ok ["summary"]` / `--changes "summary + 1. … 2. …"` | the verdict of a review as a review comment naming the reviewed head of the item's branch; answers no question, wakes no agent |
 | `action <id> ["name"]` | the actions of the item's status; with a name, ask the running server to run it (result in the discussion) |
 | `pr <id> [--description text \| --description-file f\|-]` | push the item's branch and open its pull request (`dispatcher.pr`), URL into `pr`; with a PR already, only push |
 | `view [name]` | saved views |

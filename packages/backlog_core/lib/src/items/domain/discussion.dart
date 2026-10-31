@@ -1,13 +1,44 @@
+import 'package:collection/collection.dart';
+
 import '../../shared/errors.dart';
+
+/// The verdict of a review comment ([Comment.review]).
+enum ReviewVerdict {
+  /// Nothing to change.
+  ok,
+
+  /// Findings that should be fixed.
+  changes;
+
+  /// [ReviewVerdict] by name (`ok`, `changes`); null for anything else.
+  static ReviewVerdict? parse(String? value) => values.where((v) => v.name == value).firstOrNull;
+}
 
 /// One comment of an item's discussion.
 final class Comment {
-  Comment({required String author, required this.at, required String text, this.question = false, this.note = false})
-    : author = _author(author),
-      text = text.trim() {
+  Comment({
+    required String author,
+    required this.at,
+    required String text,
+    this.question = false,
+    this.note = false,
+    this.review,
+    String? commit,
+  }) : author = _author(author),
+       text = text.trim(),
+       commit = commit == null || commit.trim().isEmpty ? null : commit.trim().toLowerCase() {
     if (this.text.isEmpty) throw const InvalidInputException('A comment needs some text.');
-    if (question && note) throw const InvalidInputException('A comment is either a question or a note.');
+    if ([question, note, review != null].where((flag) => flag).length > 1) {
+      throw const InvalidInputException('A comment is a question, a note or a review, not several of them.');
+    }
+    if (this.commit case final commit? when review == null || !_commitPattern.hasMatch(commit)) {
+      throw InvalidInputException(
+        review == null ? 'Only a review names a commit.' : '"$commit" is not a commit id (4–40 hex digits).',
+      );
+    }
   }
+
+  static final _commitPattern = RegExp(r'^[0-9a-f]{4,40}$');
 
   /// Who wrote it: an agent (its worktree name) or a person.
   final String author;
@@ -26,20 +57,48 @@ final class Comment {
   /// as context.
   final bool note;
 
+  /// A review of the item's work (`backlog review`): its verdict; null for
+  /// other comments. Like a note it neither answers an open question nor
+  /// wakes the item's agent, but a resumed agent sees it.
+  final ReviewVerdict? review;
+
+  /// The commit the review looked at (the head of the item's branch then);
+  /// newer commits make the review outdated. Only for reviews, optional.
+  final String? commit;
+
+  /// Context rather than something said to the agent: a [note] or a
+  /// [review].
+  bool get isContext => note || review != null;
+
+  /// The findings of a review that asks for changes: the lines of its text
+  /// that start a numbered list (`1. …`, `2) …`), outside code blocks.
+  int get findings {
+    if (review != ReviewVerdict.changes) return 0;
+    var count = 0;
+    var inFence = false;
+    for (final line in text.split('\n')) {
+      if (Discussion._fence.hasMatch(line)) inFence = !inFence;
+      if (!inFence && RegExp(r'^\s{0,3}\d{1,3}[.)]\s+\S').hasMatch(line)) count++;
+    }
+    return count;
+  }
+
   static String _author(String author) {
     final name = author.replaceAll(RegExp(r'\s+'), ' ').replaceAll('·', '-').trim();
     if (name.isEmpty) throw const InvalidInputException('A comment needs an author.');
     return name;
   }
 
-  /// `### <author> · 2026-10-31 14:05:12 UTC` (with ` · question` or
-  /// ` · note`).
+  /// `### <author> · 2026-10-31 14:05:12 UTC` (with ` · question`,
+  /// ` · note` or ` · review ok|changes`, the latter with ` @<commit>` when
+  /// known).
   String get heading =>
-      '### $author · ${_stamp(at)}${question
-          ? ' · question'
-          : note
-          ? ' · note'
-          : ''}';
+      '### $author · ${_stamp(at)}${switch ((question, note, review)) {
+        (true, _, _) => ' · question',
+        (_, true, _) => ' · note',
+        (_, _, final ReviewVerdict verdict) => ' · review ${verdict.name}${commit == null ? '' : ' @$commit'}',
+        _ => '',
+      }}';
 
   static String _stamp(DateTime time) {
     final utc = time.toUtc();
@@ -66,6 +125,12 @@ final class Comment {
 /// ### tobik · 2026-10-31 15:02:41 UTC · note
 ///
 /// The export format may change next quarter.
+///
+/// ### monorepo-3 · 2026-10-31 16:10:00 UTC · review changes @1a2b3c4d5e6f
+///
+/// Works, two findings:
+/// 1. lib/export.dart:40 – the header row is missing.
+/// 2. No test for an empty backlog.
 /// ```
 ///
 /// Plain Markdown, so it reads well in the file and in git and can be edited
@@ -85,31 +150,40 @@ final class Discussion {
   bool get isEmpty => comments.isEmpty;
 
   /// The latest question no one else has answered yet (an answer is any
-  /// later comment of another author that is not a [Comment.note]); null
-  /// when there is none.
+  /// later comment of another author that is neither a [Comment.note] nor a
+  /// [Comment.review]); null when there is none.
   Comment? get openQuestion {
     Comment? open;
     for (final comment in comments) {
       if (comment.question) {
         open = comment;
-      } else if (open != null && comment.author != open.author && !comment.note) {
+      } else if (open != null && comment.author != open.author && !comment.isContext) {
         open = null;
       }
     }
     return open;
   }
 
-  /// Comments written after [time] by someone other than [except], notes
-  /// ([Comment.note]) only when [notes].
+  /// The latest review comment ([Comment.review]); null when there is none.
+  Comment? get lastReview => comments.lastWhereOrNull((comment) => comment.review != null);
+
+  /// Comments written after [time] by someone other than [except]. Notes
+  /// and reviews ([Comment.isContext]) only when [notes]; reviews then also
+  /// when [except] wrote them (a reviewer may run in the agent's worktree,
+  /// under its name).
   List<Comment> after(DateTime time, {String? except, bool notes = false}) => [
     for (final comment in comments)
-      if (comment.at.isAfter(time) && comment.author != except && (notes || !comment.note)) comment,
+      if (comment.at.isAfter(time) &&
+          (notes || !comment.isContext) &&
+          (comment.author != except || (notes && comment.review != null)))
+        comment,
   ];
 
   static final _sectionHeading = RegExp(r'^##\s+Discussion\s*$', caseSensitive: false);
   static final _higherHeading = RegExp(r'^#{1,2}\s');
   static final _commentHeading = RegExp(
-    r'^###\s+(.+?)\s+·\s+(\d{4}-\d\d-\d\d)[ T](\d\d:\d\d(?::\d\d)?)(?:\s*(?:UTC|Z))?(?:\s+·\s+(question|note))?\s*$',
+    r'^###\s+(.+?)\s+·\s+(\d{4}-\d\d-\d\d)[ T](\d\d:\d\d(?::\d\d)?)(?:\s*(?:UTC|Z))?'
+    r'(?:\s+·\s+(question|note|review\s+(ok|changes)(?:\s+@([0-9a-fA-F]{4,40}))?))?\s*$',
   );
   static final _fence = RegExp(r'^\s{0,3}(```|~~~)');
 
@@ -120,13 +194,23 @@ final class Discussion {
     final section = _section(lines);
     if (section == null) return empty;
     final comments = <Comment>[];
-    ({String author, DateTime at, bool question, bool note})? current;
+    ({String author, DateTime at, bool question, bool note, ReviewVerdict? review, String? commit})? current;
     final text = <String>[];
     void flush() {
       final head = current;
       final joined = text.join('\n').trim();
       if (head != null && joined.isNotEmpty) {
-        comments.add(Comment(author: head.author, at: head.at, text: joined, question: head.question, note: head.note));
+        comments.add(
+          Comment(
+            author: head.author,
+            at: head.at,
+            text: joined,
+            question: head.question,
+            note: head.note,
+            review: head.review,
+            commit: head.commit,
+          ),
+        );
       }
       text.clear();
     }
@@ -139,7 +223,14 @@ final class Discussion {
       final at = match == null ? null : DateTime.tryParse('${match[2]}T${match[3]}Z');
       if (match != null && at != null) {
         flush();
-        current = (author: match[1]!, at: at, question: match[4] == 'question', note: match[4] == 'note');
+        current = (
+          author: match[1]!,
+          at: at,
+          question: match[4] == 'question',
+          note: match[4] == 'note',
+          review: ReviewVerdict.parse(match[5]),
+          commit: match[6],
+        );
       } else if (current != null) {
         text.add(line);
       }

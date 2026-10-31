@@ -51,6 +51,7 @@ Future<int> runBacklogCli(List<String> arguments, CliContext context) async {
     DoneCommand(context),
     CommentCommand(context),
     AskCommand(context),
+    ReviewCommand(context),
     ActionCommand(context),
     ClaimsCommand(context),
     ViewCommand(context),
