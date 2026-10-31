@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:backlog_api/backlog_api.dart';
 
@@ -281,9 +282,16 @@ final class FakeBacklogApi implements BacklogApi {
   }
 
   @override
-  Future<ViewResultDto> view(String id, {String? groupBy}) async {
+  Future<ViewResultDto> view(String id, {String? groupBy, bool idsOnly = false}) async {
     viewLoads++;
-    return _view(id, groupBy);
+    final full = _view(id, groupBy);
+    if (!idsOnly) return full;
+    // Through JSON, as the server answers.
+    final named = {
+      ...full.toJson(),
+      'groups': [for (final group in full.groups) ViewGroupDto.ids(group.key, group.ids).toJson()],
+    };
+    return ViewResultDto.fromJson(jsonDecode(jsonEncode(named)) as Json);
   }
 
   ViewResultDto _view(String id, String? groupBy) {

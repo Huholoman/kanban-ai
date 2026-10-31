@@ -59,18 +59,29 @@ final class ViewSummaryDto {
 }
 
 final class ViewGroupDto {
-  const ViewGroupDto(this.key, this.items);
+  const ViewGroupDto(this.key, this.items) : _ids = null;
 
-  factory ViewGroupDto.fromJson(Json json) =>
-      ViewGroupDto(json.string('key'), json.objects('items').map(ItemDto.fromJson).toList());
+  /// A group that names its items only (`?ids=true`); [ViewResultDto.resolve]
+  /// fills them in.
+  const ViewGroupDto.ids(this.key, List<String> ids) : items = const [], _ids = ids;
+
+  factory ViewGroupDto.fromJson(Json json) => json['items'] == null
+      ? ViewGroupDto.ids(json.string('key'), json.strings('ids'))
+      : ViewGroupDto(json.string('key'), json.objects('items').map(ItemDto.fromJson).toList());
 
   /// Value of the `group_by` field; empty for items without it.
   final String key;
+
+  /// Empty in a group of [ViewGroupDto.ids].
   final List<ItemDto> items;
+  final List<String>? _ids;
+
+  /// Ids of the items, in order.
+  List<String> get ids => _ids ?? [for (final item in items) item.id];
 
   Json toJson() => {
     'key': key,
-    'items': [for (final item in items) item.toJson()],
+    if (_ids case final ids?) 'ids': ids else 'items': [for (final item in items) item.toJson()],
   };
 }
 
@@ -113,6 +124,21 @@ final class ViewResultDto {
   final List<ViewGroupDto> groups;
 
   List<ItemDto> get items => [for (final group in groups) ...group.items];
+
+  /// This result with the items of its groups taken from [index] by id
+  /// (for a result of `?ids=true`); ids missing from [index] are left out.
+  ViewResultDto resolve(Map<String, ItemDto> index) => ViewResultDto(
+    id: id,
+    name: name,
+    layout: layout,
+    groupBy: groupBy,
+    fields: fields,
+    columns: columns,
+    hidden: hidden,
+    groups: [
+      for (final group in groups) ViewGroupDto(group.key, [for (final id in group.ids) ?index[id]]),
+    ],
+  );
 
   ViewSummaryDto get summary => ViewSummaryDto(id: id, name: name, layout: layout, groupBy: groupBy);
 

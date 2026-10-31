@@ -164,7 +164,8 @@ abstract final class DtoMapper {
     count: count,
   );
 
-  static ViewResultDto view(ViewResult result, {Set<ItemId> reviewing = const {}}) {
+  /// With [idsOnly] the groups name their items by id only.
+  static ViewResultDto view(ViewResult result, {Set<ItemId> reviewing = const {}, bool idsOnly = false}) {
     final definition = result.definition;
     return ViewResultDto(
       id: definition.id,
@@ -176,7 +177,9 @@ abstract final class DtoMapper {
       hidden: result.hidden,
       groups: [
         for (final group in result.groups)
-          ViewGroupDto(group.key, [for (final planned in group.items) item(planned, reviewing: reviewing)]),
+          idsOnly
+              ? ViewGroupDto.ids(group.key, [for (final planned in group.items) planned.id.value])
+              : ViewGroupDto(group.key, [for (final planned in group.items) item(planned, reviewing: reviewing)]),
       ],
     );
   }

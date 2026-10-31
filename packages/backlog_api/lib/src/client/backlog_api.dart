@@ -36,8 +36,10 @@ abstract interface class BacklogApi {
   Future<List<ViewSummaryDto>> views();
 
   /// Runs view [id]; [groupBy] regroups it for this request only ('' for
-  /// ungrouped).
-  Future<ViewResultDto> view(String id, {String? groupBy});
+  /// ungrouped). With [idsOnly] its groups name their items by id only
+  /// ([ViewGroupDto.ids]) for a client that has them from [items] already
+  /// ([ViewResultDto.resolve]).
+  Future<ViewResultDto> view(String id, {String? groupBy, bool idsOnly = false});
 
   Future<ViewSummaryDto> updateView(String id, ViewUpdateRequest request);
 
