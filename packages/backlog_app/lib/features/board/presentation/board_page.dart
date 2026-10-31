@@ -62,6 +62,9 @@ class _BoardPageState extends State<BoardPage> {
   /// The item shown in the detail panel or sheet.
   String? _openId;
 
+  /// Whether the phone header shows the filter toolbar (other layouts always do).
+  bool _filterOpen = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -148,7 +151,13 @@ class _BoardPageState extends State<BoardPage> {
     if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.slash) return KeyEventResult.ignored;
     final typing = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>();
     if (typing != null) return KeyEventResult.ignored;
-    _searchFocus.requestFocus();
+    if (_filterOpen || MediaQuery.sizeOf(context).width >= BoardPage.phoneWidth) {
+      _searchFocus.requestFocus();
+    } else {
+      // The phone header shows the search first.
+      setState(() => _filterOpen = true);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _searchFocus.requestFocus());
+    }
     return KeyEventResult.handled;
   }
 
@@ -239,6 +248,8 @@ class _BoardPageState extends State<BoardPage> {
                           filter: controller.visible == null ? null : _filterBar(controller),
                           onEditColumns: () => _editColumns(controller),
                           compact: phone,
+                          filterOpen: _filterOpen,
+                          onToggleFilter: () => setState(() => _filterOpen = !_filterOpen),
                           onMenu: sideNavigation ? null : () => _scaffold.currentState?.openDrawer(),
                         ),
                         if (!sideNavigation && !phone) ViewTabs(controller: controller),

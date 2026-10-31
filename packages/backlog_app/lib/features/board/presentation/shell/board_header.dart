@@ -11,8 +11,9 @@ import 'view_navigation.dart';
 
 /// Top bar of the main area: the filter toolbar takes the space, compact
 /// actions (columns, theme, reload) sit at the right end. With [compact]
-/// (phone) the first row has the menu button, the view dropdown and the
-/// actions, and the filter toolbar wraps below it.
+/// (phone) the row has the menu button, the view dropdown, a filter toggle
+/// and the actions; the filter toolbar slides down below it while
+/// [filterOpen], so the board keeps the screen otherwise.
 class BoardHeader extends StatelessWidget {
   const BoardHeader({
     super.key,
@@ -21,6 +22,8 @@ class BoardHeader extends StatelessWidget {
     required this.onEditColumns,
     this.onMenu,
     this.compact = false,
+    this.filterOpen = false,
+    this.onToggleFilter,
   });
 
   final BoardController controller;
@@ -32,6 +35,12 @@ class BoardHeader extends StatelessWidget {
   /// Opens the navigation drawer; null when the navigation is always visible.
   final VoidCallback? onMenu;
   final bool compact;
+
+  /// Whether the compact header shows the filter toolbar.
+  final bool filterOpen;
+
+  /// Shows or hides the filter toolbar of the compact header.
+  final VoidCallback? onToggleFilter;
 
   /// Below this header width the Group by menu shrinks to an icon.
   static const roomyWidth = 1000.0;
@@ -52,10 +61,25 @@ class BoardHeader extends StatelessWidget {
                 children: [
                   if (menu != null) IconActionButton(tooltip: 'Menu', icon: Icons.menu, onPressed: menu),
                   Expanded(child: _ViewPicker(controller: controller)),
+                  if (filter != null && onToggleFilter != null)
+                    _FilterToggle(open: filterOpen, active: !controller.filter.isEmpty, onPressed: onToggleFilter!),
                   ...actions,
                 ],
               ),
-              if (filter case final bar?) Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 8), child: bar),
+              ClipRect(
+                child: AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  alignment: Alignment.topCenter,
+                  child: switch (filter) {
+                    final bar? when filterOpen || onToggleFilter == null => Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                      child: bar,
+                    ),
+                    _ => const SizedBox(width: double.infinity),
+                  },
+                ),
+              ),
             ],
           )
         : Row(
@@ -152,6 +176,36 @@ class _GroupByMenu extends StatelessWidget {
           child: SecondaryButton(key: const ValueKey('group-by'), label: label, icon: Icons.segment, onPressed: toggle),
         );
       },
+    );
+  }
+}
+
+/// Shows or hides the filter toolbar of the phone header; a dot marks an
+/// active filter while the toolbar is hidden.
+class _FilterToggle extends StatelessWidget {
+  const _FilterToggle({required this.open, required this.active, required this.onPressed});
+
+  final bool open;
+  final bool active;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    return IconButton(
+      key: const ValueKey('filter-toggle'),
+      tooltip: open ? 'Hide filters' : 'Search and filter',
+      iconSize: 20,
+      isSelected: open,
+      color: open ? tokens.accent : null,
+      icon: Badge(
+        key: const ValueKey('filter-toggle-dot'),
+        isLabelVisible: active && !open,
+        backgroundColor: tokens.accent,
+        smallSize: 8,
+        child: const Icon(Icons.manage_search),
+      ),
+      onPressed: onPressed,
     );
   }
 }
