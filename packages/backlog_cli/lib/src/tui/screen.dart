@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:backlog_core/backlog_core.dart';
 
 import 'keys.dart';
@@ -102,6 +104,12 @@ final class Navigator {
           await top.handle(key, this);
         } on BacklogException catch (e) {
           say(e.message, error: true);
+        } on FileSystemException catch (e) {
+          // e.g. an unreadable registry; the screen and its draft stay.
+          say(
+            '${e.message}${e.path == null ? '' : ': ${e.path}'}${e.osError == null ? '' : ' (${e.osError!.message})'}',
+            error: true,
+          );
         }
         if (_done) break;
         _draw();

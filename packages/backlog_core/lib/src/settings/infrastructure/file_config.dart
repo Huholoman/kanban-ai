@@ -4,11 +4,13 @@ import 'package:path/path.dart' as p;
 
 import '../../infrastructure/backlog_layout.dart';
 import '../../projects/infrastructure/yaml_project_registry.dart';
+import '../../shared/errors.dart';
 import '../../workflow/infrastructure/yaml_workflow.dart';
 import '../application/config_editor.dart';
 import '../domain/config_file.dart';
 
-/// A configuration file on disk, written atomically.
+/// A configuration file on disk, written atomically. File-system failures
+/// (no permission, read-only folder) become [UnavailableException]s.
 final class FileConfigFile implements ConfigFile {
   FileConfigFile(String path) : location = p.normalize(p.absolute(path));
 
@@ -18,11 +20,26 @@ final class FileConfigFile implements ConfigFile {
   @override
   Future<String?> read() async {
     final file = File(location);
-    return await file.exists() ? file.readAsString() : null;
+    try {
+      return await file.exists() ? await file.readAsString() : null;
+    } on FileSystemException catch (e) {
+      throw UnavailableException('Cannot read $location: ${_reason(e)}');
+    }
   }
 
   @override
-  Future<void> write(String content) => writeAtomically(File(location), content);
+  Future<void> write(String content) async {
+    try {
+      await writeAtomically(File(location), content);
+    } on FileSystemException catch (e) {
+      throw UnavailableException('Cannot write $location: ${_reason(e)}');
+    }
+  }
+
+  static String _reason(FileSystemException e) => switch (e.osError?.message) {
+    final String os when os.isNotEmpty => os,
+    _ => e.message,
+  };
 }
 
 /// The editor of the project's `backlog.yaml` in the backlog folder [root];
