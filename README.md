@@ -198,6 +198,8 @@ backlog-server --allow 127.0.0.1,10.77.11.22,10.77.0.0/16  # answer only these c
 
 URL parameters of the app: `?token=…`, `&as=name` (who claims items from the UI) and `&server=http://…` (another API server, handy with `flutter run -d web-server`).
 
+The open project is in the URL after `#`: `http://host:8640/?token=…#/p/kanban-ai`. Such a link can be shared or reloaded; without one the app opens the project you used last in this browser, else the server's first project. The page title is the project's name. Switching projects starts the board afresh (no filters, open items or live updates carry over). With a server that does not know projects yet the app shows its one backlog as before.
+
 **Features:**
 - **Layout:** from 1200 px the views are in a left panel and the open item in a panel on the right; on tablets the views are tabs under the header and the item is a bottom sheet; on phones a bottom bar holds the pinned views. On very wide screens (from 2000 px, e.g. 27" 4K) text is 15 % larger.
 - **Left panel:** saved views with their item counts and a button for new items. Views with a `section` are listed under foldable section headings. The ⋮ menu of a view moves it to an existing or new section, and the server writes `section:` into its YAML. Below 1200 px the views are tabs under the header (and in a drawer behind ☰); on phones a bottom bar shows the views pinned with the ⋮ menu ("Pin to bottom bar") plus *More*.
@@ -398,7 +400,7 @@ There is no event bus or event sourcing: the state lives in files and git keeps 
 
 **The server** is a driving adapter. `ApiHandler` parses requests, calls the core services and maps the results through `DtoMapper` to the DTOs of `backlog_api`. `ChangeFeed` watches the folder, debounces bursts of changes and ignores `.git` and temporary files. `BacklogHost` reloads the workflow after `backlog.yaml` changes, the core's `Dispatcher` re-plans on the same change events, and `BacklogServer` is the composition root.
 
-**The app** is split by feature (`features/board`, `features/item`). Each feature has `application/` (`ChangeNotifier` controllers without widgets, and pure logic such as `ColumnArrangement`) and `presentation/`. It depends only on the `BacklogApi` interface, which `AppScope` provides.
+**The app** is split by feature (`features/board`, `features/item`, `features/projects`). Each feature has `application/` (`ChangeNotifier` controllers without widgets, and pure logic such as `ColumnArrangement`) and `presentation/`. It depends only on the `BacklogApi` interface, which `AppScope` provides. `ProjectsController` picks the open project from the `ProjectsApi`; each project gets its own session (its `BacklogApi` in `AppScope`, theme, board), thrown away as a whole when another project is opened.
 
 **The REST API** (`/api/…`):
 - `workflow`, `items` (`?all=true`)

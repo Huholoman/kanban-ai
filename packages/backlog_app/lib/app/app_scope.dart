@@ -1,6 +1,7 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/widgets.dart';
 
+import '../features/projects/application/projects_controller.dart';
 import 'appearance_controller.dart';
 
 /// Settings that come from the page URL (`?token=…&as=…&server=…`).
@@ -11,7 +12,7 @@ final class AppConfig {
   final String? agent;
 }
 
-/// Provides the [BacklogApi] and [AppConfig] to the widget tree, so that
+/// Provides the [BacklogApi] of the open project and [AppConfig] to the widget tree, so that
 /// features get them without global state and tests can pass a fake.
 class AppScope extends InheritedWidget {
   const AppScope({
@@ -19,6 +20,7 @@ class AppScope extends InheritedWidget {
     required this.api,
     this.config = const AppConfig(),
     this.appearance,
+    this.projects,
     required super.child,
   });
 
@@ -29,6 +31,10 @@ class AppScope extends InheritedWidget {
   /// build a single screen.
   final AppearanceController? appearance;
 
+  /// The server's projects and the open one; null in tests that build a
+  /// single screen. [api] belongs to its open project.
+  final ProjectsController? projects;
+
   static AppScope of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<AppScope>();
     assert(scope != null, 'No AppScope above this widget.');
@@ -37,5 +43,8 @@ class AppScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(AppScope oldWidget) =>
-      api != oldWidget.api || config != oldWidget.config || appearance != oldWidget.appearance;
+      api != oldWidget.api ||
+      config != oldWidget.config ||
+      appearance != oldWidget.appearance ||
+      projects != oldWidget.projects;
 }

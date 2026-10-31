@@ -53,6 +53,9 @@ final class FakeBacklogApi implements BacklogApi {
   final claims = <(String, String, ClaimRequest)>[];
   final _changes = StreamController<BacklogChangeEvent>.broadcast();
   int viewLoads = 0;
+
+  /// Someone listens to the live updates (the WebSocket would be open).
+  bool get listening => _changes.hasListener;
   Object? failNextUpdate;
 
   /// Simulates an agent editing a file on disk.
@@ -272,4 +275,33 @@ final class FakeBacklogApi implements BacklogApi {
     children: children ?? item.children,
     body: body ?? item.body,
   );
+}
+
+ProjectDto fakeProject(String id, {String? error}) =>
+    ProjectDto(id: id, name: 'Project $id', path: '/srv/$id/backlog', error: error);
+
+/// In-memory [ProjectsApi]: [list] as the registry, one [FakeBacklogApi]
+/// per project in [backlogs]; [failure] is thrown by [projects].
+final class FakeProjectsApi implements ProjectsApi {
+  FakeProjectsApi(this.backlogs, {List<ProjectDto>? list, this.failure})
+    : list = list ?? [for (final id in backlogs.keys) fakeProject(id)];
+
+  final Map<String, FakeBacklogApi> backlogs;
+  List<ProjectDto> list;
+  Object? failure;
+
+  /// Projects whose API was asked for, in order.
+  final opened = <String>[];
+
+  @override
+  Future<List<ProjectDto>> projects() async {
+    if (failure case final error?) throw error;
+    return list;
+  }
+
+  @override
+  BacklogApi project(String id) {
+    opened.add(id);
+    return backlogs[id]!;
+  }
 }
