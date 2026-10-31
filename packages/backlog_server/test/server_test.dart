@@ -221,9 +221,11 @@ void main() {
     );
     addTearDown(server.close);
 
+    final dispatchEvent = server.projects.defaultProject!.events.firstWhere((event) => event.isDispatch);
     final backlog = await Backlog.open(dir.path);
     final item = await backlog.items.create(const NewItem(title: 'Work', status: 'todo'));
     final assignment = await launched.stream.first.timeout(const Duration(seconds: 10));
+    expect((await dispatchEvent.timeout(const Duration(seconds: 10))).toJson(), {'type': 'dispatch', 'paths': []});
     expect(assignment.id, item.id);
     expect(assignment.agent, 'repo-2');
     expect(assignment.command, ['agent', '${item.id}']);

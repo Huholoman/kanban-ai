@@ -122,11 +122,11 @@ dispatcher:
     fail('the agent for $id did not end');
   }
 
-  Future<String> logOf(String id) async => (await launcher.logOf(ItemId(id)))!.lines.join('\n');
+  Future<String> logOf(String id) async => (await launcher.agentLog(ItemId(id)))!.lines.join('\n');
 
   Future<void> waitForLog(String id, String text) async {
     for (var i = 0; i < 100; i++) {
-      if ((await launcher.logOf(ItemId(id)))?.lines.any((l) => l.contains(text)) ?? false) return;
+      if ((await launcher.agentLog(ItemId(id)))?.lines.any((l) => l.contains(text)) ?? false) return;
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
     fail('"$text" never appeared in the log of $id:\n${await logOf(id)}');
@@ -171,7 +171,7 @@ dispatcher:
     expect(after.item.assignee, 'wt-1', reason: 'the assignee stays as a record');
     expect(await logOf('T-0001'), contains('exited with code 0'));
     expect(logs.last, contains('handed over as review'));
-    final last = (await launcher.logOf(ItemId('T-0001')))!;
+    final last = (await launcher.agentLog(ItemId('T-0001')))!;
     expect(last.running, isFalse);
     expect(last.last, containsPair('exit_code', 0));
     expect((await plan()).worktrees.first.isFree, isTrue, reason: 'committed work leaves the worktree clean');

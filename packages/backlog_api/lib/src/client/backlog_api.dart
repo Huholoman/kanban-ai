@@ -1,3 +1,4 @@
+import '../model/dispatch_dto.dart';
 import '../model/item_dto.dart';
 import '../model/misc_dto.dart';
 import '../model/project_dto.dart';
@@ -39,7 +40,21 @@ abstract interface class BacklogApi {
 
   Future<List<LintIssueDto>> lint();
 
-  /// Notifications about changed files; reconnects while listened to.
+  /// The dispatcher's plan; [DispatchDto.off] without a dispatcher.
+  Future<DispatchDto> dispatch();
+
+  /// Starts an agent for the ready item [reference] in the first free
+  /// worktree (also in manual mode) and returns the new plan.
+  Future<DispatchDto> startAgent(String reference);
+
+  /// Stops the agent working on [reference] and returns the new plan.
+  Future<DispatchDto> stopAgent(String reference);
+
+  /// The end of the log of the agent of [reference] (running or last).
+  Future<AgentLogDto> agentLog(String reference, {int lines = 100});
+
+  /// Notifications about changed files and, with [BacklogChangeEvent.isDispatch],
+  /// about a changed dispatcher plan; reconnects while listened to.
   Stream<BacklogChangeEvent> changes();
 }
 
@@ -63,6 +78,9 @@ abstract final class ApiPaths {
   static const items = '/api/items';
   static const views = '/api/views';
   static const lint = '/api/lint';
+  static const dispatch = '/api/dispatch';
+  static const dispatchStart = '/api/dispatch/start';
+  static const dispatchStop = '/api/dispatch/stop';
   static const events = '/api/events';
   static const health = '/api/health';
   static const projects = '/api/projects';
@@ -76,6 +94,8 @@ abstract final class ApiPaths {
   static String item(String reference) => '$items/${Uri.encodeComponent(reference)}';
 
   static String itemAction(String reference, String action) => '${item(reference)}/$action';
+
+  static String agentLog(String reference) => '$dispatch/log/${Uri.encodeComponent(reference)}';
 
   static String view(String id) => '$views/${Uri.encodeComponent(id)}';
 }

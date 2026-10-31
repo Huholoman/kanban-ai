@@ -23,17 +23,27 @@ final class LintIssueDto {
   Json toJson() => {'severity': severity, 'code': code, 'message': message, 'item': item, 'location': location};
 }
 
-/// Something in the backlog folder changed — items, views or configuration.
-/// Clients reload what they show.
+/// Something in the backlog folder changed — items, views or configuration
+/// (`type: changed`) — or the dispatcher's plan changed (`type: dispatch`,
+/// no paths). Clients reload what they show.
 final class BacklogChangeEvent {
-  const BacklogChangeEvent(this.paths);
+  const BacklogChangeEvent(this.paths, {this.type = 'changed'});
 
-  factory BacklogChangeEvent.fromJson(Json json) => BacklogChangeEvent(json.strings('paths'));
+  /// The dispatcher's plan changed (agents started or ended, worktrees …).
+  const BacklogChangeEvent.dispatch() : paths = const [], type = 'dispatch';
+
+  factory BacklogChangeEvent.fromJson(Json json) =>
+      BacklogChangeEvent(json.strings('paths'), type: json.optionalString('type') ?? 'changed');
 
   /// Changed files relative to the backlog root.
   final List<String> paths;
 
-  Json toJson() => {'type': 'changed', 'paths': paths};
+  /// `changed` or `dispatch`.
+  final String type;
+
+  bool get isDispatch => type == 'dispatch';
+
+  Json toJson() => {'type': type, 'paths': paths};
 }
 
 /// An error answered by the server, in the same shape as `backlog --json`.

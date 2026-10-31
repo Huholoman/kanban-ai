@@ -148,6 +148,46 @@ abstract final class DtoMapper {
     UnavailableException() => BacklogApiException(409, 'unavailable', error.message),
   };
 
+  static DispatchDto dispatch(DispatchPlan plan) => DispatchDto(
+    configured: true,
+    mode: plan.mode.name,
+    agent: plan.config.agent.name,
+    maxAgents: plan.config.maxAgents,
+    running: plan.running,
+    capacity: plan.capacity,
+    worktrees: [
+      for (final worktree in plan.worktrees)
+        DispatchWorktreeDto(
+          name: worktree.name,
+          path: worktree.path,
+          busy: worktree.isBusy,
+          claims: [for (final claim in worktree.claims) claim.itemId.value],
+          unavailable: worktree.unavailable,
+          run: switch (worktree.run) {
+            final run? => AgentRunDto(
+              item: run.item.value,
+              worktree: run.worktree,
+              pid: run.pid,
+              startedAt: run.startedAt,
+              log: run.log,
+              agent: run.agent,
+              branch: run.branch,
+            ),
+            null => null,
+          },
+        ),
+    ],
+    assignments: [
+      for (final assignment in plan.assignments)
+        DispatchAssignmentDto(item: assignment.id.value, title: assignment.item.item.title, worktree: assignment.agent),
+    ],
+    waiting: [for (final item in plan.waiting) item.id.value],
+    held: [
+      for (final (:item, :reason) in plan.held)
+        HeldItemDto(item: item.id.value, title: item.item.title, reason: reason),
+    ],
+  );
+
   static ItemLinkDto _link(ItemId id, BacklogSnapshot snapshot) {
     final other = snapshot[id];
     return other == null

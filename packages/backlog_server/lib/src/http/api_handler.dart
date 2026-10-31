@@ -11,9 +11,20 @@ import 'dto_mapper.dart';
 /// REST endpoints of [ApiPaths] for one project. A driving adapter: it parses requests, calls
 /// the core services and maps the results to the API contract.
 final class ApiHandler {
-  ApiHandler(this._host, {this.defaultAgent = 'web'});
+  ApiHandler(
+    this._host, {
+    this.defaultAgent = 'web',
+    Dispatcher? Function()? dispatcher,
+    AgentLauncher? Function()? launcher,
+  }) : _dispatcher = dispatcher ?? (() => null),
+       _launcher = launcher ?? (() => null);
 
   final BacklogHost _host;
+
+  /// The project's dispatcher and launcher, once they run (null before, and
+  /// for projects without them).
+  final Dispatcher? Function() _dispatcher;
+  final AgentLauncher? Function() _launcher;
 
   /// Who claims items when a request does not name an agent.
   final String defaultAgent;
@@ -38,7 +49,11 @@ final class ApiHandler {
           ..post(views, _createView)
           ..get('$views/<id>', _view)
           ..patch('$views/<id>', _updateView)
-          ..get(local(ApiPaths.lint), _lint);
+          ..get(local(ApiPaths.lint), _lint)
+          ..get(local(ApiPaths.dispatch), _dispatch)
+          ..post(local(ApiPaths.dispatchStart), _startAgent)
+          ..post(local(ApiPaths.dispatchStop), _stopAgent)
+          ..get('${local(ApiPaths.dispatch)}/log/<ref>', _agentLog);
     return _guard(router.call);
   }
 
@@ -141,6 +156,49 @@ final class ApiHandler {
   Future<Response> _lint(Request request) async {
     final issues = await (await _host.backlog).linter.run();
     return _json([for (final issue in issues) DtoMapper.lintIssue(issue).toJson()]);
+  }
+
+  Future<Response> _dispatch(Request request) async => _json((await _plan()).toJson());
+
+  /// The dispatcher's latest plan, or one computed from the files when no
+  /// dispatcher runs (without its knowledge of processes and worktrees).
+  Future<DispatchDto> _plan() async {
+    final dispatcher = _dispatcher();
+    final plan = dispatcher == null
+        ? DispatchPlan.of(await (await _host.backlog).planning.snapshot(), backlogRoot: _host.root)
+        : dispatcher.current ?? await dispatcher.evaluate();
+    return plan == null ? DispatchDto.off : DtoMapper.dispatch(plan);
+  }
+
+  Dispatcher _running() => _dispatcher() ?? (throw const NotFoundException('No dispatcher runs for this project.'));
+
+  Future<Response> _startAgent(Request request) async {
+    final payload = DispatchRequest.fromJson(await _body(request));
+    await _running().start(payload.item);
+    return _json((await _plan()).toJson());
+  }
+
+  Future<Response> _stopAgent(Request request) async {
+    final payload = DispatchRequest.fromJson(await _body(request));
+    if (!await _running().stop(payload.item)) throw NotFoundException('No agent runs for ${payload.item}.');
+    return _json((await _plan()).toJson());
+  }
+
+  Future<Response> _agentLog(Request request, String ref) async {
+    final snapshot = await (await _host.backlog).planning.snapshot();
+    final id = ItemReference.resolve(ref, snapshot.ids);
+    final lines = int.tryParse(request.url.queryParameters['lines'] ?? '') ?? 100;
+    final log = await _launcher()?.agentLog(id, lines: lines.clamp(1, 2000));
+    if (log == null) throw NotFoundException('No agent has run for $id.');
+    return _json(
+      AgentLogDto(
+        item: id.value,
+        path: log.path,
+        running: log.running,
+        lines: log.lines,
+        last: log.last == null ? null : AgentRunEndDto.fromJson(log.last!),
+      ).toJson(),
+    );
   }
 
   Future<Response> _detailOf(Backlog backlog, String ref, {int status = 200}) async {

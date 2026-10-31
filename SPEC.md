@@ -319,7 +319,11 @@ Every path below except `/api/health` and `/api/projects` exists per project und
 | `GET /api/views/<id>` | `?group_by=field` regroups for this request only (empty: ungrouped; columns dropped) | `{id, name, layout, group_by, fields, columns, hidden, groups: [{key, items}]}` |
 | `PATCH /api/views/<id>` | `{section?, columns?}` — only given keys change, null/blank/empty removes | view summary; writes `section:` / `columns:` into the YAML, keeping the rest |
 | `GET /api/lint` | | `[{severity, code, message, item?, location?}]` |
-| `WS /api/events` | `?token=` | `{"type": "changed", "paths": [...]}` |
+| `GET /api/dispatch` | | the dispatcher's plan (§8.2): `{configured, mode, agent, max_agents, running, capacity, worktrees: [{name, path, busy, free, claims[], unavailable, run: {item, worktree, pid, started_at, log, agent, branch}}], assignments: [{item, title, worktree}], waiting: [ids], held: [{item, title, reason}]}`; `{configured: false, …}` without a `dispatcher` section |
+| `POST /api/dispatch/start` | `{item}` | starts an agent for the ready item in the first free worktree, in either mode (lifts a hold); the new plan. `invalid_input` when not ready, `claim_conflict` when claimed or someone was faster, `unavailable` when no worktree is free or it cannot be prepared |
+| `POST /api/dispatch/stop` | `{item}` | stops its agent (§8.2); the new plan; `not_found` when none runs |
+| `GET /api/dispatch/log/<ref>` | `?lines=100` (1–2000) | `{item, path, running, lines[], last: {exit_code, reason, outcome, ended_at, session_id}}` — the tail of the running agent's log, else of its last run; `not_found` when no agent ran |
+| `WS /api/events` | `?token=` | `{"type": "changed", "paths": [...]}` on file changes; `{"type": "dispatch", "paths": []}` when the dispatcher's plan changed (agent started or ended, worktree became busy, free or unavailable, …) |
 
 Errors: `{"error": {"type", "message", "candidates"?}}` with `not_found` 404, `ambiguous_reference` 409, `invalid_input` 400, `claim_conflict` 409, `unavailable` 409 (e.g. no free worktree), `configuration` 500, `unauthorized` 401, `forbidden` 403. CORS is open (`*`) so the app can run from another origin.
 
@@ -358,6 +362,8 @@ The record is replaced by `<id>.last.json` (exit code, reason, outcome, end time
 **Stopping** sends `SIGTERM` to the agent's process group (`SIGKILL` after 5 s); the item is then released and held as above ("stopped by a person").
 
 Two servers hosting the same project share `$STATE` and would both look after its agents; run one.
+
+**Manual start and stop** go through the API (§8.1): a start re-plans first, takes the first free worktree (even one the plan proposes for a more urgent item) and launches as above; it works in `auto` mode too. Every published plan is also sent as a `dispatch` event over the project's WebSocket.
 
 ## 9. Web board## 9. Web board
 
@@ -436,7 +442,7 @@ Development: `mise run check` (format check, analysis, all tests), `mise run pla
 
 - Prototype; formats may still change.
 - Overlapping `touches` are judged on one snapshot: two agents running `next` at the same moment can still take two overlapping open items (the lock is per item). `lint` then reports `touches-overlap`.
-- The dispatcher's plan is not in the API yet and there is no Start button.
+- The board shows only the tail of an agent's raw log (no parsing of `stream-json` yet, no live streaming).
 - Agent processes are watched by polling (`/proc` on Linux, `kill -0` elsewhere); the launcher needs `sh`, `git` and `kill`.
 - Claims coordinate agents sharing one filesystem; agents on different machines need a shared backlog folder (or the server).
 - The web app has no user accounts; protection is the token plus `--host`/`--allow`.

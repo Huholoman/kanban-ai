@@ -52,9 +52,17 @@ final class HostedProject {
     : _runtime = runtime,
       host = BacklogHost(entry.path, clock: runtime.clock);
 
-  /// A project fed by [events] instead of a watcher, without a dispatcher.
-  HostedProject.fixed(this.entry, this.host, {Stream<BacklogChangeEvent> events = const Stream.empty()})
-    : _runtime = null {
+  /// A project fed by [events] instead of a watcher; its [dispatcher] (and
+  /// [launcher]) are run by the caller, if any.
+  HostedProject.fixed(
+    this.entry,
+    this.host, {
+    Stream<BacklogChangeEvent> events = const Stream.empty(),
+    Dispatcher? dispatcher,
+    AgentLauncher? launcher,
+  }) : _runtime = null,
+       _dispatcher = dispatcher,
+       _launcher = launcher {
     _fixed = events.listen(_events.add);
   }
 
@@ -69,7 +77,7 @@ final class HostedProject {
   AgentLauncher? _launcher;
   Future<void>? _starting;
   bool _closed = false;
-  late final Handler _api = ApiHandler(host).handler;
+  late final Handler _api = ApiHandler(host, dispatcher: () => _dispatcher, launcher: () => _launcher).handler;
   late final Handler _socket = eventSocketHandler(_events.stream);
 
   String get id => entry.id;
@@ -122,7 +130,10 @@ final class HostedProject {
       debounce: runtime.dispatchDebounce,
       onError: (error, _) => say('Dispatcher: $error'),
     );
-    dispatcher.plans.listen((plan) => say(describePlan(plan)));
+    dispatcher.plans.listen((plan) {
+      say(describePlan(plan));
+      if (!_events.isClosed) _events.add(const BacklogChangeEvent.dispatch());
+    });
     feed.events.listen((event) {
       if (event.paths.contains(BacklogLayout.configFileName)) host.reload();
       dispatcher.notifyChanged();
@@ -162,8 +173,10 @@ final class HostedProject {
     _closed = true;
     await _starting;
     await _fixed?.cancel();
-    await _dispatcher?.close();
-    await _launcher?.close();
+    if (_runtime != null) {
+      await _dispatcher?.close();
+      await _launcher?.close();
+    }
     await _feed?.close();
     await _events.close();
   }

@@ -7,6 +7,61 @@ import 'package:test/test.dart';
 
 void main() {
   group('DTOs survive a JSON round trip', () {
+    test('dispatch plan, agent log and the dispatch event', () {
+      final plan = DispatchDto(
+        configured: true,
+        mode: 'manual',
+        agent: 'claude',
+        maxAgents: 2,
+        running: 1,
+        capacity: 1,
+        worktrees: [
+          DispatchWorktreeDto(
+            name: 'w1',
+            path: '/w/w1',
+            busy: true,
+            claims: const ['X-1'],
+            run: AgentRunDto(
+              item: 'X-1',
+              worktree: 'w1',
+              pid: 7,
+              startedAt: DateTime.utc(2026, 10, 31, 12),
+              log: '/l/X-1.log',
+              agent: 'claude',
+              branch: 'agent/X-1',
+            ),
+          ),
+          const DispatchWorktreeDto(name: 'w2', path: '/w/w2', busy: false, unavailable: 'uncommitted changes'),
+        ],
+        assignments: const [DispatchAssignmentDto(item: 'X-2', title: 'Two', worktree: 'w2')],
+        waiting: const ['X-3'],
+        held: const [HeldItemDto(item: 'X-4', title: 'Four', reason: 'stopped')],
+      );
+      final copy = DispatchDto.fromJson(jsonDecode(jsonEncode(plan.toJson())) as Json);
+      expect(copy.toJson(), plan.toJson());
+      expect(copy.runFor('X-1')!.startedAt, DateTime.utc(2026, 10, 31, 12));
+      expect(copy.heldReason('X-4'), 'stopped');
+      expect(copy.canStart, isFalse, reason: 'w2 is unavailable');
+      expect(DispatchDto.fromJson(DispatchDto.off.toJson()).configured, isFalse);
+
+      final log = AgentLogDto(
+        item: 'X-1',
+        path: '/l',
+        running: false,
+        lines: const ['a'],
+        last: AgentRunEndDto(exitCode: 0, outcome: 'review', endedAt: DateTime.utc(2026), sessionId: 's'),
+      );
+      expect(AgentLogDto.fromJson(jsonDecode(jsonEncode(log.toJson())) as Json).toJson(), log.toJson());
+      expect(BacklogChangeEvent.fromJson(const BacklogChangeEvent.dispatch().toJson()).isDispatch, isTrue);
+      expect(
+        BacklogChangeEvent.fromJson(const {
+          'type': 'changed',
+          'paths': ['a'],
+        }).isDispatch,
+        isFalse,
+      );
+    });
+
     final claim = ClaimDto(
       item: 'T-1',
       agent: 'm2',

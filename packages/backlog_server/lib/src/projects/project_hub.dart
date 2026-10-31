@@ -17,10 +17,15 @@ final class ProjectHub {
   ProjectHub(this._create);
 
   /// One project fed by [events], for tests without sockets.
-  factory ProjectHub.single(BacklogHost host, {Stream<BacklogChangeEvent> events = const Stream.empty()}) {
+  factory ProjectHub.single(
+    BacklogHost host, {
+    Stream<BacklogChangeEvent> events = const Stream.empty(),
+    Dispatcher? dispatcher,
+    AgentLauncher? launcher,
+  }) {
     final entry = ProjectEntry.at(host.root);
     return ProjectHub((_) => throw StateError('fixed hub'))
-      .._projects.add(HostedProject.fixed(entry, host, events: events));
+      .._projects.add(HostedProject.fixed(entry, host, events: events, dispatcher: dispatcher, launcher: launcher));
   }
 
   final HostedProject Function(ProjectEntry entry) _create;

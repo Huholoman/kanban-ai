@@ -206,12 +206,8 @@ final class ProcessAgentLauncher extends AgentLauncher {
     if (changed) _onChange?.call();
   });
 
-  /// The log of the agent running for [item] or, when none runs, of its last
-  /// run: the file and its last [lines] lines; null when there was none.
-  Future<({String path, List<String> lines, bool running, Map<String, Object?>? last})?> logOf(
-    ItemId item, {
-    int lines = 100,
-  }) async {
+  @override
+  Future<AgentLog?> agentLog(ItemId item, {int lines = 100}) async {
     final record = await _record(item);
     Map<String, Object?>? last;
     String? path = record?.run.log;
@@ -224,7 +220,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
     }
     final file = File(path);
     final all = await file.exists() ? await file.readAsLines() : const <String>[];
-    return (
+    return AgentLog(
       path: path,
       lines: all.length <= lines ? all : all.sublist(all.length - lines),
       running: record != null,

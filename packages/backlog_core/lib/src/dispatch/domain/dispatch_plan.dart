@@ -34,6 +34,23 @@ final class AgentRun {
   final String? branch;
 }
 
+/// The end of an agent's log file.
+final class AgentLog {
+  const AgentLog({required this.path, required this.lines, required this.running, this.last});
+
+  final String path;
+
+  /// The last lines of the file.
+  final List<String> lines;
+
+  /// The agent still runs; otherwise this is the log of its last run.
+  final bool running;
+
+  /// How the last run ended (`exit_code`, `reason`, `outcome`, `ended_at`,
+  /// `session_id`); null while it runs.
+  final Map<String, Object?>? last;
+}
+
 /// What the dispatcher knows beyond the backlog files, supplied by the
 /// [AgentLauncher]: worktrees that cannot take work now, items it should
 /// not start by itself, and the agents that are running.
@@ -370,6 +387,10 @@ abstract class AgentLauncher {
 
   /// Stops the agent working on [item]; false when none runs.
   Future<bool> stop(ItemId item) async => false;
+
+  /// The last [lines] lines of the log of the agent running for [item], or
+  /// of its last run; null when there is none.
+  Future<AgentLog?> agentLog(ItemId item, {int lines = 100}) async => null;
 
   /// Starts background work (watching processes); [onChange] is called when
   /// something the plan depends on changed outside the backlog files.

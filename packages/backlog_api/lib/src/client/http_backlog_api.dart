@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../model/dispatch_dto.dart';
 import '../model/item_dto.dart';
 import '../model/json.dart';
 import '../model/misc_dto.dart';
@@ -87,6 +88,21 @@ final class HttpBacklogApi implements BacklogApi {
   Future<List<LintIssueDto>> lint() async => _list(await _get(ApiPaths.lint)).map(LintIssueDto.fromJson).toList();
 
   @override
+  Future<DispatchDto> dispatch() async => DispatchDto.fromJson(asJson(await _get(ApiPaths.dispatch)));
+
+  @override
+  Future<DispatchDto> startAgent(String reference) async =>
+      DispatchDto.fromJson(asJson(await _send('POST', ApiPaths.dispatchStart, DispatchRequest(reference).toJson())));
+
+  @override
+  Future<DispatchDto> stopAgent(String reference) async =>
+      DispatchDto.fromJson(asJson(await _send('POST', ApiPaths.dispatchStop, DispatchRequest(reference).toJson())));
+
+  @override
+  Future<AgentLogDto> agentLog(String reference, {int lines = 100}) async =>
+      AgentLogDto.fromJson(asJson(await _get(ApiPaths.agentLog(reference), query: {'lines': '$lines'})));
+
+  @override
   Stream<BacklogChangeEvent> changes() {
     late final StreamController<BacklogChangeEvent> controller;
     WebSocketChannel? channel;
@@ -99,7 +115,7 @@ final class HttpBacklogApi implements BacklogApi {
           await socket.ready;
           await for (final message in socket.stream) {
             final json = asJson(jsonDecode(message as String));
-            if (json['type'] == 'changed') controller.add(BacklogChangeEvent.fromJson(json));
+            if (json['type'] case 'changed' || 'dispatch') controller.add(BacklogChangeEvent.fromJson(json));
           }
         } catch (_) {
           // Server restarting or unreachable: retry below.

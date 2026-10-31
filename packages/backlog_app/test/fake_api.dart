@@ -27,6 +27,7 @@ ItemDto item(
   List<String> dependsOn = const [],
   List<String> touches = const [],
   List<String> conflictsWith = const [],
+  bool ready = false,
 }) => ItemDto(
   id: id,
   title: 'Item $id',
@@ -40,6 +41,7 @@ ItemDto item(
   touches: touches,
   conflicting: conflictsWith.isNotEmpty,
   conflictsWith: conflictsWith,
+  ready: ready,
   body: body,
 );
 
@@ -259,6 +261,42 @@ final class FakeBacklogApi implements BacklogApi {
   @override
   Stream<BacklogChangeEvent> changes() => _changes.stream;
 
+  /// The dispatcher's plan; [startAgent] and [stopAgent] record their calls
+  /// and answer with [afterStart] / [afterStop] (or fail with [failStart]).
+  DispatchDto plan = DispatchDto.off;
+  DispatchDto? afterStart;
+  DispatchDto? afterStop;
+  Object? failStart;
+  final started = <String>[];
+  final stopped = <String>[];
+  AgentLogDto? log;
+
+  /// Simulates the server reporting a new plan.
+  void dispatchChange(DispatchDto next) {
+    plan = next;
+    _changes.add(const BacklogChangeEvent.dispatch());
+  }
+
+  @override
+  Future<DispatchDto> dispatch() async => plan;
+
+  @override
+  Future<DispatchDto> startAgent(String reference) async {
+    if (failStart case final error?) throw error;
+    started.add(reference);
+    return plan = afterStart ?? plan;
+  }
+
+  @override
+  Future<DispatchDto> stopAgent(String reference) async {
+    stopped.add(reference);
+    return plan = afterStop ?? plan;
+  }
+
+  @override
+  Future<AgentLogDto> agentLog(String reference, {int lines = 100}) async =>
+      log ?? (throw BacklogApiException(404, 'not_found', 'No agent has run for $reference.'));
+
   static ItemDto _with(ItemDto item, {String? status, String? priority, String? body, Progress? children}) => ItemDto(
     id: item.id,
     title: item.title,
@@ -270,6 +308,7 @@ final class FakeBacklogApi implements BacklogApi {
     touches: item.touches,
     conflicting: item.conflicting,
     conflictsWith: item.conflictsWith,
+    ready: item.ready,
     parent: item.parent,
     dependsOn: item.dependsOn,
     children: children ?? item.children,

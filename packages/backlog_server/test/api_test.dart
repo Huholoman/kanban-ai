@@ -344,4 +344,134 @@ void main() {
     host.reload();
     expect((await host.backlog).workflow.priorities, ['p0', 'p1', 'p2']);
   });
+
+  group('dispatch', () {
+    late BacklogHost host;
+    late _FakeLauncher launcher;
+    late Dispatcher dispatcher;
+
+    HttpBacklogApi dispatching() => HttpBacklogApi(
+      Uri.parse('http://backlog.test'),
+      client: inMemory(
+        BacklogServer.buildHandler(
+          projects: ProjectHub.single(host, dispatcher: dispatcher, launcher: launcher),
+        ),
+      ),
+    );
+
+    setUp(() async {
+      final config = File(p.join(dir.path, 'backlog.yaml'));
+      config.writeAsStringSync(
+        '${config.readAsStringSync()}\ndispatcher:\n  worktrees: [w1, w2]\n  max_agents: 1\n  command: agent {id}\n',
+      );
+      host = BacklogHost(dir.path, clock: clock);
+      launcher = _FakeLauncher(host);
+      dispatcher = Dispatcher(
+        snapshot: () async => (await host.backlog).planning.snapshot(),
+        backlogRoot: dir.path,
+        launcher: launcher,
+        clock: clock,
+      );
+      addTearDown(dispatcher.close);
+    });
+
+    test('without a dispatcher section the plan is off', () async {
+      File(p.join(dir.path, 'backlog.yaml')).writeAsStringSync('');
+      host.reload();
+      final plan = await dispatching().dispatch();
+      expect(plan.configured, isFalse);
+      expect(plan.canStart, isFalse);
+    });
+
+    test('the plan, a manual start, the log and a stop', () async {
+      final api = dispatching();
+      final a = await api.createItem(const NewItemRequest(title: 'A', status: 'todo', priority: 'p1'));
+      final b = await api.createItem(const NewItemRequest(title: 'B', status: 'todo'));
+      final plan = await api.dispatch();
+      expect(plan.configured, isTrue);
+      expect(plan.mode, 'manual');
+      expect(plan.agent, 'command');
+      expect(plan.maxAgents, 1);
+      expect(plan.canStart, isTrue);
+      expect(plan.worktrees.map((w) => w.name), ['w1', 'w2']);
+      expect(plan.assignments.single.item, a.item.id);
+      expect(plan.waiting, [b.item.id]);
+
+      final started = await api.startAgent(b.item.id);
+      expect(launcher.started, ['${b.item.id}@w1']);
+      expect(started.running, 1);
+      expect(started.canStart, isFalse);
+      expect(started.runFor(b.item.id)!.worktree, 'w1');
+      expect((await api.item(b.item.id)).item.claim!.agent, 'w1');
+
+      await expectLater(api.startAgent(a.item.id), throwsA(apiError(409, 'unavailable')));
+      final log = await api.agentLog(b.item.id);
+      expect(log.lines, ['working on ${b.item.id}']);
+      expect(log.running, isTrue);
+      await expectLater(api.agentLog(a.item.id), throwsA(apiError(404, 'not_found')));
+
+      final stopped = await api.stopAgent(b.item.id);
+      expect(launcher.stopped, [b.item.id]);
+      expect(stopped.running, 0);
+      await expectLater(api.stopAgent(b.item.id), throwsA(apiError(404, 'not_found')));
+    });
+
+    test('items that are not ready cannot be started', () async {
+      final api = dispatching();
+      final item = await api.createItem(const NewItemRequest(title: 'Later', status: 'backlog'));
+      await expectLater(api.startAgent(item.item.id), throwsA(apiError(400, 'invalid_input')));
+      await expectLater(api.startAgent('S-none'), throwsA(apiError(404, 'not_found')));
+    });
+
+    test('start and stop need a running dispatcher', () async {
+      final api = HttpBacklogApi(
+        Uri.parse('http://backlog.test'),
+        client: inMemory(BacklogServer.buildHandler(projects: ProjectHub.single(host))),
+      );
+      final item = await api.createItem(const NewItemRequest(title: 'A', status: 'todo'));
+      expect((await api.dispatch()).assignments.single.item, item.item.id);
+      await expectLater(api.startAgent(item.item.id), throwsA(apiError(404, 'not_found')));
+    });
+  });
+}
+
+/// Claims like the real launcher and pretends that an agent runs until stopped.
+final class _FakeLauncher extends AgentLauncher {
+  _FakeLauncher(this.host);
+
+  final BacklogHost host;
+  final started = <String>[];
+  final stopped = <String>[];
+  final _runs = <ItemId, AgentRun>{};
+
+  @override
+  Future<void> launch(DispatchAssignment assignment) async {
+    await (await host.backlog).claims.claim(assignment.id.value, assignment.agent);
+    started.add(assignment.key);
+    _runs[assignment.id] = AgentRun(
+      item: assignment.id,
+      worktree: assignment.agent,
+      pid: 42,
+      startedAt: DateTime.utc(2026, 10, 29, 12),
+      log: '/logs/${assignment.id}.log',
+      agent: assignment.agentProfile.name,
+    );
+  }
+
+  @override
+  Future<DispatchConditions> conditions(DispatcherConfig config, String backlogRoot, BacklogSnapshot snapshot) async =>
+      DispatchConditions(runs: _runs.values.toList());
+
+  @override
+  Future<bool> stop(ItemId item) async {
+    final run = _runs.remove(item);
+    if (run == null) return false;
+    stopped.add(item.value);
+    await (await host.backlog).claims.release(item.value, agent: run.worktree);
+    return true;
+  }
+
+  @override
+  Future<AgentLog?> agentLog(ItemId item, {int lines = 100}) async =>
+      _runs.containsKey(item) ? AgentLog(path: _runs[item]!.log, lines: ['working on $item'], running: true) : null;
 }
