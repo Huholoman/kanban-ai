@@ -315,6 +315,19 @@ final class FakeBacklogApi implements BacklogApi {
     return plan = afterStart ?? plan;
   }
 
+  /// Actions run with [runAction] (`<item> <name>`); they answer with
+  /// [afterAction] (or fail with [failAction]).
+  final actionsRun = <String>[];
+  DispatchDto? afterAction;
+  Object? failAction;
+
+  @override
+  Future<DispatchDto> runAction(String reference, String name) async {
+    if (failAction case final error?) throw error;
+    actionsRun.add('$reference $name');
+    return plan = afterAction ?? plan;
+  }
+
   @override
   Future<DispatchDto> stopAgent(String reference) async {
     stopped.add(reference);

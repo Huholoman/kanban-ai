@@ -18,6 +18,10 @@ abstract final class DtoMapper {
     defaultPriority: workflow.defaultPriority,
     defaultType: workflow.defaultType,
     appearance: _appearance(workflow.appearance),
+    actions: [
+      if (workflow.dispatcher case final dispatcher?)
+        for (final action in dispatcher.actions) DtoMapper.action(action, dispatcher),
+    ],
   );
 
   static AppearanceDto _appearance(Appearance appearance) {
@@ -77,8 +81,30 @@ abstract final class DtoMapper {
     );
   }
 
+  static ActionDto action(ActionDefinition action, DispatcherConfig config) => ActionDto(
+    name: action.name,
+    kind: action.kind.id,
+    statuses: action.statuses,
+    onEnter: action.onEnter,
+    agent: action.kind == ActionKind.prompt ? config.profileFor(action).name : null,
+    fresh: action.fresh,
+  );
+
+  static AgentRunDto run(AgentRun run) => AgentRunDto(
+    item: run.item.value,
+    worktree: run.worktree,
+    pid: run.pid,
+    startedAt: run.startedAt,
+    log: run.log,
+    agent: run.agent,
+    branch: run.branch,
+    action: run.action,
+    kind: run.kind.id,
+  );
+
   static ItemDetailDto detail(PlannedItem planned, BacklogSnapshot snapshot, {String? path}) {
     final item = planned.item;
+    final dispatcher = snapshot.workflow.dispatcher;
     return ItemDetailDto(
       item: DtoMapper.item(planned, path: path, withBody: true),
       parent: item.parent == null ? null : _link(item.parent!, snapshot),
@@ -97,6 +123,11 @@ abstract final class DtoMapper {
             question: comment.question,
             note: comment.note,
           ),
+      ],
+      actions: [
+        if (dispatcher != null)
+          for (final action in dispatcher.actions)
+            if (action.offeredIn(item.status)) DtoMapper.action(action, dispatcher),
       ],
     );
   }
@@ -177,15 +208,7 @@ abstract final class DtoMapper {
           created: worktree.created,
           isNew: worktree.isNew,
           run: switch (worktree.run) {
-            final run? => AgentRunDto(
-              item: run.item.value,
-              worktree: run.worktree,
-              pid: run.pid,
-              startedAt: run.startedAt,
-              log: run.log,
-              agent: run.agent,
-              branch: run.branch,
-            ),
+            final run? => DtoMapper.run(run),
             null => null,
           },
         ),
@@ -218,6 +241,16 @@ abstract final class DtoMapper {
     ],
     maxWorktrees: plan.config.newWorktrees?.maxWorktrees,
     spareWorktrees: plan.spare.length,
+    runs: [for (final run in plan.runs) DtoMapper.run(run)],
+    pendingActions: [
+      for (final pending in plan.pending)
+        PendingActionDto(
+          item: pending.item.value,
+          action: pending.action,
+          status: pending.status,
+          since: pending.since,
+        ),
+    ],
   );
 
   static ItemLinkDto _link(ItemId id, BacklogSnapshot snapshot) {

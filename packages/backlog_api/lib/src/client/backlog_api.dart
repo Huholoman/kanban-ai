@@ -54,6 +54,10 @@ abstract interface class BacklogApi {
   /// worktree gets a new session.
   Future<DispatchDto> startAgent(String reference, {bool fresh = false});
 
+  /// Starts the action [name] (`dispatcher.actions`) on [reference] now and
+  /// returns the new plan.
+  Future<DispatchDto> runAction(String reference, String name);
+
   /// Stops the agent working on [reference] and returns the new plan.
   Future<DispatchDto> stopAgent(String reference);
 
@@ -107,6 +111,9 @@ abstract final class ApiPaths {
   static String item(String reference) => '$items/${Uri.encodeComponent(reference)}';
 
   static String itemAction(String reference, String action) => '${item(reference)}/$action';
+
+  /// Runs the configured action [name] on [reference].
+  static String runAction(String reference, String name) => '${item(reference)}/actions/${Uri.encodeComponent(name)}';
 
   static String agentLog(String reference) => '$dispatch/log/${Uri.encodeComponent(reference)}';
 

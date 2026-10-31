@@ -1,3 +1,4 @@
+import 'action_dto.dart';
 import 'json.dart';
 
 enum StatusCategoryDto { open, active, done }
@@ -112,6 +113,7 @@ final class WorkflowDto {
     required this.defaultPriority,
     required this.defaultType,
     this.appearance = const AppearanceDto(),
+    this.actions = const [],
   });
 
   factory WorkflowDto.fromJson(Json json) {
@@ -125,6 +127,7 @@ final class WorkflowDto {
       defaultPriority: defaults.string('priority'),
       defaultType: defaults.string('type'),
       appearance: AppearanceDto.fromJson(json.optionalObject('appearance')),
+      actions: json.objects('actions').map(ActionDto.fromJson).toList(),
     );
   }
 
@@ -136,6 +139,15 @@ final class WorkflowDto {
   final String defaultPriority;
   final String defaultType;
   final AppearanceDto appearance;
+
+  /// `dispatcher.actions` (empty without a dispatcher).
+  final List<ActionDto> actions;
+
+  /// The actions items in [status] show as buttons.
+  List<ActionDto> actionsIn(String status) => [
+    for (final action in actions)
+      if (action.offeredIn(status)) action,
+  ];
 
   StatusCategoryDto? categoryOf(String status) {
     for (final definition in statuses) {
@@ -151,5 +163,6 @@ final class WorkflowDto {
     'milestones': [for (final milestone in milestones) milestone.toJson()],
     'defaults': {'status': defaultStatus, 'priority': defaultPriority, 'type': defaultType},
     'appearance': appearance.toJson(),
+    'actions': [for (final action in actions) action.toJson()],
   };
 }

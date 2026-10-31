@@ -1,3 +1,4 @@
+import 'action_dto.dart';
 import 'discussion_dto.dart';
 import 'json.dart';
 import 'workflow_dto.dart';
@@ -251,6 +252,7 @@ final class ItemDetailDto {
     this.conflicts = const [],
     this.waiting = const [],
     this.discussion = const [],
+    this.actions = const [],
   });
 
   factory ItemDetailDto.fromJson(Json json) {
@@ -266,6 +268,7 @@ final class ItemDetailDto {
       conflicts: links('conflicts'),
       waiting: links('waiting'),
       discussion: json.objects('discussion').map(CommentDto.fromJson).toList(),
+      actions: json.objects('actions').map(ActionDto.fromJson).toList(),
     );
   }
 
@@ -287,6 +290,9 @@ final class ItemDetailDto {
   /// The comments of the `## Discussion` section of the body, oldest first.
   final List<CommentDto> discussion;
 
+  /// The actions the item's status offers as buttons (`dispatcher.actions`).
+  final List<ActionDto> actions;
+
   Json toJson() => {
     'item': item.toJson(),
     'parent': parent?.toJson(),
@@ -297,5 +303,6 @@ final class ItemDetailDto {
     'conflicts': [for (final link in conflicts) link.toJson()],
     'waiting': [for (final link in waiting) link.toJson()],
     'discussion': [for (final comment in discussion) comment.toJson()],
+    'actions': [for (final action in actions) action.toJson()],
   };
 }

@@ -1,3 +1,4 @@
+import 'action_dto.dart';
 import 'json.dart';
 
 /// An agent process the dispatcher started that still runs.
@@ -10,6 +11,8 @@ final class AgentRunDto {
     required this.log,
     required this.agent,
     this.branch,
+    this.action,
+    this.kind = 'agent',
   });
 
   factory AgentRunDto.fromJson(Json json) => AgentRunDto(
@@ -20,6 +23,8 @@ final class AgentRunDto {
     log: json.string('log'),
     agent: json.string('agent'),
     branch: json.optionalString('branch'),
+    action: json.optionalString('action'),
+    kind: json.optionalString('kind') ?? 'agent',
   );
 
   final String item;
@@ -30,9 +35,15 @@ final class AgentRunDto {
   /// Path of the log file on the server.
   final String log;
 
-  /// Name of the agent profile.
+  /// Name of the agent profile (the action's name for commands).
   final String agent;
   final String? branch;
+
+  /// The action it runs for; null for the dispatcher's own agents.
+  final String? action;
+
+  /// `agent` (also for prompt actions), `command` or `builtin`.
+  final String kind;
 
   Json toJson() => {
     'item': item,
@@ -42,6 +53,8 @@ final class AgentRunDto {
     'log': log,
     'agent': agent,
     'branch': branch,
+    'action': action,
+    'kind': kind,
   };
 }
 
@@ -206,6 +219,8 @@ final class DispatchDto {
     this.sessions = const [],
     this.maxWorktrees,
     this.spareWorktrees = 0,
+    this.runs = const [],
+    this.pendingActions = const [],
   });
 
   /// No `dispatcher` section in `backlog.yaml`.
@@ -225,6 +240,8 @@ final class DispatchDto {
     sessions: json.objects('sessions').map(AgentSessionDto.fromJson).toList(),
     maxWorktrees: json['max_worktrees'] is int ? json['max_worktrees']! as int : null,
     spareWorktrees: json.integer('spare_worktrees'),
+    runs: json.objects('runs').map(AgentRunDto.fromJson).toList(),
+    pendingActions: json.objects('pending_actions').map(PendingActionDto.fromJson).toList(),
   );
 
   final bool configured;
@@ -257,6 +274,19 @@ final class DispatchDto {
   /// How many more worktrees it may create.
   final int spareWorktrees;
 
+  /// Everything running: agents (also of prompt actions) and the commands
+  /// and built-ins of actions, inside the worktrees or not.
+  final List<AgentRunDto> runs;
+
+  /// `on_enter` actions waiting to run.
+  final List<PendingActionDto> pendingActions;
+
+  /// The `on_enter` actions waiting to run for [item].
+  List<PendingActionDto> pendingFor(String item) => [
+    for (final pending in pendingActions)
+      if (pending.item == item) pending,
+  ];
+
   bool get isManual => mode == 'manual';
 
   /// An agent can start now (a worktree is free or can be created, within
@@ -265,6 +295,9 @@ final class DispatchDto {
 
   /// The agent running for [item], if any.
   AgentRunDto? runFor(String item) {
+    for (final run in runs) {
+      if (run.item == item) return run;
+    }
     for (final worktree in worktrees) {
       if (worktree.run?.item == item) return worktree.run;
     }
@@ -301,6 +334,8 @@ final class DispatchDto {
     'sessions': [for (final session in sessions) session.toJson()],
     'max_worktrees': maxWorktrees,
     'spare_worktrees': spareWorktrees,
+    'runs': [for (final run in runs) run.toJson()],
+    'pending_actions': [for (final pending in pendingActions) pending.toJson()],
   };
 }
 

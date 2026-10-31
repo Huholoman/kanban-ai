@@ -512,6 +512,51 @@ void main() {
       await expectLater(api.startAgent('S-none'), throwsA(apiError(404, 'not_found')));
     });
 
+    test('actions: listed in the workflow and the detail, run by name, shown in the plan', () async {
+      final config = File(p.join(dir.path, 'backlog.yaml'));
+      config.writeAsStringSync(
+        config.readAsStringSync().replaceFirst(
+          '  command: agent {id}\n',
+          '  command: agent {id}\n'
+              '  repo: ../repo\n  max_worktrees: 2\n'
+              '  actions:\n'
+              '    - {name: Vyřeš připomínky z PR, statuses: [review], prompt: "Fix {pr}"}\n'
+              '    - {name: AI review, on_enter: review, fresh: true, prompt: "Review"}\n'
+              '    - {name: Testy, statuses: [review], run: [sh, -c, "mise run check"]}\n',
+        ),
+      );
+      host.reload();
+      final api = dispatching();
+      final workflow = await api.workflow();
+      expect(workflow.actions.map((a) => (a.name, a.kind, a.onEnter, a.agent)), [
+        ('Vyřeš připomínky z PR', 'prompt', null, 'command'),
+        ('AI review', 'prompt', 'review', 'command'),
+        ('Testy', 'command', null, null),
+      ]);
+      expect(workflow.actionsIn('todo'), isEmpty);
+      final item = await api.createItem(const NewItemRequest(title: 'A', status: 'review'));
+      final id = item.item.id;
+      expect(item.actions.map((a) => a.name), ['Vyřeš připomínky z PR', 'AI review', 'Testy']);
+      final other = await api.createItem(const NewItemRequest(title: 'B', status: 'todo'));
+      expect(other.actions, isEmpty);
+
+      final plan = await api.runAction(id, 'Vyřeš připomínky z PR');
+      expect(launcher.started, ['$id@w1:Vyřeš připomínky z PR']);
+      final run = plan.runFor(id)!;
+      expect((run.action, run.kind, run.worktree), ('Vyřeš připomínky z PR', 'agent', 'w1'));
+      final claimed = await api.item(id);
+      expect((claimed.item.status, claimed.item.claim!.agent), ('review', 'w1'));
+      await expectLater(api.runAction(id, 'Testy'), throwsA(apiError(409, 'unavailable')));
+      await expectLater(api.runAction(other.item.id, 'Testy'), throwsA(apiError(400, 'invalid_input')));
+      await expectLater(api.runAction(id, 'Nope'), throwsA(apiError(404, 'not_found')));
+
+      await launcher.stop(ItemId(id));
+      final tested = await api.runAction(id, 'Testy');
+      final job = tested.runs.single;
+      expect((job.item, job.action, job.kind), (id, 'Testy', 'command'));
+      expect(launcher.jobs.single, contains('sh -c \'mise run check\''));
+    });
+
     test('start and stop need a running dispatcher', () async {
       final api = HttpBacklogApi(
         Uri.parse('http://backlog.test'),
@@ -534,9 +579,32 @@ final class _FakeLauncher extends AgentLauncher {
   final _runs = <ItemId, AgentRun>{};
   Map<ItemId, AgentSession> sessions = const {};
 
+  final jobs = <String>[];
+
+  @override
+  Future<void> runJob(ActionJob job) async {
+    jobs.add('${job.id} in ${job.path}: ${CommandTemplate.join(job.command!)}');
+    _runs[job.id] = AgentRun(
+      item: job.id,
+      worktree: 'repo',
+      pid: 43,
+      startedAt: DateTime.utc(2026, 10, 29, 12),
+      log: '/logs/${job.id}.log',
+      agent: job.action.name,
+      action: job.action.name,
+      kind: RunKind.command,
+    );
+  }
+
   @override
   Future<void> launch(DispatchAssignment assignment) async {
-    await (await host.backlog).claims.claim(assignment.id.value, assignment.agent);
+    final action = assignment.action;
+    await (await host.backlog).claims.claim(
+      assignment.id.value,
+      assignment.agent,
+      force: action != null,
+      mirror: action == null,
+    );
     started.add(assignment.key);
     _runs[assignment.id] = AgentRun(
       item: assignment.id,
@@ -545,6 +613,7 @@ final class _FakeLauncher extends AgentLauncher {
       startedAt: DateTime.utc(2026, 10, 29, 12),
       log: '/logs/${assignment.id}.log',
       agent: assignment.agentProfile.name,
+      action: action?.name,
     );
   }
 
@@ -557,7 +626,11 @@ final class _FakeLauncher extends AgentLauncher {
     final run = _runs.remove(item);
     if (run == null) return false;
     stopped.add(item.value);
-    await (await host.backlog).claims.release(item.value, agent: run.worktree);
+    if (run.action != null) {
+      await (await host.backlog).claims.drop(item.value, run.worktree);
+    } else {
+      await (await host.backlog).claims.release(item.value, agent: run.worktree);
+    }
     return true;
   }
 
