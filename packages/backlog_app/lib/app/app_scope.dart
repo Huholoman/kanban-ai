@@ -2,6 +2,7 @@ import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/widgets.dart';
 
 import '../features/dashboard/application/dashboard_controller.dart';
+import '../features/projects/application/preview_controller.dart';
 import '../features/projects/application/projects_controller.dart';
 import 'appearance_controller.dart';
 
@@ -23,6 +24,7 @@ class AppScope extends InheritedWidget {
     this.appearance,
     this.projects,
     this.dashboard,
+    this.preview,
     required super.child,
   });
 
@@ -41,6 +43,10 @@ class AppScope extends InheritedWidget {
   /// single screen.
   final DashboardController? dashboard;
 
+  /// The local preview the server runs; null in tests that build a single
+  /// screen.
+  final PreviewController? preview;
+
   static AppScope of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<AppScope>();
     assert(scope != null, 'No AppScope above this widget.');
@@ -53,5 +59,6 @@ class AppScope extends InheritedWidget {
       config != oldWidget.config ||
       appearance != oldWidget.appearance ||
       projects != oldWidget.projects ||
-      dashboard != oldWidget.dashboard;
+      dashboard != oldWidget.dashboard ||
+      preview != oldWidget.preview;
 }

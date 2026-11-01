@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../features/board/presentation/board_page.dart';
 import '../features/dashboard/application/dashboard_controller.dart';
+import '../features/projects/application/preview_controller.dart';
 import '../features/projects/application/project_memory.dart';
 import '../features/projects/application/project_route.dart';
 import '../features/projects/application/projects_controller.dart';
@@ -57,6 +58,9 @@ class _BacklogAppState extends State<BacklogApp> with WidgetsBindingObserver {
   /// Watches every project, whichever is open.
   late final DashboardController _dashboard;
 
+  /// The server's local preview, whichever project is open.
+  late final _preview = PreviewController(widget.projects);
+
   @override
   void initState() {
     super.initState();
@@ -65,12 +69,14 @@ class _BacklogAppState extends State<BacklogApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _dashboard = DashboardController(_projects, agent: widget.config.agent);
     unawaited(_projects.start());
+    unawaited(_preview.start());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _dashboard.dispose();
+    _preview.dispose();
     _projects.dispose();
     super.dispose();
   }
@@ -91,6 +97,7 @@ class _BacklogAppState extends State<BacklogApp> with WidgetsBindingObserver {
         api: api,
         projects: _projects,
         dashboard: _dashboard,
+        preview: _preview,
         config: widget.config,
       ),
       null => _ProjectsStatus(controller: _projects),
@@ -105,12 +112,14 @@ class _ProjectSession extends StatefulWidget {
     required this.api,
     required this.projects,
     required this.dashboard,
+    required this.preview,
     required this.config,
   });
 
   final BacklogApi api;
   final ProjectsController projects;
   final DashboardController dashboard;
+  final PreviewController preview;
   final AppConfig config;
 
   @override
@@ -150,6 +159,7 @@ class _ProjectSessionState extends State<_ProjectSession> {
     appearance: _appearance,
     projects: widget.projects,
     dashboard: widget.dashboard,
+    preview: widget.preview,
     child: ListenableBuilder(
       listenable: Listenable.merge([_appearance, widget.dashboard]),
       builder: (context, _) => MaterialApp(

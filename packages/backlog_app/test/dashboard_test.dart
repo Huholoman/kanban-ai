@@ -217,11 +217,11 @@ void main() {
   });
 
   group('DashboardPage', () {
-    Future<FakeProjectsApi> pumpApp(WidgetTester tester, {double width = 1400}) async {
+    Future<FakeProjectsApi> pumpApp(WidgetTester tester, {double width = 1400, PreviewDto? preview}) async {
       tester.view.physicalSize = Size(width, 1000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      final api = _projects();
+      final api = _projects()..currentPreview = preview;
       await tester.pumpWidget(BacklogApp(projects: api, initialRoute: '/p/a', memory: InMemoryProjectMemory()));
       await tester.pumpAndSettle();
       return api;
@@ -233,6 +233,27 @@ void main() {
       await pumpApp(tester);
       expect(title(tester), '(3) Project a');
       expect(find.descendant(of: find.byKey(const ValueKey('dashboard-badge')), matching: find.text('3')), findsOne);
+    });
+
+    testWidgets('shows the running preview with Back to main', (tester) async {
+      await pumpApp(
+        tester,
+        preview: PreviewDto(
+          project: 'b',
+          item: 'B-1',
+          title: 'One',
+          branch: 'agent/B-1',
+          commit: '1234567890',
+          base: 'main',
+          since: DateTime.utc(2026, 11, 1, 12),
+          server: 'backlog-server-dev',
+          mainServer: 'backlog-server',
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('open-dashboard')));
+      await tester.pumpAndSettle();
+      expect(find.text('Preview of B-1 running'), findsOneWidget);
+      expect(find.byKey(const ValueKey('preview-back-to-main')), findsOneWidget);
     });
 
     testWidgets('shows questions, approvals, held and running work of every project', (tester) async {
