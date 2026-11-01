@@ -80,11 +80,12 @@ Future<(FakeBacklogApi, DispatchController)> _pumpDetail(
   String reference,
   DispatchDto plan, {
   List<ActionDto> actions = const [],
+  List<ItemDto>? items,
 }) async {
   tester.view.physicalSize = const Size(700, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  final api = FakeBacklogApi(_items())
+  final api = FakeBacklogApi(items ?? _items())
     ..plan = plan
     ..actions = actions;
   final dispatch = DispatchController(api, refreshDelay: Duration.zero);
@@ -530,6 +531,38 @@ void main() {
     expect(_key('agent-held-R-3'), findsOneWidget);
     expect(_key('agent-problems-R-1'), findsNothing);
     expect(_key('agent-held-B-1'), findsNothing);
+  });
+
+  testWidgets('a child an epic\'s agent works on shows that agent and its live log', (tester) async {
+    final plan = DispatchDto(
+      configured: true,
+      mode: 'manual',
+      agent: 'claude',
+      maxAgents: 2,
+      capacity: 1,
+      runs: [AgentRunDto(item: 'E-1', worktree: 'w1', pid: 3, startedAt: _started, log: '/l/E-1.log', agent: 'claude')],
+    );
+    final (api, _) = await _pumpDetail(
+      tester,
+      'C-1',
+      plan,
+      items: [
+        item('E-1', type: 'epic', status: 'in-progress', claimedBy: 'w1'),
+        item('C-1', status: 'in-progress', parent: 'E-1', claimedBy: 'w1'),
+      ],
+    );
+    expect(find.textContaining('The agent of E-1 works on it: claude in w1 since'), findsOneWidget);
+    expect(_key('stop-agent'), findsNothing, reason: 'the epic\'s agent is stopped on the epic');
+    expect(api.followedLogs, ['E-1']);
+    api.agentLogUpdates.add(
+      const AgentLogUpdateDto(item: 'E-1', path: '/l/E-1.log', running: true, reset: true, lines: ['▸ Edit a.dart']),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('▸ Edit a.dart'), findsOneWidget);
+    await tester.tap(_key('agent-open-runner'));
+    await tester.pumpAndSettle();
+    expect(find.text('Item E-1'), findsWidgets, reason: 'the epic opened');
   });
 
   testWidgets('the live log stays at the end and pauses while the reader scrolls up', (tester) async {

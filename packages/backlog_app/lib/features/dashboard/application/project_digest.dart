@@ -92,6 +92,15 @@ final class ProjectDigest {
     return runs;
   }
 
+  /// Other unfinished items [run]'s agent works on: claimed by its worktree
+  /// (the children an epic's agent goes through).
+  List<ItemDto> workedOnBy(AgentRunDto run) => [
+    if (run.kind == 'agent')
+      for (final item in _open)
+        if (item.claim case final claim? when item.id != run.item && claim.agent == run.worktree && !claim.expired)
+          item,
+  ];
+
   /// The item [id], if known.
   ItemDto? item(String id) => items.where((item) => item.id == id).firstOrNull;
 

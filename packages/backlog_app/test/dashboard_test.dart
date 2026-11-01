@@ -126,6 +126,19 @@ void main() {
       expect(digest.unavailableWorktrees.map((w) => w.name), ['w2']);
     });
 
+    test('an epic\'s agent works on the children its worktree holds', () {
+      final digest = ProjectDigest(
+        items: [
+          item('E-1', type: 'epic', status: 'in-progress', claimedBy: 'w1'),
+          item('C-1', status: 'in-progress', parent: 'E-1', claimedBy: 'w1'),
+          item('C-2', parent: 'E-1', claimedBy: 'w2'),
+          item('C-3', status: 'done', parent: 'E-1', claimedBy: 'w1'),
+        ],
+        plan: _plan(runs: [_run('E-1')]),
+      );
+      expect(digest.workedOnBy(digest.runs.single).map((i) => i.id), ['C-1']);
+    });
+
     test('milestone progress and the urgent work of the current milestone', () {
       final digest = ProjectDigest(
         workflow: workflow,

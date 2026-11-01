@@ -357,6 +357,17 @@ final class DispatchDto {
     return null;
   }
 
+  /// The agent of another item that works on [item]: nothing runs for
+  /// [item] itself, but an agent runs in the worktree [claimedBy] that holds
+  /// its claim — e.g. the agent of an epic going through its children.
+  AgentRunDto? runWorkingOn(String item, String? claimedBy) {
+    if (claimedBy == null || runFor(item) != null) return null;
+    for (final run in [...runs, for (final worktree in worktrees) ?worktree.run]) {
+      if (run.worktree == claimedBy && run.item != item && run.kind == 'agent') return run;
+    }
+    return null;
+  }
+
   /// Why [item] is held, or null.
   String? heldReason(String item) {
     for (final held in this.held) {

@@ -121,7 +121,8 @@ class _ItemDetailViewState extends State<ItemDetailView> {
             onScope: widget.onScope,
             onAddChild: widget.onAddChild,
           ),
-          if (controller.item case final item?) AgentPanel(key: ValueKey('agent-${item.id}'), item: item),
+          if (controller.item case final item?)
+            AgentPanel(key: ValueKey('agent-${item.id}'), item: item, onOpen: _open),
           const Divider(height: 1),
           Expanded(
             child: switch ((controller.detail, controller.error)) {
