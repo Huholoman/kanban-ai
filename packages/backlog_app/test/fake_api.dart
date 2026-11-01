@@ -527,6 +527,12 @@ final class FakeProjectsApi implements ProjectsApi {
   /// Projects whose API was asked for, in order.
   final opened = <String>[];
 
+  /// The local preview the server runs; null: its main build.
+  PreviewDto? currentPreview;
+
+  /// How often "Back to main" was asked for.
+  var backToMainCalls = 0;
+
   @override
   Future<List<ProjectDto>> projects() async {
     if (failure case final error?) throw error;
@@ -547,5 +553,16 @@ final class FakeProjectsApi implements ProjectsApi {
     final updated = ProjectDto(id: old.id, name: old.name, path: old.path, error: old.error, pinned: pinned);
     list = [...list]..[index] = updated;
     return updated;
+  }
+
+  @override
+  Future<PreviewDto?> preview() async => currentPreview;
+
+  @override
+  Future<PreviewDto> backToMain() async {
+    final preview = currentPreview ?? (throw const BacklogApiException(400, 'invalid_input', 'No preview runs.'));
+    backToMainCalls++;
+    currentPreview = null;
+    return preview;
   }
 }

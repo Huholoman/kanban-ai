@@ -135,7 +135,21 @@ Future<void> main(List<String> arguments) async {
     exit(64);
   }
 
-  final BacklogServer server;
+  final stateDir = ProcessAgentLauncher.defaultStateDir(environment);
+  late final BacklogServer server;
+  // A preview (the built-in action `preview`) and "Back to main" restart the
+  // server as another program with the same arguments.
+  final control = ProcessServerControl(
+    program: ProcessServerControl.programOf(environment, Platform.executable),
+    arguments: arguments,
+    environment: environment,
+    log: p.join(stateDir, 'server.log'),
+    stop: () async {
+      stdout.writeln('Restarting; the new server logs to ${p.join(stateDir, 'server.log')}.');
+      await server.close();
+      exit(0);
+    },
+  );
   try {
     server = await BacklogServer.start(
       root: root,
@@ -147,16 +161,18 @@ Future<void> main(List<String> arguments) async {
       allow: allow.isEmpty ? null : allow,
       webRoot: webRoot,
       log: quiet ? null : stdout.writeln,
-      stateDir: ProcessAgentLauncher.defaultStateDir(environment),
+      stateDir: stateDir,
+      preview: LocalPreview(store: FilePreviewStore(stateDir), server: control),
       launcher: (project, host, log) => WorktreeProvisioner(
         ProcessAgentLauncher(
           project: project,
           backlog: () => host.backlog,
-          stateDir: ProcessAgentLauncher.defaultStateDir(environment),
+          stateDir: stateDir,
           log: log,
+          server: control,
         ),
         project: project,
-        stateDir: ProcessAgentLauncher.defaultStateDir(environment),
+        stateDir: stateDir,
         log: log,
       ),
     );

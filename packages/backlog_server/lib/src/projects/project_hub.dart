@@ -6,16 +6,21 @@ import 'package:backlog_core/backlog_core.dart';
 import 'package:shelf/shelf.dart';
 
 import '../backlog_host.dart';
+import '../http/dto_mapper.dart';
 import 'hosted_project.dart';
 
 /// The projects a server hosts, in registry order, and the routing of `/api/`
 /// to them: `/api/p/<id>/…` to project `<id>`, the other paths (except the
-/// global [ApiPaths.health] and [ApiPaths.projects]) to the default project,
-/// the first one.
+/// global [ApiPaths.health], [ApiPaths.projects] and [ApiPaths.preview]) to
+/// the default project, the first one.
 final class ProjectHub {
   /// [create] builds the project for a new registry entry; [registry] edits
-  /// the registry file (pinning), null when the server hosts a fixed backlog.
-  ProjectHub(this._create, {ProjectService? registry}) : _registry = registry;
+  /// the registry file (pinning), null when the server hosts a fixed backlog;
+  /// [preview] is the server's local preview, null when it has none.
+  ProjectHub(this._create, {ProjectService? registry, this.preview}) : _registry = registry;
+
+  /// The server's local preview (the built-in action `preview`).
+  LocalPreview? preview;
 
   /// One project fed by [events], for tests without sockets.
   factory ProjectHub.single(
@@ -98,6 +103,19 @@ final class ProjectHub {
       if (request.method != 'GET') return _notFound('No such endpoint.');
       return _json([for (final project in projects) (await project.describe()).toJson()]);
     }
+    if (request.url.path == ApiPaths.preview.substring(1) && request.method == 'GET') {
+      return _json({'preview': _previewDto(await preview?.current())?.toJson()});
+    }
+    if (request.url.path == ApiPaths.previewMain.substring(1) && request.method == 'POST') {
+      final local = preview;
+      if (local == null) return _invalid('No preview runs.');
+      try {
+        return _json(_previewDto(await local.backToMain())!.toJson());
+      } on BacklogException catch (error) {
+        final api = DtoMapper.error(error);
+        return _json(api.toJson(), status: api.statusCode);
+      }
+    }
     if (segments.length == 3 && segments[1] == 'projects' && request.method == 'PATCH') {
       return _patchProject(Uri.decodeComponent(segments[2]), await request.readAsString());
     }
@@ -138,6 +156,20 @@ final class ProjectHub {
     if (project == null) return _notFound('No project "$id"; see ${ApiPaths.projects}.');
     return _json((await project.describe()).toJson());
   }
+
+  static PreviewDto? _previewDto(PreviewState? state) => state == null
+      ? null
+      : PreviewDto(
+          project: state.project,
+          item: state.item,
+          title: state.title,
+          branch: state.branch,
+          commit: state.commit,
+          base: state.base,
+          since: state.since,
+          server: state.server,
+          mainServer: state.mainServer,
+        );
 
   static Response _invalid(String message) =>
       _json(BacklogApiException(400, 'invalid_input', message).toJson(), status: 400);
