@@ -6,6 +6,7 @@ import '../../dispatch/infrastructure/action_files.dart';
 import '../../history/infrastructure/git_item_revisions.dart';
 import '../../infrastructure/backlog_layout.dart';
 import '../../items/infrastructure/file_system_item_repository.dart';
+import '../../items/infrastructure/item_cache_file.dart';
 import '../../items/infrastructure/markdown_item_codec.dart';
 import '../../views/infrastructure/yaml_views.dart';
 import '../../workflow/domain/workflow.dart';
@@ -21,7 +22,9 @@ import 'folder_change_source.dart';
 ///
 /// With [cacheItems] (long-running processes such as the server) parsed item
 /// files are kept in memory and only changed files are read again (see
-/// [FileSystemItemRepository]); claims are always read fresh.
+/// [FileSystemItemRepository]); claims are always read fresh. With
+/// `cache.items` in `backlog.yaml` they are also kept between processes in
+/// `.cache/` ([ItemCacheFile]).
 final class FileBacklogStorage implements BacklogStorage {
   FileBacklogStorage(String root, {this.cacheItems = false}) : layout = BacklogLayout(root);
 
@@ -50,7 +53,12 @@ final class FileBacklogStorage implements BacklogStorage {
       ItemDefaults(type: workflow.defaultType, status: workflow.defaultStatus, priority: workflow.defaultPriority),
     );
     return BacklogStores(
-      items: FileSystemItemRepository(layout, codec, cache: cacheItems),
+      items: FileSystemItemRepository(
+        layout,
+        codec,
+        cache: cacheItems,
+        persistent: workflow.persistentItemCache ? ItemCacheFile(layout, codec.defaults) : null,
+      ),
       claims: FileSystemClaimStore(layout, defaultLease: workflow.claimLease),
       views: YamlViewRepository(layout),
       revisions: const GitItemRevisions(),

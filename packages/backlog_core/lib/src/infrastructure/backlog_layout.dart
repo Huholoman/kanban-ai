@@ -19,6 +19,10 @@ final class BacklogLayout {
   /// Claim locks; machine-local state, never committed.
   String get locksDir => p.join(root, '.locks');
 
+  /// Caches that make reading faster; machine-local, never committed, safe
+  /// to delete.
+  String get cacheDir => p.join(root, '.cache');
+
   String relative(String path) => p.relative(path, from: root);
 
   /// Finds the backlog for [start]: the folder itself or an ancestor that holds
