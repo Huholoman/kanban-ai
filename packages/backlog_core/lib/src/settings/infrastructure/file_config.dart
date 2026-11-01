@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import '../../infrastructure/backlog_layout.dart';
 import '../../projects/infrastructure/yaml_project_registry.dart';
 import '../../shared/errors.dart';
+import '../../views/infrastructure/yaml_views.dart';
 import '../../workflow/infrastructure/yaml_workflow.dart';
 import '../application/config_editor.dart';
 import '../domain/config_file.dart';
@@ -101,5 +102,35 @@ ConfigEditor serverConfigEditor(String file, {String? home}) {
     scope: ConfigScope.global,
     file: FileConfigFile(location),
     validate: (source) => parseServerConfigYaml(source, baseDir: p.dirname(location), home: home, origin: location),
+  );
+}
+
+/// The ids of the views of the backlog folder [root] (`views/<id>.yaml` or
+/// `.yml`), sorted.
+Future<List<String>> viewIds(String root) async {
+  final dir = Directory(BacklogLayout(root).viewsDir);
+  if (!await dir.exists()) return const [];
+  return [
+    for (final entry in await dir.list().toList())
+      if (entry is File && (entry.path.endsWith('.yaml') || entry.path.endsWith('.yml')))
+        p.basenameWithoutExtension(entry.path),
+  ]..sort();
+}
+
+/// The editor of view [id] of the backlog folder [root]: its existing file,
+/// else a new `views/<id>.yaml` (a new id is lower-case letters, digits,
+/// `-` and `_`). A draft is valid when it parses as a view.
+ConfigEditor viewConfigEditor(String root, String id) {
+  final dir = BacklogLayout(root).viewsDir;
+  final file = [
+    for (final extension in ['yaml', 'yml']) p.join(dir, '$id.$extension'),
+  ].where((path) => !id.contains('/') && File(path).existsSync()).firstOrNull;
+  if (file == null && !RegExp(r'^[a-z0-9][a-z0-9_-]*$').hasMatch(id)) {
+    throw InvalidInputException('A view id is lower-case letters, digits, "-" and "_": "$id".');
+  }
+  return ConfigEditor(
+    scope: ConfigScope.project,
+    file: FileConfigFile(file ?? p.join(dir, '$id.yaml')),
+    validate: (source) => parseViewYaml(id, source),
   );
 }

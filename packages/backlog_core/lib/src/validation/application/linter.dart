@@ -282,20 +282,32 @@ final class Linter {
   }
 
   Future<void> _checkItem(Item item, Map<ItemId, Item> all, List<LintIssue> issues) async {
-    void report(Severity severity, String code, String message) =>
-        issues.add(LintIssue(severity, code, message, item: '${item.id}'));
+    void report(Severity severity, String code, String message, {String? field, String? value}) =>
+        issues.add(LintIssue(severity, code, message, item: '${item.id}', field: field, value: value));
 
     if (_workflow.status(item.status) == null) {
-      report(Severity.error, 'unknown-status', 'Unknown status "${item.status}".');
+      report(Severity.error, 'unknown-status', 'Unknown status "${item.status}".', field: 'status', value: item.status);
     }
     if (!_workflow.hasPriority(item.priority)) {
-      report(Severity.error, 'unknown-priority', 'Unknown priority "${item.priority}".');
+      report(
+        Severity.error,
+        'unknown-priority',
+        'Unknown priority "${item.priority}".',
+        field: 'priority',
+        value: item.priority,
+      );
     }
     if (!_workflow.hasType(item.type)) {
-      report(Severity.error, 'unknown-type', 'Unknown type "${item.type}".');
+      report(Severity.error, 'unknown-type', 'Unknown type "${item.type}".', field: 'type', value: item.type);
     }
     if (item.milestone != null && !_workflow.acceptsMilestone(item.milestone!)) {
-      report(Severity.warning, 'unknown-milestone', 'Milestone "${item.milestone}" is not listed in backlog.yaml.');
+      report(
+        Severity.warning,
+        'unknown-milestone',
+        'Milestone "${item.milestone}" is not listed in backlog.yaml.',
+        field: 'milestone',
+        value: item.milestone,
+      );
     }
 
     for (final pattern in item.touches) {
@@ -312,9 +324,15 @@ final class Linter {
     references.forEach((field, ids) {
       for (final id in ids) {
         if (id == item.id) {
-          report(Severity.error, 'self-reference', '"$field" points to the item itself.');
+          report(Severity.error, 'self-reference', '"$field" points to the item itself.', field: field, value: '$id');
         } else if (!all.containsKey(id)) {
-          report(Severity.error, 'dangling-reference', '"$field" points to $id, which does not exist.');
+          report(
+            Severity.error,
+            'dangling-reference',
+            '"$field" points to $id, which does not exist.',
+            field: field,
+            value: '$id',
+          );
         }
       }
     });

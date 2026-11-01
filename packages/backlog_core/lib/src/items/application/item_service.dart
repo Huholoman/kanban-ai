@@ -207,6 +207,12 @@ final class ItemService {
 
     String? optional(String Function(String value) check) => change.clears ? null : check(_scalar(change));
 
+    // Removing takes an id as it is in the list, so that a reference to an
+    // item that no longer exists can be removed.
+    ItemId Function(String) listed(List<ItemId> current) => change.op == ChangeOp.remove
+        ? (reference) => current.firstWhere((id) => id.value == reference, orElse: () => resolve(reference))
+        : resolve;
+
     return switch (change.field) {
       'id' => throw const InvalidInputException('The id of an item cannot be changed.'),
       'title' => item.copyWith(title: _required(change)),
@@ -215,8 +221,8 @@ final class ItemService {
       'priority' => item.copyWith(priority: _checkPriority(_required(change))),
       'milestone' => item.copyWith(milestone: () => optional(_checkMilestone)),
       'parent' => item.copyWith(parent: () => change.clears ? null : resolve(_scalar(change))),
-      'depends_on' => item.copyWith(dependsOn: _applyList(item.dependsOn, change, resolve)),
-      'related' => item.copyWith(related: _applyList(item.related, change, resolve)),
+      'depends_on' => item.copyWith(dependsOn: _applyList(item.dependsOn, change, listed(item.dependsOn))),
+      'related' => item.copyWith(related: _applyList(item.related, change, listed(item.related))),
       'labels' => item.copyWith(labels: _applyList(item.labels, change, (v) => v)),
       'docs' => item.copyWith(docs: _applyList(item.docs, change, (v) => v)),
       'touches' => item.copyWith(touches: _applyList(item.touches, change, (v) => v)),

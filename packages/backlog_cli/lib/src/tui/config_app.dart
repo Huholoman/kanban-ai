@@ -2,6 +2,7 @@ import 'package:backlog_core/backlog_core.dart';
 import 'package:dart_tui/dart_tui.dart' show Cmd;
 
 import 'doctor_page.dart';
+import 'project_pages.dart';
 import 'projects_page.dart';
 import 'screen.dart';
 import 'server_page.dart';
@@ -161,7 +162,17 @@ MenuEntry _projectEntry(String label, String root, String? name, {String? proble
                 return null;
               },
             ),
-            const MenuEntry('Views, claims, lint', detail: 'not yet', enabled: false),
+            MenuEntry(
+              'Views',
+              detail: 'the saved views of the board: name, section, layout, grouping, columns, sort, filter',
+              onSelect: (_) => openViews(root),
+            ),
+            MenuEntry(
+              'Claims',
+              detail: 'who holds which item, live or expired; release',
+              onSelect: (_) => openClaims(root),
+            ),
+            MenuEntry('Lint', detail: 'problems of the backlog, with fixes', onSelect: (_) => openLint(root)),
             const MenuEntry('Appearance', detail: 'not yet: colours of the board', enabled: false),
             const MenuEntry('Dispatcher', detail: 'not yet: agents, worktrees, actions, pull requests', enabled: false),
           ],

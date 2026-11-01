@@ -19,6 +19,7 @@ import 'presets/domain/init_preset.dart';
 import 'presets/infrastructure/built_in_presets.dart';
 import 'shared/clock.dart';
 import 'shared/errors.dart';
+import 'validation/application/lint_fixes.dart';
 import 'validation/application/linter.dart';
 import 'views/application/view_service.dart';
 import 'views/infrastructure/yaml_views.dart';
@@ -234,6 +235,9 @@ final class Backlog {
   /// Requests to run actions, for a server's dispatcher to pick up
   /// (`backlog action`).
   ActionRequests get actionRequests => FileActionRequests(layout);
+
+  /// The fixes `backlog config` offers for lint issues.
+  LintFixer get lintFixer => LintFixer(items: items, claims: claims, workflow: workflow);
 }
 
 /// What [Backlog.create] made: where, from which preset (its placeholders

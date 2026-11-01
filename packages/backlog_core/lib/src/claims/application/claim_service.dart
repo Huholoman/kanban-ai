@@ -148,6 +148,15 @@ final class ClaimService {
     return true;
   }
 
+  /// Removes the lock of item [id] whoever holds it, without touching the
+  /// item (which may not exist): the fix of a stale or orphaned lock. False
+  /// when there was none.
+  Future<bool> removeLock(ItemId id) async {
+    if (await _claims.find(id) == null) return false;
+    await _claims.remove(id);
+    return true;
+  }
+
   /// Marks the item done (or another done-category [status]) and drops the
   /// claim. The assignee stays as a record of who did it.
   Future<Item> complete(String reference, {String? agent, String? status, bool force = false}) async {

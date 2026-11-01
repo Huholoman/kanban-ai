@@ -3,7 +3,14 @@ import 'dart:io';
 
 import 'package:backlog_cli/backlog_cli.dart';
 import 'package:backlog_core/backlog_core.dart'
-    show BacklogLayout, StatusCategory, parseProjectRegistryYaml, parseServerConfigYaml, parseWorkflowYaml;
+    show
+        BacklogLayout,
+        StatusCategory,
+        ViewLayout,
+        parseViewYaml,
+        parseProjectRegistryYaml,
+        parseServerConfigYaml,
+        parseWorkflowYaml;
 import 'package:dart_tui/dart_tui.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -265,6 +272,57 @@ void main() {
     expect(config.port, 8642);
     expect(config.token, matches(RegExp(r'^[A-Za-z0-9_-]{22}$')));
     expect(driver.showed('Token: ${config.token}'), isTrue);
+  });
+
+  // Root → Project → This folder, then the n-th entry after Workflow.
+  List<Msg> openProjectEntry(int n) => [down, enter, enter, for (var i = 0; i < n; i++) down, enter];
+
+  test('adds a view and sets its section', () async {
+    final driver = Driver([
+      ...openProjectEntry(1), // Views
+      end, enter, ...type('v03'), enter, // Add a view…
+      down, enter, ...type('Milestones'), enter, // Section
+      end, enter, char('y'), // Review and save
+      key(KeyCode.escape), // back to Views
+      ctrlC,
+    ]);
+    final (code, err) = await run(['config'], driver);
+    expect(code, 0, reason: err);
+    expect(driver.showed('backlog config › Project › ${p.basename(workspace.path)} › Views › v03'), isTrue);
+    expect(driver.showed('New view v03 (not saved yet).'), isTrue);
+    final file = File(p.join(backlogDir, 'views', 'v03.yaml'));
+    expect(driver.showed('Saved ${file.path}.'), isTrue, reason: driver.last);
+    final view = parseViewYaml('v03', file.readAsStringSync());
+    expect((view.name, view.section, view.layout, view.groupBy), ('v03', 'Milestones', ViewLayout.kanban, 'status'));
+    expect(driver.last, contains('v03 · kanban · Milestones'));
+  });
+
+  test('releases a claim and fixes a lint issue', () async {
+    expect((await run(['new', 'Claimed', '-s', 'todo'], null)).$1, 0);
+    expect((await run(['next', '--as', 'w1'], null)).$1, 0);
+    expect((await run(['new', 'Broken'], null)).$1, 0);
+    final broken = Directory(
+      p.join(backlogDir, 'items'),
+    ).listSync().whereType<File>().firstWhere((f) => f.readAsStringSync().contains('Broken'));
+    broken.writeAsStringSync(broken.readAsStringSync().replaceFirst('status: backlog', 'status: doing'));
+
+    final driver = Driver([
+      ...openProjectEntry(2), // Claims
+      enter, enter, // the claim → Release
+      key(KeyCode.escape),
+      down, enter, // Lint
+      enter, enter, // the issue → Set status to backlog
+      ctrlC,
+    ]);
+    final (code, err) = await run(['config'], driver);
+    expect(code, 0, reason: err);
+    expect(driver.showed('HB-'), isTrue);
+    expect(driver.showed('w1'), isTrue);
+    expect(driver.showed('Released HB-'), isTrue, reason: driver.frames.map((f) => f.join('\n')).join('\n----\n'));
+    expect(driver.showed('Unknown status "doing".'), isTrue);
+    expect(driver.showed('Set status to backlog: done.'), isTrue, reason: driver.last);
+    expect(driver.last, contains('No problems found.'));
+    expect(broken.readAsStringSync(), contains('status: backlog'));
   });
 
   test('the global part shows the project registry', () async {

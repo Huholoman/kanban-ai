@@ -2,7 +2,7 @@ enum Severity { error, warning }
 
 /// One problem found in the backlog.
 final class LintIssue {
-  const LintIssue(this.severity, this.code, this.message, {this.item, this.location});
+  const LintIssue(this.severity, this.code, this.message, {this.item, this.location, this.field, this.value});
 
   final Severity severity;
 
@@ -11,6 +11,12 @@ final class LintIssue {
   final String message;
   final String? item;
   final String? location;
+
+  /// The front-matter field at fault (`status`, `depends_on`, …), for fixes.
+  final String? field;
+
+  /// The value at fault in [field] (the unknown status, the missing id).
+  final String? value;
 
   @override
   String toString() => '${severity.name} [$code] ${item == null ? '' : '$item: '}$message';
