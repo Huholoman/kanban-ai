@@ -61,6 +61,7 @@ class _DiscussionSectionState extends State<DiscussionSection> {
     final session = dispatch?.plan.sessionFor(item.id);
     final running = dispatch?.runFor(item.id) != null;
     final resumable = dispatch != null && session != null && !running && !item.isDone;
+    final queued = dispatch?.plan.queuedReplyOf(item.id);
     final canSend = !controller.busy && _reply.text.trim().isNotEmpty;
     return Container(
       key: const ValueKey('discussion'),
@@ -75,6 +76,23 @@ class _DiscussionSectionState extends State<DiscussionSection> {
           Text(comments.isEmpty ? 'Discussion' : 'Discussion · ${comments.length}', style: theme.textTheme.bodySmall),
           for (final comment in comments)
             _Comment(key: ValueKey('comment-${comment.at.toIso8601String()}'), comment: comment, open: comment == open),
+          if (queued != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                children: [
+                  Icon(Icons.schedule, size: 16, color: tokens.accent),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Your message waits: $queued.',
+                      key: const ValueKey('reply-queued'),
+                      style: theme.textTheme.bodySmall?.copyWith(color: tokens.accent),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 8),
           TextField(
             key: const ValueKey('reply-field'),

@@ -438,6 +438,25 @@ void main() {
       expect(dispatch.configured, isTrue);
     });
 
+    testWidgets('a message written while an action runs shows that it waits, in the box and the discussion', (
+      tester,
+    ) async {
+      final plan = DispatchDto(
+        configured: true,
+        mode: 'manual',
+        agent: 'claude',
+        maxAgents: 2,
+        capacity: 1,
+        runs: testsRun.runs,
+        queuedReplies: const [
+          HeldItemDto(item: 'R-1', title: 'Item R-1', reason: 'the agent continues after the action "Tests" ends'),
+        ],
+      );
+      await _pumpDetailWith(tester, 'R-1', plan, actions: actions);
+      expect(find.text('A message waits: the agent continues after the action "Tests" ends'), findsOneWidget);
+      expect(find.text('Your message waits: the agent continues after the action "Tests" ends.'), findsOneWidget);
+    });
+
     testWidgets('a queued on_enter action shows in the Agent box', (tester) async {
       final plan = DispatchDto(
         configured: true,

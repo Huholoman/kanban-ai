@@ -247,6 +247,7 @@ final class DispatchDto {
     this.runs = const [],
     this.pendingActions = const [],
     this.problems = const [],
+    this.queuedReplies = const [],
     this.epics = const [],
   });
 
@@ -271,6 +272,7 @@ final class DispatchDto {
     runs: json.objects('runs').map(AgentRunDto.fromJson).toList(),
     pendingActions: json.objects('pending_actions').map(PendingActionDto.fromJson).toList(),
     problems: json.objects('problems').map(ProblemItemDto.fromJson).toList(),
+    queuedReplies: json.objects('queued_replies').map(HeldItemDto.fromJson).toList(),
     epics: json.strings('epics'),
   );
 
@@ -318,6 +320,19 @@ final class DispatchDto {
   /// Unfinished items whose latest run ended with problems, which neither
   /// run nor are [held].
   final List<ProblemItemDto> problems;
+
+  /// Items where something runs and a person's comment written since waits
+  /// for the run to end; the reason says when the agent takes it up.
+  final List<HeldItemDto> queuedReplies;
+
+  /// When the agent takes up the comment that waits on [item]; null when
+  /// none waits.
+  String? queuedReplyOf(String item) {
+    for (final queued in queuedReplies) {
+      if (queued.item == item) return queued.reason;
+    }
+    return null;
+  }
 
   /// What went wrong in the latest run of [item]; empty when nothing did.
   List<String> problemsOf(String item) {
@@ -394,6 +409,7 @@ final class DispatchDto {
     'runs': [for (final run in runs) run.toJson()],
     'pending_actions': [for (final pending in pendingActions) pending.toJson()],
     'problems': [for (final problem in problems) problem.toJson()],
+    'queued_replies': [for (final queued in queuedReplies) queued.toJson()],
     'epics': epics,
   };
 }

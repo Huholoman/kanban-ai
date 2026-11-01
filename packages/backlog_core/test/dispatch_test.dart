@@ -238,6 +238,38 @@ void main() {
       expect(() => plan.assignmentFor('T-2', fresh: true), throwsA(isA<InvalidInputException>()));
     });
 
+    test('a reply written while something runs for the item waits for the run to end', () {
+      const body =
+          '## Discussion\n\n### tobik · 2026-10-29 11:00:00 UTC\n\nBefore.\n\n'
+          '### w1 · 2026-10-29 11:40:00 UTC\n\nOwn.\n\n'
+          '### tobik · 2026-10-29 11:45:00 UTC · note\n\nJust a note.\n';
+      AgentRun run(String id, {String? action}) => AgentRun(
+        item: ItemId(id),
+        worktree: 'w1',
+        pid: 1,
+        startedAt: DateTime.utc(2026, 10, 29, 11, 30),
+        log: '/l',
+        agent: 'bot',
+        action: action,
+      );
+      DispatchPlan planWith(String body, List<AgentRun> runs) => _plan(
+        [item('T-1', status: 'review', body: body), item('T-2', status: 'in-progress', body: body)],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(runs: runs, sessions: {ItemId('T-1'): _session('T-1', 'w1')}),
+      );
+      final runs = [run('T-1', action: 'AI review'), run('T-2')];
+      expect(planWith(body, runs).queuedReplies, isEmpty, reason: 'older comments, own comments and notes');
+
+      const reply = '$body\n### tobik · 2026-10-29 11:50:00 UTC\n\nWhy CSV?\n';
+      final plan = planWith(reply, runs);
+      expect(plan.queuedReplies.map((id, reason) => MapEntry('$id', reason)), {
+        'T-1': 'the agent continues after the action "AI review" ends',
+        'T-2': 'the agent reads it after its current run',
+      });
+      expect(plan.assignments, isEmpty, reason: 'one run per item');
+      expect(planWith(reply, const []).queuedReplies, isEmpty, reason: 'nothing runs');
+    });
+
     test('a note of a person does not wake the agent; a resumed agent sees it as context', () {
       const note = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC · note\n\nMaybe JSON later.\n';
       final quiet = _plan(
