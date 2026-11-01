@@ -305,6 +305,28 @@ void main() {
     expect(api.updates.single.$2.changes, ['status=done']);
   });
 
+  testWidgets('Page Down, End and Home scroll the board, but not while typing', (tester) async {
+    await pumpApp(tester, items: [for (var i = 1; i <= 30; i++) item('T-$i')]);
+    final scrollable = find.descendant(of: find.byType(KanbanBoard), matching: find.byType(Scrollable)).first;
+    final position = tester.state<ScrollableState>(scrollable).position;
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+    await tester.pumpAndSettle();
+    expect(position.pixels, greaterThan(0));
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pumpAndSettle();
+    expect(position.pixels, position.maxScrollExtent);
+    await tester.sendKeyEvent(LogicalKeyboardKey.home);
+    await tester.pumpAndSettle();
+    expect(position.pixels, 0);
+
+    await tester.tap(find.byKey(const ValueKey('filter-search')));
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+    await tester.pumpAndSettle();
+    expect(position.pixels, 0);
+  });
+
   testWidgets('the board scrollbar can be dragged with the mouse', (tester) async {
     await pumpApp(tester, items: [for (var i = 1; i <= 30; i++) item('T-$i')]);
     final scrollable = find.descendant(of: find.byType(KanbanBoard), matching: find.byType(Scrollable)).first;
