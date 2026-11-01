@@ -78,6 +78,9 @@ final class ActionDefinition {
   static const builtIns = <String, String>{
     'noop': 'does nothing and succeeds (for trying actions out)',
     'merge': 'merges the item\'s branch into the base (dispatcher.merge), then marks it done and cleans up',
+    'preview':
+        'deploys the item\'s branch rebased onto the base locally and restarts the board from it '
+        '(dispatcher.preview)',
   };
 
   /// What an action's prompt may refer to: the dispatcher prompt's

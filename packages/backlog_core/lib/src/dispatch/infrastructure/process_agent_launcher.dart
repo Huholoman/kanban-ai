@@ -21,6 +21,7 @@ import '../domain/action_run.dart';
 import '../domain/agent_log_format.dart';
 import '../domain/agent_session.dart';
 import '../domain/dispatch_plan.dart';
+import '../domain/preview.dart';
 import 'built_in_actions.dart';
 import 'merge_action.dart';
 import 'pull_request_opener.dart';
@@ -84,6 +85,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
     this.heartbeatEvery,
     Map<String, String>? environment,
     Map<String, BuiltInAction>? builtIns,
+    this.server,
   }) : _backlog = backlog,
        _clock = clock,
        _log = log ?? ((_) {}),
@@ -121,6 +123,10 @@ final class ProcessAgentLauncher extends AgentLauncher {
   final String stateDir;
   final Duration pollInterval;
   final Duration? heartbeatEvery;
+
+  /// The server this launcher runs in, for built-in actions that restart it
+  /// (`preview`); null outside a server.
+  final ServerControl? server;
   final Future<Backlog> Function() _backlog;
   final Clock _clock;
   final void Function(String message) _log;
@@ -538,6 +544,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
           from: job.from,
           stateDir: stateDir,
           project: project,
+          server: server,
         ),
       );
     } catch (error) {
@@ -548,6 +555,13 @@ final class ProcessAgentLauncher extends AgentLauncher {
     _builtInRuns[job.id] = result;
     await File(_exitFile(job.id)).writeAsString('${result.ok ? 0 : 1}\n');
     await tick();
+    if (result.then case final then?) {
+      try {
+        await then();
+      } catch (error) {
+        _log('Dispatcher: after the action "${job.action.name}" for ${job.id}: $error');
+      }
+    }
   }
 
   /// Ends the run of an action: an agent's claim is dropped (the item keeps

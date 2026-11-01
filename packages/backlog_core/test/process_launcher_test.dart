@@ -915,7 +915,37 @@ dispatcher:
       await finish('T-0001', 0); // a new launcher, as after a restart
       expect((await notes()).last.text, startsWith('The action "Noop" (backlog) was interrupted (the server stopped'));
     });
+
+    test('what a built-in does after its run (a restart) waits for the note', () async {
+      await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
+      final after = Completer<int>();
+      final then = ProcessAgentLauncher(
+        project: 'demo',
+        backlog: () async => backlog,
+        stateDir: stateDir,
+        clock: clock,
+        builtIns: {'noop': _Then(() async => after.complete((await notes()).length))},
+      );
+      await then.runJob((await plan()).actionStart('T-0001', 'Noop').job!);
+      expect(await after.future, 1);
+      expect((await notes()).single.text, startsWith('The action "Noop" (backlog) succeeded: restarting after'));
+      await then.close();
+    });
   });
+}
+
+/// A built-in action that does [then] after its run.
+final class _Then implements BuiltInAction {
+  _Then(this.then);
+
+  final Future<void> Function() then;
+
+  @override
+  String get name => 'noop';
+
+  @override
+  Future<BuiltInActionResult> run(BuiltInActionContext context) async =>
+      BuiltInActionResult(ok: true, summary: 'restarting', then: then);
 }
 
 final class _NoTimer implements Timer {

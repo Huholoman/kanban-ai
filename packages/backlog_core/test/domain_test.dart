@@ -511,7 +511,10 @@ dispatcher:
       rejects('{name: A, review: true, then: review}', 'then needs on_enter');
       rejects('{name: A, review: true, on_enter: review, then: review}', 'must name another status');
       rejects('{name: A, review: true, on_enter: in-progress, then: checked}', 'unknown status "checked"');
-      rejects('{name: A, run: "mise run check"}', 'unknown built-in action "mise run check" (known: noop, merge)');
+      rejects(
+        '{name: A, run: "mise run check"}',
+        'unknown built-in action "mise run check" (known: noop, merge, preview)',
+      );
       rejects('{name: A, prompt: x}, {name: A, run: noop}', 'Duplicate dispatcher action "A"');
       rejects('{name: A, prompt: x, on_enter: reviewed}', 'unknown status "reviewed"');
       rejects('{name: A, prompt: x, statuses: [todo, nope]}', 'unknown status "nope"');
