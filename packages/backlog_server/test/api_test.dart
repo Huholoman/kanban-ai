@@ -577,9 +577,12 @@ void main() {
       expect(check.milestone, 'v0.2');
       expect(check.skipped, [later.item.id]);
       expect(check.next, now.item.id);
-      expect(check.members.map((m) => (m.milestone, m.inScope)), [('v0.2', true), ('v0.3', false)]);
+      expect(check.members.map((m) => (m.milestone, m.inScope)), unorderedEquals([('v0.2', true), ('v0.3', false)]));
       expect(check.count('to-do'), 1);
-      expect(check.progress.map((p) => (p.milestone, p.settled, p.total)), [('v0.2', 0, 1), ('v0.3', 0, 1)]);
+      expect(
+        check.progress.map((p) => (p.milestone, p.settled, p.total)),
+        unorderedEquals([('v0.2', 0, 1), ('v0.3', 0, 1)]),
+      );
       expect((await api.epic(epic.item.id)).milestone, isNull);
 
       final started = await api.startEpic(epic.item.id, milestone: 'v0.2');

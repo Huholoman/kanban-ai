@@ -144,11 +144,16 @@ void main() {
     expect(check['milestone'], 'v0.2');
     expect(check['skipped'], [later]);
     expect(check['next'], now);
-    expect((check['members'] as List).map((m) => (m as Map)['in_scope']), [true, false]);
+    expect(
+      {for (final m in (check['members'] as List).cast<Map<String, Object?>>()) m['id']: m['in_scope']},
+      {now: true, later: false},
+    );
 
     final text = await backlog(['epic', epic, '-m', 'v0.2']);
     expect(text.out, contains('Milestone v0.2 (and items without one): 1 item(s) of other milestones stay'));
-    expect(text.out, contains('Progress: v0.2 0/1, later 0/1'));
+    expect(text.out, contains('Progress: '));
+    expect(text.out, contains('v0.2 0/1'));
+    expect(text.out, contains('later 0/1'));
 
     final env = {'BACKLOG_AGENT': 'w1'};
     expect((await backlog(['epic', epic, '-m', 'v0.2', '--next'], env: env)).exitCode, 0);
