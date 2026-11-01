@@ -494,6 +494,7 @@ layout: kanban              # list | kanban | table | graph
 filter:                     # a map = AND; also and/or/not
   milestone: launch
   category: {not: [done]}   # {in: [...]}, {not: [...]}, {exists: bool}, {contains: text}
+  updated: {within: 30d}    # by age: {within: 24h}, {older: 2w} (m, h, d, w); on the CLI -w updated<30d
   or:
     - priority: [p0, p1]
     - labels: security

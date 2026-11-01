@@ -217,6 +217,13 @@ Filter _fieldFilter(String field, Object? value) {
         parts.add(FieldExists(field, exists: operand == true));
       case 'contains':
         parts.add(FieldContains(field, '$operand'));
+      case 'within' || 'older':
+        final age =
+            FieldAge.parseAge('$operand') ??
+            (throw ConfigurationException(
+              '"$operator" of "$field" expects an age like 24h, 7d or 2w, not "$operand".',
+            ));
+        parts.add(FieldAge(field, age, older: operator == 'older'));
       case final other:
         throw ConfigurationException('Unknown operator "$other" for field "$field".');
     }

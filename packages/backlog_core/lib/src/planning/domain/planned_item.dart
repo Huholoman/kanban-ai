@@ -25,9 +25,14 @@ final class PlannedItem {
     this.epics = const [],
     this.review = ReviewState.none,
     this.reviewedHead = false,
+    this.at,
   });
 
   final Item item;
+
+  /// When the snapshot it belongs to was taken: "now" for filters by age;
+  /// null outside a snapshot.
+  final DateTime? at;
 
   /// Null when the status is not defined in the workflow.
   final StatusCategory? category;

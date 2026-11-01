@@ -77,3 +77,41 @@ final class FieldExists extends Filter {
   @override
   bool matches(PlannedItem item) => ItemFields.valuesOf(item, field).isNotEmpty == exists;
 }
+
+/// True when a `created` or `updated` time ([field]) is at most [age] ago,
+/// or with [older] more than [age] ago, measured from when the snapshot was
+/// taken ([PlannedItem.at]). A day from an older file counts as its
+/// midnight UTC; items without the field never match.
+final class FieldAge extends Filter {
+  const FieldAge(this.field, this.age, {this.older = false});
+
+  final String field;
+  final Duration age;
+  final bool older;
+
+  static final _pattern = RegExp(r'^(\d+)\s*(m|min|h|d|w)$');
+
+  /// `90m`, `24h`, `7d`, `2w`; null for anything else.
+  static Duration? parseAge(String text) {
+    final match = _pattern.firstMatch(text.trim().toLowerCase());
+    if (match == null) return null;
+    final count = int.parse(match.group(1)!);
+    return switch (match.group(2)) {
+      'm' || 'min' => Duration(minutes: count),
+      'h' => Duration(hours: count),
+      'd' => Duration(days: count),
+      _ => Duration(days: 7 * count),
+    };
+  }
+
+  @override
+  bool matches(PlannedItem item) {
+    final now = item.at ?? DateTime.now();
+    return ItemFields.valuesOf(item, field).any((value) {
+      final time = ItemTime.parse(value);
+      if (time == null) return false;
+      final ago = now.difference(time);
+      return older ? ago > age : ago <= age;
+    });
+  }
+}

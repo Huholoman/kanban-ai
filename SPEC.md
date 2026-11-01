@@ -337,7 +337,7 @@ Global options: `-C/--dir <folder>`, `--json` (machine-readable output; JSON fie
 | `projects remove <id>` | unregister a backlog (its files stay) |
 | `projects pin <id>`, `projects unpin <id>` | set or remove `pinned: true` of a registered project (§1.2), keeping the rest of the file; JSON is the project as in `projects` |
 
-`--where` conditions: `field=a,b` (any of), `field!=a`, `field~text` (contains, ignoring case), `field?` (has a value), `!field?` (has none); repeatable (AND). Any field from §3 / §6.2 works, including custom keys.
+`--where` conditions: `field=a,b` (any of), `field!=a`, `field~text` (contains, ignoring case), `field?` (has a value), `!field?` (has none), `field<age` / `field>age` (a time field at most / more than that long ago, e.g. `updated<7d`, `created>30d`; ages as in §6.1); repeatable (AND). Any field from §3 / §6.2 works, including custom keys.
 
 Exit codes: `0` ok, `1` failure / lint errors, `2` nothing to do (`next`), `3` claim conflict, `4` not found or ambiguous id, `64` usage error. With `--json`, errors are printed as `{"error": {"type", "message", "candidates"?}}`.
 
@@ -361,7 +361,7 @@ fields: [estimate]         # extra fields for cards/tables
 
 ### 6.1 Filter grammar
 
-A mapping is an AND of its entries; `and: [...]`, `or: [...]`, `not: <expr>` combine expressions; `field: value` or `field: [a, b]` matches any of the values; `field: {in: [...]}`, `{not: [...]}`, `{exists: true|false}`, `{contains: text}` (substring of any value, ignoring case) refine it. A day as a value of `created` or `updated` (`created: 2026-10-31`) also matches the instants of that UTC day.
+A mapping is an AND of its entries; `and: [...]`, `or: [...]`, `not: <expr>` combine expressions; `field: value` or `field: [a, b]` matches any of the values; `field: {in: [...]}`, `{not: [...]}`, `{exists: true|false}`, `{contains: text}` (substring of any value, ignoring case) refine it. A day as a value of `created` or `updated` (`created: 2026-10-31`) also matches the instants of that UTC day. `{within: <age>}` and `{older: <age>}` filter a time field (`created`, `updated`) by age, measured from when the snapshot is taken: at most / more than `<age>` ago, written `90m`, `24h`, `7d` or `2w` (`updated: {within: 7d}`, `created: {older: 30d}`); a day counts as its midnight UTC, items without the field never match, another age is a configuration error.
 
 ### 6.2 Fields
 
