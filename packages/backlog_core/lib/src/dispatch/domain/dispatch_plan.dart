@@ -92,9 +92,13 @@ final class DispatchConditions {
     this.pending = const [],
     this.problems = const {},
     this.epics = const {},
+    this.queue = const [],
   });
 
   static const none = DispatchConditions();
+
+  /// Starts people asked for that wait ([QueuedStart]), oldest first.
+  final List<QueuedStart> queue;
 
   /// Unfinished items whose own agent runs, or last ran, as the
   /// implementation of the whole epic ([DispatchAssignment.epic]): the items
@@ -146,8 +150,9 @@ final class DispatchConditions {
   /// pull request that could not be opened, …).
   final Map<ItemId, List<String>> problems;
 
-  /// These conditions with [pending] in place of the current ones.
-  DispatchConditions withPending(List<PendingAction> pending) => DispatchConditions(
+  /// These conditions with [pending] and [queue] in place of the current
+  /// ones.
+  DispatchConditions withPending(List<PendingAction> pending, {List<QueuedStart>? queue}) => DispatchConditions(
     unavailable: unavailable,
     held: held,
     blocked: blocked,
@@ -160,6 +165,7 @@ final class DispatchConditions {
     pending: pending,
     problems: problems,
     epics: epics,
+    queue: queue ?? this.queue,
   );
 }
 
@@ -577,6 +583,7 @@ final class DispatchPlan {
     this.problems = const [],
     this.queuedReplies = const {},
     this.epics = const {},
+    this.queue = const [],
   });
 
   /// Whether a person (anyone but the agent) commented on unfinished,
@@ -858,6 +865,7 @@ final class DispatchPlan {
                 : 'the agent continues after the action "${run.action}" ends',
       }),
       epics: Set.unmodifiable(epics),
+      queue: List.unmodifiable(conditions.queue),
     );
   }
 
@@ -925,6 +933,33 @@ final class DispatchPlan {
 
   /// Unfinished epics one agent implements ([DispatchConditions.epics]).
   final Set<ItemId> epics;
+
+  /// Starts people asked for that wait, oldest first
+  /// ([DispatchConditions.queue]).
+  final List<QueuedStart> queue;
+
+  /// The queued start of [id], if any.
+  QueuedStart? queuedFor(ItemId id) => queue.firstWhereOrNull((q) => q.item == id);
+
+  /// What [start] waits for by this plan (why it cannot start now); its
+  /// last [QueuedStart.reason] when the plan sees no obstacle (the launch
+  /// itself failed, e.g. a branch busy in another worktree).
+  String queueReason(QueuedStart start) {
+    try {
+      startOf(start);
+    } on BacklogException catch (error) {
+      return error.message;
+    }
+    return start.reason ?? 'its turn';
+  }
+
+  /// What starting [start] runs now: an agent ([assignmentFor],
+  /// [epicStart], a prompt action) or an action's job; fails like those.
+  ({DispatchAssignment? agent, ActionJob? job}) startOf(QueuedStart start) => switch (start.kind) {
+    StartKind.agent => (agent: assignmentFor(start.item.value, fresh: start.fresh), job: null),
+    StartKind.epic => (agent: epicStart(start.item.value, fresh: start.fresh), job: null),
+    StartKind.action => actionStart(start.item.value, start.action ?? '', trigger: ActionTrigger.request),
+  };
 
   /// The epic one agent implements that [id] belongs to (lies under), if any;
   /// such items are never assigned on their own.
@@ -1267,7 +1302,10 @@ final class DispatchPlan {
       _sameList(other.queuedReplies.keys, queuedReplies.keys) &&
       _sameList(other.worktrees.map(_worktreeKey), worktrees.map(_worktreeKey)) &&
       _sameList(other.runs.map(_runKey), runs.map(_runKey)) &&
-      _sameList(other.pending.map(_pendingKey), pending.map(_pendingKey));
+      _sameList(other.pending.map(_pendingKey), pending.map(_pendingKey)) &&
+      _sameList(other.queue.map(_queueKey), queue.map(_queueKey));
+
+  static String _queueKey(QueuedStart start) => '${start.item}:${start.kind.name}:${start.action}:${start.reason}';
 
   static String _runKey(AgentRun run) => '${run.item}:${run.worktree}:${run.pid}:${run.action}';
 

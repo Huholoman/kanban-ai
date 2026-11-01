@@ -410,10 +410,14 @@ $_actions''',
       await requests.add(ActionRequest(item: '0001', action: 'Tests', at: DateTime.now(), by: 'tobik'));
       await requests.add(ActionRequest(item: 'T-0001', action: 'Nope', at: DateTime.now(), by: 'tobik'));
       await dispatcher.evaluate();
-      expect(notes, [
-        startsWith('T-0001: The action "Tests" (requested by tobik) could not start: The action "Tests" runs in the'),
-        startsWith('T-0001: The action "Nope" (requested by tobik) could not start: No action "Nope"'),
-      ]);
+      expect(notes, [startsWith('T-0001: The action "Nope" (requested by tobik) could not start: No action "Nope"')]);
+      // What cannot start yet waits in the queue (here for a worktree with its branch).
+      final queued = dispatcher.current!.queue.single;
+      expect(
+        (queued.item, queued.kind, queued.action, queued.by),
+        (ItemId('T-0001'), StartKind.action, 'Tests', 'tobik'),
+      );
+      expect(dispatcher.current!.queueReason(queued), contains('runs in the worktree of T-0001'));
     });
   });
 }

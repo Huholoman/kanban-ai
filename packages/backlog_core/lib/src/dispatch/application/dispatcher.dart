@@ -143,6 +143,128 @@ final class Dispatcher {
     return started;
   });
 
+  /// Starts what a person asked for ([start]: the item's agent, an epic or
+  /// an action) now, whatever the mode, or queues it when it cannot start
+  /// yet: no free worktree, `max_agents` reached, something already runs
+  /// for the item or holds its claim, its branch busy in another worktree.
+  /// Returns null when it started, else the queued start (one per item: a
+  /// new request replaces the item's queued one in its place). A request
+  /// that can never start (the item done, not ready, an action its status
+  /// does not offer, …) fails like [start], [startEpic] and [runAction].
+  Future<QueuedStart?> request(QueuedStart start) => _serialized(() async {
+    final plan = await _evaluate(launchAuto: false);
+    if (plan == null) throw const NotFoundException('No dispatcher is configured in backlog.yaml.');
+    final id = ItemReference.resolve(start.item.value, plan.snapshot.ids);
+    final asked = QueuedStart(
+      item: id,
+      kind: start.kind,
+      since: start.since,
+      action: start.action,
+      fresh: start.fresh,
+      by: start.by,
+    );
+    QueuedStart? queued;
+    try {
+      final started = await _launchStart(plan, asked);
+      _log('Dispatcher: ${asked.what} for $id started ($started).');
+      await _dequeue(id);
+    } on UnavailableException catch (error) {
+      queued = await _enqueue(asked.withReason(error.message));
+    } on ClaimConflictException catch (error) {
+      queued = await _enqueue(asked.withReason(error.message));
+    }
+    await _evaluate();
+    return queued;
+  });
+
+  /// Drops the queued start of [reference]; false when none waited.
+  Future<bool> cancel(String reference) => _serialized(() async {
+    final plan = _current ?? await _evaluate(launchAuto: false);
+    if (plan == null) throw const NotFoundException('No dispatcher is configured in backlog.yaml.');
+    final id = ItemReference.resolve(reference, plan.snapshot.ids);
+    final removed = await _dequeue(id);
+    if (removed) _log('Dispatcher: the queued start of $id was cancelled.');
+    await _evaluate();
+    return removed;
+  });
+
+  Future<QueuedStart> _enqueue(QueuedStart start) async {
+    final state = await _actions.load();
+    final index = state.queue.indexWhere((q) => q.item == start.item);
+    final queue = [...state.queue];
+    if (index < 0) {
+      queue.add(start);
+    } else {
+      queue[index] = start;
+    }
+    await _actions.save(state.withQueue(queue));
+    _log('Dispatcher: queued ${start.what} for ${start.item}: ${start.reason}');
+    return start;
+  }
+
+  Future<bool> _dequeue(ItemId id) async {
+    final state = await _actions.load();
+    if (!state.queue.any((q) => q.item == id)) return false;
+    await _actions.save(state.withQueue([...state.queue.where((q) => q.item != id)]));
+    return true;
+  }
+
+  /// Starts [start] with [plan] and describes what started.
+  Future<String> _launchStart(DispatchPlan plan, QueuedStart start) async {
+    final run = plan.startOf(start);
+    if (run.agent case final assignment?) {
+      await _launcher.launch(assignment);
+      _launched.add(assignment.key);
+      if (assignment.action case final action?) await _reviewStarted(assignment.id, action);
+      return 'agent ${assignment.agentProfile.name} in ${assignment.agent}'
+          '${assignment.resume == null ? '' : ', continuing its session'}';
+    }
+    final job = run.job!;
+    await _launcher.runJob(job);
+    return '${job.action.kind == ActionKind.command ? 'command' : 'built-in'} in ${job.worktree ?? job.path}';
+  }
+
+  /// Starts the queued starts that can start now, oldest first, in either
+  /// mode; returns the plan after the last change (null when nothing
+  /// changed) and whether anything started. One that cannot start yet
+  /// stays (with the reason); one that can never start any more (the item
+  /// done or gone, not ready, …) is dropped with a note.
+  Future<(DispatchPlan?, bool)> _runQueue(DispatchPlan plan) async {
+    if (plan.queue.isEmpty) return (null, false);
+    var current = plan;
+    var changed = false;
+    var started = false;
+    for (final start in plan.queue) {
+      String? reason;
+      try {
+        final what = await _launchStart(current, start);
+        _log('Dispatcher: the queued ${start.what} for ${start.item} started ($what).');
+        await _dequeue(start.item);
+        changed = started = true;
+        current = await _plan() ?? current;
+        continue;
+      } on UnavailableException catch (error) {
+        reason = error.message;
+      } on ClaimConflictException catch (error) {
+        reason = error.message;
+      } on BacklogException catch (error) {
+        await _dequeue(start.item);
+        changed = true;
+        await _say(start.item, 'The queued start (${start.what}) was dropped: ${error.message}');
+        current = await _plan() ?? current;
+        continue;
+      }
+      if (reason != start.reason) {
+        final state = await _actions.load();
+        await _actions.save(
+          state.withQueue([for (final q in state.queue) q.item == start.item ? q.withReason(reason) : q]),
+        );
+        changed = true;
+      }
+    }
+    return (changed ? await _plan() ?? current : null, started);
+  }
+
   /// Stops the agent working on [reference]; false when none ran.
   Future<bool> stop(String reference) => _serialized(() async {
     final plan = _current ?? await _evaluate(launchAuto: false);
@@ -180,7 +302,7 @@ final class Dispatcher {
     for (final action in queued) {
       _log('Dispatcher: ${action.item} entered ${action.status}; queued the action "${action.action}".');
     }
-    conditions = conditions.withPending(state.pending);
+    conditions = conditions.withPending(state.pending, queue: state.queue);
     return DispatchPlan.of(snapshot, backlogRoot: backlogRoot, conditions: conditions);
   }
 
@@ -214,16 +336,28 @@ final class Dispatcher {
     if (launchAuto && plan != null) {
       // Manual mode takes no new work by itself, but replies to an agent
       // (a person's comment, a failed merge) wake it like in auto mode.
+      // Replies go first, then the starts people queued, then new work.
       final auto = plan.mode == DispatchMode.auto;
       for (final assignment in plan.assignments) {
-        if (!auto && !plan.isReply(assignment)) continue;
-        if (!_launched.add(assignment.key)) continue;
+        if (plan.isReply(assignment)) launched = await _launch(assignment) || launched;
+      }
+      var queueWaits = plan.queue.isNotEmpty && launched;
+      if (plan.queue.isNotEmpty && !launched) {
         try {
-          await _launcher.launch(assignment);
-          launched = true;
+          final (after, started) = await _runQueue(plan);
+          if (after != null) {
+            if (!after.sameDecisionAs(plan)) _plans.add(after);
+            _current = plan = after;
+          }
+          launched = started;
+          queueWaits = started;
         } catch (error, stackTrace) {
-          _launched.remove(assignment.key);
           _onError(error, stackTrace);
+        }
+      }
+      if (auto && !queueWaits) {
+        for (final assignment in plan!.assignments) {
+          if (!plan.isReply(assignment)) launched = await _launch(assignment) || launched;
         }
       }
     }
@@ -245,6 +379,20 @@ final class Dispatcher {
       }
     }
     return plan;
+  }
+
+  /// Launches [assignment] unless it was launched already; true when it
+  /// started.
+  Future<bool> _launch(DispatchAssignment assignment) async {
+    if (!_launched.add(assignment.key)) return false;
+    try {
+      await _launcher.launch(assignment);
+      return true;
+    } catch (error, stackTrace) {
+      _launched.remove(assignment.key);
+      _onError(error, stackTrace);
+      return false;
+    }
   }
 
   /// Starts the `on_enter` actions that may run now and the actions
@@ -330,6 +478,26 @@ final class Dispatcher {
         final started = await _startAction(current, request.item, request.action, ActionTrigger.request);
         _log('Dispatcher: the action "${request.action}" requested$by for ${request.item} started ($started).');
       } on BacklogException catch (error) {
+        if (error is UnavailableException || error is ClaimConflictException) {
+          // Not now: it waits in the queue like a button's request.
+          try {
+            await _enqueue(
+              QueuedStart(
+                item: ItemReference.resolve(request.item, current.snapshot.ids),
+                kind: StartKind.action,
+                action: request.action,
+                since: request.at,
+                by: request.by,
+                reason: error.message,
+              ),
+            );
+            changed = true;
+            current = await _plan() ?? current;
+            continue;
+          } on BacklogException {
+            // An unknown item: noted below like any failure.
+          }
+        }
         ItemId? id;
         try {
           id = ItemReference.resolve(request.item, current.snapshot.ids);

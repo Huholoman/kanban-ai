@@ -142,6 +142,65 @@ final class HeldItemDto {
   Json toJson() => {'item': item, 'title': title, 'reason': reason};
 }
 
+/// A start a person asked for that waits until it can happen (the queue of
+/// starts): [kind] `agent` (Start agent), `epic` (Implement epic) or
+/// `action` ([action]); [reason] says what it waits for, [position] is its
+/// place in the queue (from 1).
+final class QueuedStartDto {
+  const QueuedStartDto({
+    required this.item,
+    required this.title,
+    required this.kind,
+    required this.since,
+    required this.reason,
+    required this.position,
+    this.action,
+    this.fresh = false,
+    this.by,
+  });
+
+  factory QueuedStartDto.fromJson(Json json) => QueuedStartDto(
+    item: json.string('item'),
+    title: json.string('title'),
+    kind: json.string('kind'),
+    since: DateTime.parse(json.string('since')),
+    reason: json.string('reason'),
+    position: json.integer('position', fallback: 1),
+    action: json.optionalString('action'),
+    fresh: json.boolean('fresh'),
+    by: json.optionalString('by'),
+  );
+
+  final String item;
+  final String title;
+  final String kind;
+  final DateTime since;
+  final String reason;
+  final int position;
+  final String? action;
+  final bool fresh;
+  final String? by;
+
+  /// `Start agent`, `Implement epic`, `"AI review"`.
+  String get what => switch (kind) {
+    'epic' => 'Implement epic',
+    'action' => '"$action"',
+    _ => fresh ? 'Start fresh' : 'Start agent',
+  };
+
+  Json toJson() => {
+    'item': item,
+    'title': title,
+    'kind': kind,
+    'since': since.toUtc().toIso8601String(),
+    'reason': reason,
+    'position': position,
+    'action': action,
+    'fresh': fresh,
+    'by': by,
+  };
+}
+
 /// An unfinished item whose latest run ended with problems: it needs a
 /// person.
 final class ProblemItemDto {
@@ -249,6 +308,7 @@ final class DispatchDto {
     this.problems = const [],
     this.queuedReplies = const [],
     this.epics = const [],
+    this.queue = const [],
   });
 
   /// No `dispatcher` section in `backlog.yaml`.
@@ -274,6 +334,7 @@ final class DispatchDto {
     problems: json.objects('problems').map(ProblemItemDto.fromJson).toList(),
     queuedReplies: json.objects('queued_replies').map(HeldItemDto.fromJson).toList(),
     epics: json.strings('epics'),
+    queue: json.objects('queue').map(QueuedStartDto.fromJson).toList(),
   );
 
   final bool configured;
@@ -343,6 +404,17 @@ final class DispatchDto {
   }
   /// Unfinished epics one agent implements (running or last run), ids.
   final List<String> epics;
+
+  /// Starts people asked for that wait until they can happen, in order.
+  final List<QueuedStartDto> queue;
+
+  /// The queued start of [item]; null when none waits.
+  QueuedStartDto? queuedFor(String item) {
+    for (final queued in queue) {
+      if (queued.item == item) return queued;
+    }
+    return null;
+  }
 
   /// The `on_enter` actions waiting to run for [item].
   List<PendingActionDto> pendingFor(String item) => [
@@ -422,6 +494,7 @@ final class DispatchDto {
     'problems': [for (final problem in problems) problem.toJson()],
     'queued_replies': [for (final queued in queuedReplies) queued.toJson()],
     'epics': epics,
+    'queue': [for (final queued in queue) queued.toJson()],
   };
 }
 

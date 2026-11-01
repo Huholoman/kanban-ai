@@ -394,6 +394,21 @@ final class FakeBacklogApi implements BacklogApi {
     return plan = afterStart ?? plan;
   }
 
+  /// Items whose queued start was cancelled; the plan loses it.
+  final cancelled = <String>[];
+
+  @override
+  Future<DispatchDto> cancelQueued(String reference) async {
+    cancelled.add(reference);
+    return plan = DispatchDto.fromJson({
+      ...plan.toJson(),
+      'queue': [
+        for (final queued in plan.queue)
+          if (queued.item != reference) queued.toJson(),
+      ],
+    });
+  }
+
   @override
   Future<DispatchDto> stopAgent(String reference) async {
     stopped.add(reference);

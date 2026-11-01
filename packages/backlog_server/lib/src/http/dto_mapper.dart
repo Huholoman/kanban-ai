@@ -281,6 +281,20 @@ abstract final class DtoMapper {
           HeldItemDto(item: id.value, title: planned.item.title, reason: reason),
     ],
     epics: [for (final id in plan.epics) id.value]..sort(),
+    queue: [
+      for (final (index, start) in plan.queue.indexed)
+        QueuedStartDto(
+          item: start.item.value,
+          title: plan.snapshot[start.item]?.item.title ?? '',
+          kind: start.kind.name,
+          since: start.since,
+          reason: plan.queueReason(start),
+          position: index + 1,
+          action: start.action,
+          fresh: start.fresh,
+          by: start.by,
+        ),
+    ],
   );
 
   static EpicDto epic(EpicPlan plan) => EpicDto(

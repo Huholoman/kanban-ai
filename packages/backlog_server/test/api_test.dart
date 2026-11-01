@@ -435,7 +435,13 @@ void main() {
       expect((await api.item(b.item.id)).item.claim!.agent, 'w1');
 
       expect(started.waitingReason(a.item.id), 'max_agents (1) reached');
-      await expectLater(api.startAgent(a.item.id), throwsA(apiError(409, 'unavailable')));
+      // Not now: queued, until it can start or is cancelled.
+      final queued = (await api.startAgent(a.item.id)).queuedFor(a.item.id)!;
+      expect((queued.kind, queued.position, queued.what), ('agent', 1, 'Start agent'));
+      expect(queued.reason, contains('No free worktree for ${a.item.id}'));
+      expect((await api.dispatch()).queue.single.item, a.item.id);
+      expect((await api.cancelQueued(a.item.id)).queue, isEmpty);
+      await expectLater(api.cancelQueued(a.item.id), throwsA(apiError(404, 'not_found')));
       final log = await api.agentLog(b.item.id);
       expect(log.lines, ['working on ${b.item.id}']);
       expect(log.running, isTrue);
@@ -530,7 +536,10 @@ void main() {
       expect(started.epics, [epic.item.id]);
       expect(started.assignments, isEmpty);
       expect((await api.item(epic.item.id)).item.claim!.agent, 'w1');
-      await expectLater(api.startEpic(epic.item.id), throwsA(apiError(409, 'unavailable')));
+      final again = (await api.startEpic(epic.item.id)).queuedFor(epic.item.id)!;
+      expect((again.kind, again.what), ('epic', 'Implement epic'));
+      expect(again.reason, contains('already runs for ${epic.item.id}'));
+      await api.cancelQueued(epic.item.id);
 
       // While its agent works, the check sees the epic as that agent does.
       await (await host.backlog).claims.claimInEpic(epic.item.id, 'w1');
@@ -582,7 +591,10 @@ void main() {
       expect((run.action, run.kind, run.worktree), ('Vyřeš připomínky z PR', 'agent', 'w1'));
       final claimed = await api.item(id);
       expect((claimed.item.status, claimed.item.claim!.agent), ('review', 'w1'));
-      await expectLater(api.runAction(id, 'Testy'), throwsA(apiError(409, 'unavailable')));
+      final waits = (await api.runAction(id, 'Testy')).queuedFor(id)!;
+      expect((waits.kind, waits.action, waits.what), ('action', 'Testy', '"Testy"'));
+      expect(waits.reason, contains('already runs for $id'));
+      await api.cancelQueued(id);
       await expectLater(api.runAction(other.item.id, 'Testy'), throwsA(apiError(400, 'invalid_input')));
       await expectLater(api.runAction(id, 'Nope'), throwsA(apiError(404, 'not_found')));
 

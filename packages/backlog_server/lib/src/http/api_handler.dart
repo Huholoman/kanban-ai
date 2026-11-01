@@ -69,6 +69,7 @@ final class ApiHandler {
           ..post(local(ApiPaths.dispatchStart), _startAgent)
           ..post(local(ApiPaths.dispatchStop), _stopAgent)
           ..post(local(ApiPaths.dispatchEpic), _startEpic)
+          ..delete('${local(ApiPaths.dispatchQueue)}/<ref>', _cancelQueued)
           ..get('${local(ApiPaths.dispatch)}/log/<ref>', _agentLog)
           ..get('${local(ApiPaths.dispatch)}/log/<ref>/live', _agentLogLive);
     return _guard(router.call);
@@ -207,9 +208,32 @@ final class ApiHandler {
 
   Dispatcher _running() => _dispatcher() ?? (throw const NotFoundException('No dispatcher runs for this project.'));
 
+  /// Starts what a person asked for, or queues it when it cannot start yet
+  /// (the plan's `queue` then has it).
+  Future<Response> _request(String item, StartKind kind, {bool fresh = false, String? action}) async {
+    final dispatcher = _running();
+    final snapshot = await (await _host.backlog).planning.snapshot();
+    await dispatcher.request(
+      QueuedStart(
+        item: ItemReference.resolve(item, snapshot.ids),
+        kind: kind,
+        since: DateTime.now(),
+        fresh: fresh,
+        action: action,
+      ),
+    );
+    return _json((await _plan()).toJson());
+  }
+
   Future<Response> _startAgent(Request request) async {
     final payload = DispatchRequest.fromJson(await _body(request));
-    await _running().start(payload.item, fresh: payload.fresh);
+    return _request(payload.item, StartKind.agent, fresh: payload.fresh);
+  }
+
+  Future<Response> _cancelQueued(Request request, String ref) async {
+    if (!await _running().cancel(Uri.decodeComponent(ref))) {
+      throw NotFoundException('No start of ${Uri.decodeComponent(ref)} is queued.');
+    }
     return _json((await _plan()).toJson());
   }
 
@@ -225,13 +249,11 @@ final class ApiHandler {
 
   Future<Response> _startEpic(Request request) async {
     final payload = DispatchRequest.fromJson(await _body(request));
-    await _running().startEpic(payload.item, fresh: payload.fresh);
-    return _json((await _plan()).toJson());
+    return _request(payload.item, StartKind.epic, fresh: payload.fresh);
   }
 
   Future<Response> _runAction(Request request, String ref, String name) async {
-    await _running().runAction(ref, Uri.decodeComponent(name));
-    return _json((await _plan()).toJson());
+    return _request(ref, StartKind.action, action: Uri.decodeComponent(name));
   }
 
   Future<Response> _stopAgent(Request request) async {

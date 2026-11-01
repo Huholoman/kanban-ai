@@ -111,6 +111,10 @@ final class HttpBacklogApi implements BacklogApi {
   );
 
   @override
+  Future<DispatchDto> cancelQueued(String reference) async =>
+      DispatchDto.fromJson(asJson(await _send('DELETE', ApiPaths.queued(reference), const {})));
+
+  @override
   Future<DispatchDto> stopAgent(String reference) async =>
       DispatchDto.fromJson(asJson(await _send('POST', ApiPaths.dispatchStop, DispatchRequest(reference).toJson())));
 

@@ -774,6 +774,76 @@ dispatcher:
       expect(errors, isEmpty);
     });
 
+    QueuedStart ask(String item, {StartKind kind = StartKind.agent}) =>
+        QueuedStart(item: ItemId(item), kind: kind, since: clock.now(), by: 'tobik');
+
+    test('a start that cannot happen now is queued and starts once it can, in either mode', () async {
+      final dispatcher = await start('manual', maxAgents: 1);
+      await todo('A');
+      await todo('B');
+      await todo('C');
+      expect(await dispatcher.request(ask('T-0001')), isNull, reason: 'started at once');
+      expect(launcher.launched, ['T-0001@w1']);
+
+      final queued = await dispatcher.request(ask('T-0002'));
+      expect(queued!.reason, contains('No free worktree for T-0002'));
+      expect(await dispatcher.request(ask('T-0003')), isNotNull);
+      var plan = dispatcher.current!;
+      expect(plan.queue.map((q) => '${q.item}'), ['T-0002', 'T-0003']);
+      expect(plan.queueReason(plan.queue.first), contains('1/1 running'));
+      expect(launcher.launched, hasLength(1));
+
+      // The worktree frees up: the oldest queued start goes first, the other waits.
+      await backlog.claims.complete('T-0001', agent: 'w1');
+      plan = (await dispatcher.evaluate())!;
+      expect(launcher.launched, ['T-0001@w1', 'T-0002@w1']);
+      expect(plan.queue.map((q) => '${q.item}'), ['T-0003']);
+
+      // Cancelled, it never starts.
+      expect(await dispatcher.cancel('T-0003'), isTrue);
+      expect(await dispatcher.cancel('T-0003'), isFalse);
+      await backlog.claims.complete('T-0002', agent: 'w1');
+      await dispatcher.evaluate();
+      expect(launcher.launched, hasLength(2));
+      expect(errors, isEmpty);
+    });
+
+    test('a start that can never happen is not queued; one that became impossible is dropped', () async {
+      final dispatcher = await start('manual', maxAgents: 1);
+      await todo('A');
+      await todo('B');
+      await backlog.items.create(const NewItem(title: 'Done', status: 'done'));
+      await dispatcher.request(ask('T-0001'));
+      await expectLater(dispatcher.request(ask('T-0003')), throwsA(isA<InvalidInputException>()));
+      expect(dispatcher.current!.queue, isEmpty);
+
+      await dispatcher.request(ask('T-0002'));
+      await backlog.items.update('T-0002', [FieldChange.parse('status=cancelled')]);
+      await backlog.claims.complete('T-0001', agent: 'w1');
+      await dispatcher.evaluate();
+      expect(dispatcher.current!.queue, isEmpty);
+      expect(launcher.launched, ['T-0001@w1']);
+    });
+
+    test('the queue is kept in the action state, which survives a restart', () {
+      final state = ActionState(
+        queue: [
+          QueuedStart(
+            item: ItemId('T-1'),
+            kind: StartKind.action,
+            action: 'AI review',
+            since: DateTime.utc(2026, 11, 1, 10),
+            by: 'tobik',
+            reason: 'No free worktree',
+          ),
+          QueuedStart(item: ItemId('E-1'), kind: StartKind.epic, since: DateTime.utc(2026, 11, 1, 11), fresh: true),
+        ],
+      );
+      final back = ActionState.fromJson(state.toJson());
+      expect(back.queue.map((q) => q.toJson()), state.queue.map((q) => q.toJson()));
+      expect(back.queue.map((q) => q.what), ['the action "AI review"', 'Implement epic']);
+    });
+
     test('changes are debounced into one evaluation', () async {
       final dispatcher = await start('auto');
       launcher.claims = false;

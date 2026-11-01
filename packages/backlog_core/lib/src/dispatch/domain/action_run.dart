@@ -69,6 +69,83 @@ final class PendingAction {
   };
 }
 
+/// What a person asked to start ([QueuedStart.kind]).
+enum StartKind {
+  /// The item's own agent (*Start agent*, `dispatch/start`).
+  agent,
+
+  /// One agent implementing the item as an epic (*Implement epic*,
+  /// `dispatch/epic`).
+  epic,
+
+  /// An action (`…/actions/<name>`, `backlog action`).
+  action;
+
+  static StartKind parse(Object? value) => values.firstWhere((k) => k.name == value, orElse: () => agent);
+}
+
+/// A start a person asked for that could not happen at once (no free
+/// worktree, `max_agents` reached, the branch busy in another worktree,
+/// something already running for the item): the dispatcher starts it as
+/// soon as it can, in the order of the queue. At most one per item.
+final class QueuedStart {
+  const QueuedStart({
+    required this.item,
+    required this.kind,
+    required this.since,
+    this.action,
+    this.fresh = false,
+    this.by,
+    this.reason,
+  });
+
+  factory QueuedStart.fromJson(Map<String, Object?> json) => QueuedStart(
+    item: ItemId(json['item']! as String),
+    kind: StartKind.parse(json['kind']),
+    since: DateTime.parse(json['since']! as String),
+    action: json['action'] as String?,
+    fresh: json['fresh'] == true,
+    by: json['by'] as String?,
+    reason: json['reason'] as String?,
+  );
+
+  final ItemId item;
+  final StartKind kind;
+  final DateTime since;
+
+  /// The action's name for [StartKind.action].
+  final String? action;
+
+  /// A new session instead of the item's last one (agent and epic).
+  final bool fresh;
+
+  /// Who asked, when known.
+  final String? by;
+
+  /// Why the last attempt could not start it.
+  final String? reason;
+
+  /// `Start agent`, `Implement epic`, `the action "AI review"`.
+  String get what => switch (kind) {
+    StartKind.agent => fresh ? 'Start fresh' : 'Start agent',
+    StartKind.epic => 'Implement epic',
+    StartKind.action => 'the action "$action"',
+  };
+
+  QueuedStart withReason(String reason) =>
+      QueuedStart(item: item, kind: kind, since: since, action: action, fresh: fresh, by: by, reason: reason);
+
+  Map<String, Object?> toJson() => {
+    'item': item.value,
+    'kind': kind.name,
+    'since': since.toUtc().toIso8601String(),
+    'action': ?action,
+    if (fresh) 'fresh': true,
+    'by': ?by,
+    'reason': ?reason,
+  };
+}
+
 /// Where the review ↔ fix loop of an AI review with `auto_fix` stands.
 enum ReviewLoopPhase {
   /// The review runs or is queued; its verdict decides what follows.
@@ -126,15 +203,18 @@ final class ReviewLoop {
 
 /// What the dispatcher remembers about status hooks between evaluations
 /// and restarts: the status each item had when it was last looked at, the
-/// `on_enter` actions still waiting to run and the review ↔ fix loops of
-/// AI reviews with `auto_fix`.
+/// `on_enter` actions still waiting to run, the review ↔ fix loops of
+/// AI reviews with `auto_fix` and the queue of starts people asked for.
 final class ActionState {
-  const ActionState({this.statuses, this.pending = const [], this.loops = const {}});
+  const ActionState({this.statuses, this.pending = const [], this.loops = const {}, this.queue = const []});
 
   /// Item → status at the last evaluation; null before the first one.
   final Map<ItemId, String>? statuses;
   final List<PendingAction> pending;
   final Map<ItemId, ReviewLoop> loops;
+
+  /// Starts people asked for that wait, oldest first.
+  final List<QueuedStart> queue;
 
   /// Compares [snapshot] with [statuses]: every item whose status changed
   /// to the `on_enter` status of an action gets that action queued (once
@@ -163,19 +243,23 @@ final class ActionState {
       for (final waiting in pending)
         if (!queued.any((q) => q.item == waiting.item && q.action == waiting.action)) waiting,
     ];
-    return (ActionState(statuses: after, pending: [...kept, ...queued], loops: loops), queued);
+    return (ActionState(statuses: after, pending: [...kept, ...queued], loops: loops, queue: queue), queued);
   }
 
   ActionState withPending(List<PendingAction> pending) =>
-      ActionState(statuses: statuses, pending: pending, loops: loops);
+      ActionState(statuses: statuses, pending: pending, loops: loops, queue: queue);
 
   ActionState withLoops(Map<ItemId, ReviewLoop> loops) =>
-      ActionState(statuses: statuses, pending: pending, loops: loops);
+      ActionState(statuses: statuses, pending: pending, loops: loops, queue: queue);
+
+  ActionState withQueue(List<QueuedStart> queue) =>
+      ActionState(statuses: statuses, pending: pending, loops: loops, queue: queue);
 
   Map<String, Object?> toJson() => {
     'statuses': {for (final MapEntry(:key, :value) in (statuses ?? const {}).entries) key.value: value},
     'pending': [for (final action in pending) action.toJson()],
     'loops': [for (final loop in loops.values) loop.toJson()],
+    'queue': [for (final start in queue) start.toJson()],
   };
 
   factory ActionState.fromJson(Map<String, Object?> json) => ActionState(
@@ -191,6 +275,10 @@ final class ActionState {
       for (final entry in (json['loops'] as List<Object?>? ?? const []))
         if (ReviewLoop.fromJson((entry! as Map).cast<String, Object?>()) case final loop) loop.item: loop,
     },
+    queue: [
+      for (final entry in (json['queue'] as List<Object?>? ?? const []))
+        QueuedStart.fromJson((entry! as Map).cast<String, Object?>()),
+    ],
   );
 }
 

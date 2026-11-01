@@ -52,7 +52,9 @@ abstract interface class BacklogApi {
   /// Starts an agent for the ready item [reference] (also in manual mode)
   /// and returns the new plan: it continues the item's last session in that
   /// session's worktree when possible, unless [fresh]; else the first free
-  /// worktree gets a new session.
+  /// worktree gets a new session. A start that cannot happen yet (no free
+  /// worktree, …) is queued: the plan's [DispatchDto.queuedFor] has it.
+  /// The same holds for [startEpic] and [runAction].
   Future<DispatchDto> startAgent(String reference, {bool fresh = false});
 
   /// Whether one agent can implement the epic [reference] (any item with
@@ -68,6 +70,9 @@ abstract interface class BacklogApi {
   /// Starts the action [name] (`dispatcher.actions`) on [reference] now and
   /// returns the new plan.
   Future<DispatchDto> runAction(String reference, String name);
+
+  /// Drops the queued start of [reference] and returns the new plan.
+  Future<DispatchDto> cancelQueued(String reference);
 
   /// Stops the agent working on [reference] and returns the new plan.
   Future<DispatchDto> stopAgent(String reference);
@@ -113,6 +118,9 @@ abstract final class ApiPaths {
   static const dispatchStart = '/api/dispatch/start';
   static const dispatchStop = '/api/dispatch/stop';
   static const dispatchEpic = '/api/dispatch/epic';
+  static const dispatchQueue = '/api/dispatch/queue';
+
+  static String queued(String reference) => '$dispatchQueue/${Uri.encodeComponent(reference)}';
   static const events = '/api/events';
   static const health = '/api/health';
   static const projects = '/api/projects';
