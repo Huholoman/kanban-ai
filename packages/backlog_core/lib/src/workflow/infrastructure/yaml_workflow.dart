@@ -76,7 +76,30 @@ Workflow parseWorkflowYaml(String source, {String origin = 'backlog.yaml'}) {
     claimLease: leaseMinutes == null ? standard.claimLease : Duration(minutes: leaseMinutes as int),
     appearance: _appearance(document['appearance'], origin),
     dispatcher: _dispatcher(document['dispatcher'], origin),
+    git: _git(document['git'], origin),
   );
+}
+
+BacklogGit _git(Object? node, String origin) {
+  if (node == null) return BacklogGit.standard;
+  final yaml = _map(node, 'git', origin);
+  const known = ['commit', 'push'];
+  for (final key in yaml.keys) {
+    if (!known.contains(key)) {
+      throw ConfigurationException('$origin: unknown key "git.$key" (expected ${known.join(', ')}).');
+    }
+  }
+  final push = yaml['push'];
+  if (push != null && push is! bool) throw ConfigurationException('$origin: git.push must be true or false.');
+  final commit = yaml['commit'];
+  try {
+    return BacklogGit(
+      commit: commit == null ? BacklogCommitMode.auto : BacklogCommitMode.parse('$commit'),
+      push: push == true,
+    );
+  } on ArgumentError catch (error) {
+    throw ConfigurationException('$origin: ${error.message}');
+  }
 }
 
 DispatcherConfig? _dispatcher(Object? node, String origin) {

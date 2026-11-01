@@ -22,6 +22,7 @@ export 'src/dispatch/infrastructure/review_recorder.dart';
 export 'src/dispatch/infrastructure/worktree_provisioner.dart';
 export 'src/history/application/history_service.dart';
 export 'src/history/domain/item_history.dart';
+export 'src/history/infrastructure/backlog_commits.dart';
 export 'src/history/infrastructure/git_item_revisions.dart';
 export 'src/infrastructure/backlog_layout.dart' show BacklogLayout;
 export 'src/items/application/field_change.dart';

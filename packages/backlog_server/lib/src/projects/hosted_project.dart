@@ -7,6 +7,7 @@ import 'package:shelf/shelf.dart';
 import '../backlog_host.dart';
 import '../events/event_socket.dart';
 import '../http/api_handler.dart';
+import 'backlog_autocommit.dart';
 
 /// Creates the agent launcher of project [projectId]; [log] writes to the
 /// server log (prefixed with the project when several are served).
@@ -26,6 +27,7 @@ final class ProjectRuntime {
     this.prefixLogs = false,
     this.stateDir,
     this.storage = folderStorage,
+    this.commitQuiet = const Duration(seconds: 30),
   });
 
   /// The folder itself, caching parsed item files ([FileBacklogStorage]).
@@ -51,6 +53,10 @@ final class ProjectRuntime {
 
   /// Where the backlog of each project is kept.
   final StorageFactory storage;
+
+  /// How long a backlog must be quiet before the server commits it
+  /// ([BacklogAutoCommit], `git.commit`); null never commits.
+  final Duration? commitQuiet;
 }
 
 /// One backlog of the server: its [BacklogHost], the [ChangeSource] of its
@@ -89,6 +95,7 @@ final class HostedProject {
   ChangeSource? _changes;
   Dispatcher? _dispatcher;
   AgentLauncher? _launcher;
+  BacklogAutoCommit? _autoCommit;
   Future<void>? _starting;
   bool _closed = false;
   late final Handler _api = ApiHandler(host, dispatcher: () => _dispatcher, launcher: () => _launcher).handler;
@@ -155,15 +162,26 @@ final class HostedProject {
       move: (item, status) async =>
           (await host.backlog).items.update(item.value, [FieldChange('status', ChangeOp.set, status)]),
     );
+    final autoCommit = runtime.commitQuiet == null
+        ? null
+        : BacklogAutoCommit(host, quiet: runtime.commitQuiet!, log: say);
+    var running = <String>{};
     dispatcher.plans.listen((plan) {
       say(describePlan(plan));
       if (!_events.isClosed) _events.add(const BacklogChangeEvent.dispatch());
+      // A run that ended: what it changed in the backlog is committed now.
+      final now = {for (final run in plan?.runs ?? const <AgentRun>[]) '${run.item}:${run.pid}'};
+      if (running.any((run) => !now.contains(run))) autoCommit?.runEnded();
+      running = now;
     });
     changes.changes.listen((change) {
       if (change.configuration) host.reload();
       dispatcher.notifyChanged();
-      if (!_events.isClosed) _events.add(BacklogChangeEvent(change.paths));
+      final event = BacklogChangeEvent(change.paths);
+      autoCommit?.changed(event);
+      if (!_events.isClosed) _events.add(event);
     });
+    _autoCommit = autoCommit;
     _changes = changes;
     _dispatcher = dispatcher;
     _launcher = launcher;
@@ -201,6 +219,7 @@ final class HostedProject {
     if (_runtime != null) {
       await _dispatcher?.close();
       await _launcher?.close();
+      await _autoCommit?.close();
     }
     await _changes?.close();
     await _events.close();
