@@ -20,7 +20,9 @@ import 'merge_action.dart';
 /// (`dispatcher.pr.state`): at most every `state_every` minutes it asks
 /// for the state of the pull request of every item in an `active` status
 /// with a `pr`, that is not claimed and for which nothing runs. A merged one
-/// makes the item done and is cleaned up like after the action `merge`
+/// makes the item done (an epic with unfinished items under it stays open,
+/// without its `pr`; its items on the branch are done) and is cleaned up
+/// like after the action `merge`
 /// ([MergeCleanup], with `dispatcher.merge.cleanup`); a closed one gets a
 /// note, once per pull request. Both are notes by `kanban-ai`. What it saw
 /// last is kept in `pull-requests/<project>/<id>.json` under [stateDir].
@@ -123,10 +125,15 @@ final class PullRequestWatcher {
         await _running(id)) {
       return false;
     }
-    await backlog.claims.complete(id.value, force: true);
+    final (:members, :remaining) = await backlog.claims.completeMerged(id, DispatchAssignment.branchFor(planned));
     final status = (await backlog.items.get(id.value)).status;
-    final members = await backlog.claims.completeMembers(id, DispatchAssignment.branchFor(planned));
-    final steps = <String>[if (members.isNotEmpty) 'with it ${members.join(', ')}'];
+    final steps = <String>[
+      if (remaining.isEmpty && members.isNotEmpty) 'with it ${members.join(', ')}',
+      if (remaining.isNotEmpty)
+        'deployed ${members.length} item(s)${members.isEmpty ? '' : ' (${members.join(', ')})'}, '
+            'remaining ${remaining.length} (${remaining.join(', ')}); the next Implement epic starts a new branch '
+            'from ${config.base}',
+    ];
     if (config.merge.cleanup) {
       final repo = await MergeAction.primaryClone(config, backlog.root, null);
       if (repo != null) {
@@ -147,7 +154,8 @@ final class PullRequestWatcher {
     await _note(
       backlog,
       id,
-      'The pull request $url was merged outside the board; $id is $status${steps.map((s) => '; $s').join()}.',
+      'The pull request $url was merged outside the board; $id '
+      '${remaining.isEmpty ? 'is' : 'stays open in'} $status${steps.map((s) => '; $s').join()}.',
     );
     return true;
   }

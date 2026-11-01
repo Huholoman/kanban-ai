@@ -97,8 +97,12 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
     )!;
   }
 
-  Future<BuiltInActionResult> merge({ActionTrigger trigger = ActionTrigger.onEnter, String? from = 'review'}) async {
-    final job = (await plan()).actionStart('T-0001', 'Merge', trigger: trigger, from: from).job!;
+  Future<BuiltInActionResult> merge({
+    ActionTrigger trigger = ActionTrigger.onEnter,
+    String? from = 'review',
+    String id = 'T-0001',
+  }) async {
+    final job = (await plan()).actionStart(id, 'Merge', trigger: trigger, from: from).job!;
     return const MergeAction().run(
       BuiltInActionContext(
         item: job.item,
@@ -192,13 +196,79 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       await backlog.items.create(
         const NewItem(title: 'On the branch', parent: 'T-0001', status: 'review', branch: 'agent/T-0001'),
       );
-      await backlog.items.create(const NewItem(title: 'Elsewhere', parent: 'T-0001', status: 'todo'));
+      await backlog.items.create(const NewItem(title: 'Finished', parent: 'T-0001', status: 'done'));
 
       final result = await merge();
       expect(result.ok, isTrue, reason: result.summary);
       expect(result.summary, contains('T-0001 is done; with it T-0002;'));
       expect((await backlog.items.get('T-0002')).status, 'done');
+    });
+
+    test('an epic with unfinished items left stays open, goes back and loses its pr; its branch goes', () async {
+      await item();
+      await backlog.items.update('T-0001', [FieldChange.parse('pr=https://git.example/o/r/pulls/7')]);
+      await backlog.items.create(
+        const NewItem(title: 'On the branch', parent: 'T-0001', status: 'review', branch: 'agent/T-0001'),
+      );
+      await backlog.items.create(const NewItem(title: 'Left', parent: 'T-0001', status: 'todo'));
+
+      final result = await merge();
+      expect(result.ok, isTrue, reason: result.summary);
+      expect(
+        result.summary,
+        contains(
+          'deployed 1 item(s) (T-0002), remaining 1 (T-0003); T-0001 stays open and went back to review, '
+          'the next Implement epic starts a new branch from main',
+        ),
+      );
+      final epic = await current();
+      expect(epic.status, 'review');
+      expect(epic.pr, isNull);
+      expect((await backlog.items.get('T-0002')).status, 'done');
       expect((await backlog.items.get('T-0003')).status, 'todo');
+      expect(await hasBranch('agent/T-0001'), isFalse);
+      expect(File(path('repo/feature.txt')).existsSync(), isTrue);
+    });
+
+    test('an item on its epic\'s branch with other items there is not merged: deploy the epic', () async {
+      final before = await git(path('repo'), ['rev-parse', 'main']);
+      await item();
+      await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+      await backlog.items.create(
+        const NewItem(title: 'Task', parent: 'T-0001', status: 'deploy', branch: 'agent/T-0001'),
+      );
+      await backlog.items.create(
+        const NewItem(title: 'Other', parent: 'T-0001', status: 'review', branch: 'agent/T-0001'),
+      );
+
+      final result = await merge(id: 'T-0002');
+      expect(result.ok, isFalse);
+      expect(result.summary, contains('together with T-0003; deploy the epic T-0001 instead'));
+      expect(result.summary, endsWith('T-0002 went back to review'));
+      final task = await backlog.items.get('T-0002');
+      expect(task.status, 'review');
+      final note = task.discussion.comments.single;
+      expect(note.note, isTrue);
+      expect(note.text, contains('this work is on the branch agent/T-0001 of the epic T-0001 together with T-0003'));
+      expect(await git(path('repo'), ['rev-parse', 'main']), before, reason: 'nothing merged');
+      expect(await hasBranch('agent/T-0001'), isTrue);
+      expect((await current()).status, 'review');
+    });
+
+    test('the only item on its epic\'s branch is merged as usual', () async {
+      final tip = await item();
+      await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+      await backlog.items.create(
+        const NewItem(title: 'Task', parent: 'T-0001', status: 'deploy', branch: 'agent/T-0001'),
+      );
+      await backlog.items.create(const NewItem(title: 'Later', parent: 'T-0001', status: 'todo'));
+
+      final result = await merge(id: 'T-0002');
+      expect(result.ok, isTrue, reason: result.summary);
+      expect(result.summary, startsWith('merged agent/T-0001 into main (fast-forward); T-0002 is done'));
+      expect(await git(path('repo'), ['rev-parse', 'main']), tip);
+      expect((await backlog.items.get('T-0002')).status, 'done');
+      expect((await current()).status, 'review');
     });
 
     test('rebases onto a newer main, runs the check and pushes', () async {
@@ -486,6 +556,31 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       clock.advance(const Duration(minutes: 5));
       expect(await launcher.pollPullRequests(), isEmpty, reason: 'done items are not asked');
       expect(calls(), 2);
+    });
+
+    test('a merged pull request of an epic with items left keeps it open, without its pr', () async {
+      await watch();
+      await backlog.items.create(
+        const NewItem(title: 'On the branch', parent: 'T-0001', status: 'review', branch: 'agent/T-0001'),
+      );
+      await backlog.items.create(const NewItem(title: 'Left', parent: 'T-0001', status: 'todo'));
+      File(path('pr-state')).writeAsStringSync('MERGED\n');
+
+      expect(await launcher.pollPullRequests(force: true), [ItemId('T-0001')]);
+      final epic = await current();
+      expect(epic.status, 'review');
+      expect(epic.pr, isNull);
+      expect((await backlog.items.get('T-0002')).status, 'done');
+      expect((await backlog.items.get('T-0003')).status, 'todo');
+      expect(
+        epic.discussion.comments.single.text,
+        startsWith(
+          'The pull request https://git.example/o/r/pulls/12 was merged outside the board; T-0001 stays open in '
+          'review; deployed 1 item(s) (T-0002), remaining 1 (T-0003); the next Implement epic starts a new '
+          'branch from main',
+        ),
+      );
+      expect(await launcher.pollPullRequests(force: true), isEmpty, reason: 'no pr, nothing to ask');
     });
 
     test('a closed pull request gets one note; items being worked on are not asked', () async {

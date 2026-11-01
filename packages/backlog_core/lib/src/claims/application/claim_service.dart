@@ -178,6 +178,52 @@ final class ClaimService {
     return done;
   }
 
+  /// After [id]'s [branch] was merged: the unfinished items under it whose
+  /// work is on [branch] are done ([completeMembers]), and [id] itself is
+  /// done only when no unfinished item remains under it. Otherwise (an epic
+  /// deployed in part) it stays in its status, loses its claim and its `pr`
+  /// (merged; the next Implement epic opens a new one) and [remaining] lists
+  /// what is left.
+  Future<({List<ItemId> members, List<ItemId> remaining})> completeMerged(ItemId id, String branch) async {
+    final members = await completeMembers(id, branch);
+    final remaining = [
+      for (final planned in (await _planning.snapshot()).items)
+        if (!planned.isDone && planned.ancestors.contains(id)) planned.id,
+    ];
+    if (remaining.isEmpty) {
+      await complete(id.value, force: true);
+    } else {
+      final item = await _item(id.value);
+      await _items.save(item.copyWith(pr: () => null, updated: () => _today));
+      await _claims.remove(id);
+    }
+    return (members: members, remaining: remaining);
+  }
+
+  /// The ancestor of [id] whose branch [branch] is (its `branch`, else
+  /// `agent/<ancestor>`) when other unfinished items under that ancestor
+  /// have their work on [branch] too: merging [id] alone would bring theirs
+  /// along, so the ancestor (the epic) is the one to deploy. Null otherwise.
+  Future<({ItemId epic, List<ItemId> others})?> sharedEpicBranch(ItemId id, String branch) async {
+    final snapshot = await _planning.snapshot();
+    final planned = snapshot[id];
+    if (planned == null) return null;
+    for (final ancestor in planned.ancestors) {
+      final own = snapshot[ancestor]?.item.branch?.trim();
+      if ((own == null || own.isEmpty ? 'agent/$ancestor' : own) != branch) continue;
+      final others = [
+        for (final other in snapshot.items)
+          if (other.id != id &&
+              !other.isDone &&
+              other.ancestors.contains(ancestor) &&
+              other.item.branch?.trim() == branch)
+            other.id,
+      ];
+      return others.isEmpty ? null : (epic: ancestor, others: others);
+    }
+    return null;
+  }
+
   Future<ClaimOutcome> _acquire(PlannedItem planned, String agent, {bool mirror = true, String? branch}) async {
     final id = planned.id;
     final now = _clock.now();

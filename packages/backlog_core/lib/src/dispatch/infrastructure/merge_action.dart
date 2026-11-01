@@ -28,7 +28,12 @@ import 'process_agent_launcher.dart';
 /// - `command`: `dispatcher.merge.command`; exit code 0 means merged.
 ///
 /// **Success:** the item gets the first done status, and with `cleanup`
-/// its branch, worktree and session are cleaned up ([MergeCleanup]).
+/// its branch, worktree and session are cleaned up ([MergeCleanup]). An
+/// epic takes the items with work on its branch along; it is done itself
+/// only when nothing under it remains, else it goes back like after a
+/// failure, without its `pr` (`ClaimService.completeMerged`).
+/// **An item on its epic's branch** with other unfinished items there is
+/// not merged: it goes back with a note to deploy the epic.
 /// **Failure** (a rebase conflict, a failing check, a refused merge or
 /// push): nothing is left half done — a rebase is aborted and the branch
 /// keeps its commits as before — the item goes back to the status it came
@@ -57,6 +62,13 @@ final class MergeAction implements BuiltInAction {
     String summary;
     try {
       if (branch == config.base) throw _Failed('$id is on the base branch ${config.base} itself.', setup: true);
+      if (await context.backlog.claims.sharedEpicBranch(id, branch) case (:final epic, :final others)) {
+        throw _Failed(
+          'this work is on the branch $branch of the epic $epic together with ${others.join(', ')}; '
+          'deploy the epic $epic instead (move it to ${context.action.onEnter ?? 'its merge status'}).',
+          kind: _FailureKind.epic,
+        );
+      }
       summary = switch (merge.strategy) {
         MergeStrategy.local => await _local(context, git, branch, values),
         MergeStrategy.pr => await _pullRequest(context, values),
@@ -70,10 +82,19 @@ final class MergeAction implements BuiltInAction {
         summary: '${_sentence(failure.reason)}${back == null ? '' : '; $id went back to $back'}',
       );
     }
-    await context.backlog.claims.complete(id.value, force: true);
-    final done = (await context.backlog.items.get(id.value)).status;
-    final members = await context.backlog.claims.completeMembers(id, branch);
-    final cleaned = <String>[if (members.isNotEmpty) 'with it ${members.join(', ')}'];
+    final (:members, :remaining) = await context.backlog.claims.completeMerged(id, branch);
+    final String state;
+    if (remaining.isEmpty) {
+      state = '$id is ${(await context.backlog.items.get(id.value)).status}';
+    } else {
+      final back = await _sendBack(context);
+      state =
+          'deployed ${members.length} item(s)${members.isEmpty ? '' : ' (${members.join(', ')})'}, '
+          'remaining ${remaining.length} (${remaining.join(', ')}); $id stays open'
+          '${back == null ? '' : ' and went back to $back'}, the next Implement epic starts a new branch from '
+          '${config.base}';
+    }
+    final cleaned = <String>[if (remaining.isEmpty && members.isNotEmpty) 'with it ${members.join(', ')}'];
     if (merge.cleanup) {
       final repo = await primaryClone(
         context.config,
@@ -95,7 +116,7 @@ final class MergeAction implements BuiltInAction {
         );
       }
     }
-    return BuiltInActionResult(ok: true, summary: '$summary; $id is $done${cleaned.map((c) => '; $c').join()}');
+    return BuiltInActionResult(ok: true, summary: '$summary; $state${cleaned.map((c) => '; $c').join()}');
   }
 
   // ------------------------------------------------------------- strategies
@@ -332,13 +353,15 @@ final class MergeAction implements BuiltInAction {
         text.write('\n\nTo fix it, in the worktree of $branch:\n\n$numbered\n\nThen $again to merge it.');
       case _FailureKind.setup:
         text.write('\n\nNothing was merged; fix this and $again.');
+      case _FailureKind.epic:
+        text.write('\n\nNothing was merged.');
     }
     try {
       await context.backlog.items.comment(
         id.value,
         author: ProcessAgentLauncher.noteAuthor,
         text: '$text',
-        note: failure.kind == _FailureKind.setup,
+        note: failure.kind == _FailureKind.setup || failure.kind == _FailureKind.epic,
       );
     } on BacklogException catch (error) {
       context.log('merge: could not comment on $id: ${error.message}');
@@ -534,7 +557,7 @@ final class MergeCleanup {
   }
 }
 
-enum _FailureKind { conflict, check, refused, setup }
+enum _FailureKind { conflict, check, refused, setup, epic }
 
 final class _Failed implements Exception {
   _Failed(this.reason, {this.details = '', _FailureKind? kind, bool setup = false})
