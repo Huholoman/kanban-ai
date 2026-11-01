@@ -108,11 +108,8 @@ final class ItemService {
 
   /// Applies [changes] in order, replaces the Markdown [body] when given and
   /// bumps `updated` unless a change sets it or nothing changed.
-  /// An archived item that is no longer finished moves back out of the
-  /// archive.
   Future<Item> update(String reference, Iterable<FieldChange> changes, {String? body}) async {
-    final catalog = await _repository.load();
-    final items = catalog.items;
+    final items = (await _repository.load()).items;
     final known = {for (final item in items) item.id};
     final original = find(items, reference);
 
@@ -127,9 +124,6 @@ final class ItemService {
       item = item.touchedSince(original, _clock.now());
     }
     await _repository.save(item);
-    if (catalog.archived.contains(item.id) && !_finished(item)) {
-      await _repository.setArchived(item.id, archived: false);
-    }
     return item;
   }
 

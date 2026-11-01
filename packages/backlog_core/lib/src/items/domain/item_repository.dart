@@ -31,7 +31,8 @@ abstract interface class ItemRepository {
   Future<ItemCatalog> load();
 
   /// Creates or replaces the item. Implementations should keep whatever they
-  /// do not understand (formatting, comments, unknown keys) intact.
+  /// do not understand (formatting, comments, unknown keys) intact, and move
+  /// an archived item that is no longer finished out of the archive.
   Future<void> save(Item item);
 
   /// Where the item is stored (a file path for the file-system adapter), so
