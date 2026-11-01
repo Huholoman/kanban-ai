@@ -184,13 +184,13 @@ final class ClaimService {
   }
 
   /// Marks the unfinished items under [epic] whose work is on [branch]
-  /// (their `branch` field) done, whoever holds them: the epic was merged
-  /// with them. Returns their ids.
+  /// ([_workOn]) done, whoever holds them: the epic was merged with them.
+  /// Returns their ids.
   Future<List<ItemId>> completeMembers(ItemId epic, String branch) async {
     final snapshot = await _planning.snapshot();
     final done = <ItemId>[];
     for (final planned in snapshot.items) {
-      if (planned.isDone || !planned.ancestors.contains(epic) || planned.item.branch?.trim() != branch) continue;
+      if (!planned.ancestors.contains(epic) || !_workOn(planned, branch)) continue;
       await complete(planned.id.value, force: true);
       done.add(planned.id);
     }
@@ -232,16 +232,19 @@ final class ClaimService {
       if ((own == null || own.isEmpty ? 'agent/$ancestor' : own) != branch) continue;
       final others = [
         for (final other in snapshot.items)
-          if (other.id != id &&
-              !other.isDone &&
-              other.ancestors.contains(ancestor) &&
-              other.item.branch?.trim() == branch)
-            other.id,
+          if (other.id != id && other.ancestors.contains(ancestor) && _workOn(other, branch)) other.id,
       ];
       return others.isEmpty ? null : (epic: ancestor, others: others);
     }
     return null;
   }
+
+  /// Whether the work of the unfinished [planned] is on [branch]: its
+  /// `branch` names it and it was taken up (not open). An open item keeps
+  /// the `branch` of an epic run that released it unfinished, and a todo
+  /// item has no work to deploy.
+  bool _workOn(PlannedItem planned, String branch) =>
+      !planned.isDone && planned.category != StatusCategory.open && planned.item.branch?.trim() == branch;
 
   Future<ClaimOutcome> _acquire(PlannedItem planned, String agent, {bool mirror = true, String? branch}) async {
     final id = planned.id;

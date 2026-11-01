@@ -230,6 +230,23 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       expect(File(path('repo/feature.txt')).existsSync(), isTrue);
     });
 
+    test('a todo item that keeps the epic\'s branch from an earlier run is not deployed with it', () async {
+      await item();
+      await backlog.items.create(
+        const NewItem(title: 'On the branch', parent: 'T-0001', status: 'review', branch: 'agent/T-0001'),
+      );
+      await backlog.items.create(
+        const NewItem(title: 'Released', parent: 'T-0001', status: 'todo', branch: 'agent/T-0001'),
+      );
+
+      final result = await merge();
+      expect(result.ok, isTrue, reason: result.summary);
+      expect(result.summary, contains('deployed 1 item(s) (T-0002), remaining 1 (T-0003)'));
+      expect((await backlog.items.get('T-0002')).status, 'done');
+      expect((await backlog.items.get('T-0003')).status, 'todo');
+      expect((await current()).status, 'review');
+    });
+
     test('an item on its epic\'s branch with other items there is not merged: deploy the epic', () async {
       final before = await git(path('repo'), ['rev-parse', 'main']);
       await item();
@@ -262,6 +279,9 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
         const NewItem(title: 'Task', parent: 'T-0001', status: 'deploy', branch: 'agent/T-0001'),
       );
       await backlog.items.create(const NewItem(title: 'Later', parent: 'T-0001', status: 'todo'));
+      await backlog.items.create(
+        const NewItem(title: 'Released', parent: 'T-0001', status: 'todo', branch: 'agent/T-0001'),
+      );
 
       final result = await merge(id: 'T-0002');
       expect(result.ok, isTrue, reason: result.summary);
