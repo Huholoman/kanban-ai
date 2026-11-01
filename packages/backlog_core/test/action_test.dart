@@ -1,3 +1,7 @@
+// The review loop runs real git: slow when `mise run check` runs every suite at once.
+@Timeout(Duration(minutes: 2))
+library;
+
 import 'dart:async';
 import 'dart:io';
 
