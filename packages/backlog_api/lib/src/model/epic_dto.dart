@@ -11,6 +11,7 @@ final class EpicMemberDto {
     this.waits = const [],
     this.milestone,
     this.inScope = true,
+    this.parked = false,
   });
 
   factory EpicMemberDto.fromJson(Json json) => EpicMemberDto(
@@ -22,6 +23,7 @@ final class EpicMemberDto {
     waits: json.strings('waits'),
     milestone: json.optionalString('milestone'),
     inScope: json.boolean('in_scope', fallback: true),
+    parked: json.boolean('parked'),
   );
 
   final String id;
@@ -42,6 +44,9 @@ final class EpicMemberDto {
   /// It belongs to the run's milestone ([EpicDto.milestone]).
   final bool inScope;
 
+  /// Not taken: in an open status that is not pickable (`backlog`).
+  final bool parked;
+
   bool get isSettled => state == 'done' || state == 'handed-over';
 
   Json toJson() => {
@@ -53,6 +58,7 @@ final class EpicMemberDto {
     'waits': waits,
     'milestone': milestone,
     'in_scope': inScope,
+    'parked': parked,
   };
 }
 
@@ -93,6 +99,7 @@ final class EpicDto {
     this.members = const [],
     this.milestone,
     this.skipped = const [],
+    this.parked = const [],
     this.progress = const [],
   });
 
@@ -108,6 +115,7 @@ final class EpicDto {
     members: json.objects('members').map(EpicMemberDto.fromJson).toList(),
     milestone: json.optionalString('milestone'),
     skipped: json.strings('skipped'),
+    parked: json.strings('parked'),
     progress: json.objects('progress').map(EpicProgressDto.fromJson).toList(),
   );
 
@@ -138,6 +146,10 @@ final class EpicDto {
   /// Unsettled items outside [milestone] that the run leaves as they are.
   final List<String> skipped;
 
+  /// Items (in [milestone]) the run does not take because of their status
+  /// (`backlog`) until a person moves them to `todo`.
+  final List<String> parked;
+
   /// How far the items are per milestone, whatever the scope.
   final List<EpicProgressDto> progress;
 
@@ -145,8 +157,8 @@ final class EpicDto {
 
   bool get hasWarnings => verdict == 'warning';
 
-  /// How many members (in the scope) are in [state].
-  int count(String state) => members.where((m) => m.inScope && m.state == state).length;
+  /// How many members (in the scope, not [parked]) are in [state].
+  int count(String state) => members.where((m) => m.inScope && !m.parked && m.state == state).length;
 
   Json toJson() => {
     'epic': epic,
@@ -160,6 +172,7 @@ final class EpicDto {
     'members': [for (final member in members) member.toJson()],
     'milestone': milestone,
     'skipped': skipped,
+    'parked': parked,
     'progress': [for (final entry in progress) entry.toJson()],
   };
 }

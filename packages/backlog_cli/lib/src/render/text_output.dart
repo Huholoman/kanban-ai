@@ -76,7 +76,8 @@ abstract final class TextOutput {
       for (final problem in plan.problems) '  ✗ $problem',
       for (final warning in plan.warnings) '  ! $warning',
       '${plan.count(EpicMemberState.done)} done, ${plan.count(EpicMemberState.handedOver)} handed over, '
-          '${plan.count(EpicMemberState.inProgress)} in progress, ${plan.count(EpicMemberState.remaining)} to do:',
+          '${plan.count(EpicMemberState.inProgress)} in progress, ${plan.count(EpicMemberState.remaining)} to do'
+          '${plan.parked.isEmpty ? '' : ', ${plan.parked.length} not taken (${_statuses(plan.parked)})'}:',
       for (final member in members)
         '${member.id == next
                 ? '→'
@@ -86,9 +87,12 @@ abstract final class TextOutput {
             '${member.state.id.padRight(stateWidth)}  ${member.item.item.title}'
             '${member.after.isEmpty ? '' : '  after ${member.after.join(', ')}'}'
             '${member.waits.isEmpty ? '' : '  waits for ${member.waits.join(', ')}'}'
-            '${member.inScope ? '' : '  (${member.item.item.milestone}, not in this run)'}',
+            '${member.inScope ? '' : '  (${member.item.item.milestone}, not in this run)'}'
+            '${member.inScope && member.parked ? '  (not taken from ${member.item.item.status})' : ''}',
     ];
   }
+
+  static String _statuses(List<EpicMember> members) => {for (final m in members) m.item.item.status}.join(', ');
 
   static List<String> detail(PlannedItem planned, BacklogSnapshot snapshot, {String? path}) {
     final item = planned.item;

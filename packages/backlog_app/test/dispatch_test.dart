@@ -405,6 +405,34 @@ void main() {
       expect(api.startedEpics, ['E-1@v0.2']);
     });
 
+    testWidgets('items in the backlog are not taken; the dialog moves one to todo', (tester) async {
+      final (api, _) = await _pumpDetail(tester, 'E-1', _plan());
+      api.epics['E-1'] = const EpicDto(
+        epic: 'E-1',
+        title: 'Item E-1',
+        branch: 'agent/E-1',
+        verdict: 'ok',
+        next: 'T-1',
+        members: [
+          EpicMemberDto(id: 'T-1', title: 'Item T-1', status: 'todo', state: 'to-do'),
+          EpicMemberDto(id: 'T-2', title: 'Item T-2', status: 'backlog', state: 'to-do', parked: true),
+        ],
+        parked: ['T-2'],
+      );
+      expect(EpicDto.fromJson(api.epics['E-1']!.toJson()).toJson(), api.epics['E-1']!.toJson());
+      await tester.tap(_key('implement-epic'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('1 item(s) are not taken from the backlog: T-2.'), findsOneWidget);
+      expect(find.text('0 done · 0 handed over · 0 in progress · 1 to do · 1 in backlog'), findsOneWidget);
+      expect(find.textContaining('T-2  Item T-2 (backlog) · not taken'), findsOneWidget);
+
+      api.items_['T-2'] = item('T-2', parent: 'E-1', status: 'backlog');
+      await tester.tap(_key('epic-take-T-2'));
+      await tester.pumpAndSettle();
+      expect(api.updates.map((u) => '${u.$1} ${u.$2.changes.join(' ')}'), ['T-2 status=todo']);
+      expect(_key('epic-dialog'), findsOneWidget, reason: 'it checks again');
+    });
+
     testWidgets('an epic that cannot start says why and offers no start', (tester) async {
       final (api, _) = await _pumpDetail(tester, 'E-2', _plan());
       api.epics['E-2'] = const EpicDto(

@@ -94,6 +94,42 @@ void main() {
       expect(reverse.next!.id.value, 'T-2');
     });
 
+    test('items in the backlog are not taken; an item after one is a warning', () {
+      final items = [
+        item('E-1', type: 'epic'),
+        item('T-1', parent: 'E-1'),
+        item('T-2', parent: 'E-1', status: 'backlog'),
+        item('T-3', parent: 'E-1', dependsOn: ['T-2']),
+      ];
+      final plan = planOf(items);
+      expect(plan.parked.map((m) => m.id.value), ['T-2']);
+      expect(plan.members.firstWhere((m) => m.id.value == 'T-2').canStart, isFalse);
+      expect(plan.verdict, EpicVerdict.warning);
+      expect(
+        plan.warnings.single,
+        'T-3 depends on T-2 (backlog), which is not taken from backlog: move it to todo, '
+        'or the agent stops there and asks.',
+      );
+      expect(plan.next!.id.value, 'T-1');
+      expect(plan.count(EpicMemberState.remaining), 2, reason: 'without the parked one');
+
+      // Moved to todo meanwhile: the next plan takes it.
+      expect(planOf([...items.take(2), item('T-2', parent: 'E-1'), items.last]).parked, isEmpty);
+
+      final rest = planOf([
+        item('E-1', type: 'epic'),
+        item('T-1', parent: 'E-1', status: 'review'),
+        item('T-2', parent: 'E-1', status: 'backlog'),
+      ]);
+      expect(rest.finished, isTrue);
+      expect(rest.next, isNull);
+      expect(
+        rest.problems.single,
+        'Nothing left to implement: every item of E-1 is handed over or done, the rest waits in backlog: move what is '
+        'next to todo.',
+      );
+    });
+
     test('handed-over items count as done for the items after them', () {
       final plan = planOf([
         item('E-1', type: 'epic'),
@@ -219,7 +255,7 @@ void main() {
       final epic = await backlog.items.create(const NewItem(title: 'Epic', type: 'epic', status: 'todo'));
       final first = await backlog.items.create(NewItem(title: 'First', parent: epic.id.value, status: 'todo'));
       await backlog.items.create(
-        NewItem(title: 'Second', parent: epic.id.value, status: 'backlog', dependsOn: [first.id.value]),
+        NewItem(title: 'Second', parent: epic.id.value, status: 'todo', dependsOn: [first.id.value]),
       );
 
       var next = await backlog.claims.claimInEpic(epic.id.value, 'w1');

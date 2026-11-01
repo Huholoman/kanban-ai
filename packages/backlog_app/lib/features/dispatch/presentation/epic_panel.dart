@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 
+import '../../../app/app_scope.dart';
 import '../../../shared/tokens.dart';
 import '../application/dispatch_controller.dart';
 import 'dispatch_scope.dart';
@@ -75,6 +76,21 @@ class _EpicDialogState extends State<_EpicDialog> {
   late EpicDto? _epic = widget.epic;
   bool _loading = false;
 
+  /// Moves the parked item [id] to the pickable status (`todo`), so that
+  /// the run takes it, and checks again.
+  Future<void> _take(String id) async {
+    final api = AppScope.of(context).api;
+    setState(() => _loading = true);
+    try {
+      final workflow = await api.workflow();
+      final status = workflow.statuses.where((s) => s.pickable).firstOrNull?.id ?? 'todo';
+      await api.updateItem(id, ItemUpdateRequest(changes: [ItemUpdateRequest.set('status', status)]));
+    } on BacklogApiException {
+      // The check below shows the item as it is.
+    }
+    if (mounted) await _choose(_milestone);
+  }
+
   Future<void> _choose(String? milestone) async {
     setState(() {
       _milestone = milestone;
@@ -124,7 +140,7 @@ class _EpicDialogState extends State<_EpicDialog> {
               else if (epic == null)
                 const Text('The server cannot say whether this epic can be implemented.')
               else
-                EpicSummary(epic: epic, intro: true),
+                EpicSummary(epic: epic, intro: true, onTake: (id) => unawaited(_take(id))),
             ],
           ),
         ),
@@ -145,9 +161,13 @@ class _EpicDialogState extends State<_EpicDialog> {
 /// What the implementation of an epic looks like: the verdict with its
 /// problems and warnings, the counts and the items in work order.
 class EpicSummary extends StatelessWidget {
-  const EpicSummary({super.key, required this.epic, this.intro = false});
+  const EpicSummary({super.key, required this.epic, this.intro = false, this.onTake});
 
   final EpicDto epic;
+
+  /// Moves a parked item (`backlog`) to `todo`; without it parked items
+  /// have no button.
+  final ValueChanged<String>? onTake;
 
   /// Before the start (the dialog): explain what starting does and give the
   /// verdict with its problems; otherwise only the warnings and progress.
@@ -191,6 +211,21 @@ class EpicSummary extends StatelessWidget {
             key: const ValueKey('epic-skipped'),
             color: tokens.muted,
           ),
+        if (epic.parked.isNotEmpty)
+          line(
+            '${epic.parked.length} item(s) are not taken from the backlog: ${epic.parked.join(', ')}. Move what is '
+            'next to todo, also while the agent works.',
+            key: const ValueKey('epic-parked'),
+            color: tokens.muted,
+          ),
+        if (onTake case final take? when epic.parked.isNotEmpty)
+          Wrap(
+            spacing: 4,
+            children: [
+              for (final id in epic.parked)
+                TextButton(key: ValueKey('epic-take-$id'), onPressed: () => take(id), child: Text('Move $id to todo')),
+            ],
+          ),
         if (epic.progress.length > 1)
           line(
             [
@@ -225,7 +260,8 @@ class EpicSummary extends StatelessWidget {
         const SizedBox(height: 8),
         line(
           '${epic.count('done')} done · ${epic.count('handed-over')} handed over · '
-          '${epic.count('in-progress')} in progress · ${epic.count('to-do')} to do',
+          '${epic.count('in-progress')} in progress · ${epic.count('to-do')} to do'
+          '${epic.parked.isEmpty ? '' : ' · ${epic.parked.length} in backlog'}',
           key: const ValueKey('epic-counts'),
           color: tokens.muted,
         ),
@@ -234,15 +270,21 @@ class EpicSummary extends StatelessWidget {
             '${member.id}  ${member.title} (${member.status})'
             '${member.id == epic.next ? ' · next' : ''}'
             '${member.after.isEmpty ? '' : ' · after ${member.after.join(', ')}'}'
-            '${member.waits.isEmpty ? '' : ' · waits for ${member.waits.join(', ')}'}',
+            '${member.waits.isEmpty ? '' : ' · waits for ${member.waits.join(', ')}'}'
+            '${member.parked ? ' · not taken' : ''}',
             key: ValueKey('epic-member-${member.id}'),
             icon: switch (member.state) {
               'done' => Icons.check_circle,
               'handed-over' => Icons.rate_review_outlined,
               'in-progress' => Icons.play_circle_outline,
+              _ when member.parked => Icons.pause_circle_outline,
               _ => Icons.radio_button_unchecked,
             },
-            color: member.waits.isNotEmpty ? tokens.warning : null,
+            color: member.waits.isNotEmpty
+                ? tokens.warning
+                : member.parked
+                ? tokens.muted
+                : null,
           ),
       ],
     );
