@@ -109,10 +109,11 @@ final class RunRecord {
   final DateTime startedAt;
   final String log;
 
-  /// The agent profile (`claude`), null for a command action.
+  /// The agent profile (`claude`), null for a command or built-in action.
   final String? agent;
 
-  /// The action that ran, null for an agent working on the item.
+  /// The action that ran (also one an agent runs, like a review), null for
+  /// an agent working on the item.
   final String? action;
   final String? worktree;
 
@@ -149,7 +150,7 @@ abstract final class ItemHistory {
   }) {
     final versions = [...revisions];
     if (versions.isEmpty || !_same(versions.last.item, current)) {
-      versions.add(ItemRevision(item: current, at: current.updatedAt ?? now ?? DateTime.now().toUtc()));
+      versions.add(ItemRevision(item: current, at: _uncommittedAt(current, versions.lastOrNull, now)));
     }
     final entries = <HistoryEntry>[];
     final first = versions.first;
@@ -229,7 +230,7 @@ abstract final class ItemHistory {
           at: run.startedAt.toUtc(),
           author: run.worktree,
           tag: run.action,
-          text: [?run.started, run.ended ?? 'still running'].join('; '),
+          text: run.ended ?? 'still running',
           log: run.log,
         ),
       );
@@ -262,6 +263,14 @@ abstract final class ItemHistory {
 
   /// The filters [filter] knows.
   static const filters = ['status', 'fields', 'comments', 'runs'];
+
+  /// When the uncommitted change was made: its `updated`, not before the
+  /// last commit (a day from an older file is its midnight).
+  static DateTime _uncommittedAt(Item current, ItemRevision? last, DateTime? now) {
+    final updated = current.updatedAt;
+    if (updated == null) return now ?? DateTime.now().toUtc();
+    return last != null && updated.isBefore(last.at) ? last.at : updated;
+  }
 
   /// The body without the discussion and with checkboxes cleared: ticking
   /// one is a checklist change, not an edit of the description.

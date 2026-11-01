@@ -164,12 +164,16 @@ void main() {
     File(p.join(logs.path, 'T-1-20261030T100000Z.log')).writeAsStringSync(
       '# kanban-ai: action "merge" (request) for T-1 in wt-2 (/w/wt-2), started 2026-10-30T10:00:00.000Z\n',
     );
+    File(p.join(logs.path, 'T-1-20261030T110000Z.log')).writeAsStringSync(
+      '# kanban-ai: claude for T-1 (action "AI review", on_enter) in wt-3 (/w/wt-3), branch -, started …\n',
+    );
     File(p.join(logs.path, 'T-10-20261030T100000Z.log')).writeAsStringSync('# kanban-ai: other item\n');
 
     final runs = await launcher.runsOf(ItemId('T-1'));
     expect(runs.map((r) => (r.startedAt, r.agent, r.action, r.worktree, r.ended)), [
       (DateTime.utc(2026, 10, 30, 9), 'claude', null, 'wt-1', 'the agent exited with code 0; T-1 stays review'),
       (DateTime.utc(2026, 10, 30, 10), null, 'merge', 'wt-2', null),
+      (DateTime.utc(2026, 10, 30, 11), 'claude', 'AI review', 'wt-3', null),
     ]);
   });
 }
