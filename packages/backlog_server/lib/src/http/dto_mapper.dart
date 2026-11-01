@@ -302,6 +302,7 @@ abstract final class DtoMapper {
           HeldItemDto(item: id.value, title: planned.item.title, reason: reason),
     ],
     epics: [for (final id in plan.epics) id.value]..sort(),
+    epicMilestones: {for (final MapEntry(:key, :value) in plan.epicMilestones.entries) key.value: value},
     queue: [
       for (final (index, start) in plan.queue.indexed)
         QueuedStartDto(
@@ -313,6 +314,7 @@ abstract final class DtoMapper {
           position: index + 1,
           action: start.action,
           fresh: start.fresh,
+          milestone: start.milestone,
           by: start.by,
         ),
     ],
@@ -336,7 +338,15 @@ abstract final class DtoMapper {
           state: member.state.id,
           after: [for (final id in member.after) id.value],
           waits: member.waits,
+          milestone: member.item.item.milestone,
+          inScope: member.inScope,
         ),
+    ],
+    milestone: plan.milestone,
+    skipped: [for (final member in plan.skipped) member.id.value],
+    progress: [
+      for (final entry in plan.progress)
+        EpicProgressDto(milestone: entry.milestone, settled: entry.settled, total: entry.total),
     ],
   );
 

@@ -109,12 +109,20 @@ final class HttpBacklogApi implements BacklogApi {
       _list(await _get(ApiPaths.history(reference), query: {'only': ?only})).map(HistoryEntryDto.fromJson).toList();
 
   @override
-  Future<EpicDto> epic(String reference) async => EpicDto.fromJson(asJson(await _get(ApiPaths.epic(reference))));
+  Future<EpicDto> epic(String reference, {String? milestone}) async =>
+      EpicDto.fromJson(asJson(await _get(ApiPaths.epic(reference), query: {'milestone': ?milestone})));
 
   @override
-  Future<DispatchDto> startEpic(String reference, {bool fresh = false}) async => DispatchDto.fromJson(
-    asJson(await _send('POST', ApiPaths.dispatchEpic, DispatchRequest(reference, fresh: fresh).toJson())),
-  );
+  Future<DispatchDto> startEpic(String reference, {bool fresh = false, String? milestone}) async =>
+      DispatchDto.fromJson(
+        asJson(
+          await _send(
+            'POST',
+            ApiPaths.dispatchEpic,
+            DispatchRequest(reference, fresh: fresh, milestone: milestone).toJson(),
+          ),
+        ),
+      );
 
   @override
   Future<DispatchDto> cancelQueued(String reference) async =>

@@ -212,7 +212,13 @@ final class ApiHandler {
 
   /// Starts what a person asked for, or queues it when it cannot start yet
   /// (the plan's `queue` then has it).
-  Future<Response> _request(String item, StartKind kind, {bool fresh = false, String? action}) async {
+  Future<Response> _request(
+    String item,
+    StartKind kind, {
+    bool fresh = false,
+    String? action,
+    String? milestone,
+  }) async {
     final dispatcher = _running();
     final snapshot = await (await _host.backlog).planning.snapshot();
     await dispatcher.request(
@@ -222,6 +228,7 @@ final class ApiHandler {
         since: DateTime.now(),
         fresh: fresh,
         action: action,
+        milestone: milestone,
       ),
     );
     return _json((await _plan()).toJson());
@@ -256,12 +263,16 @@ final class ApiHandler {
     final snapshot = await (await _host.backlog).planning.snapshot();
     final epic = snapshot[ItemReference.resolve(ref, snapshot.ids)]!;
     final agent = epic.isClaimed ? epic.claim!.agent : _dispatcher()?.current?.runFor(epic.id)?.worktree;
-    return _json(DtoMapper.epic(EpicPlan.of(snapshot, epic.id, agent: agent)).toJson());
+    final milestone = request.url.queryParameters['milestone'];
+    if (milestone != null && !snapshot.workflow.acceptsMilestone(milestone)) {
+      throw InvalidInputException('Unknown milestone "$milestone".');
+    }
+    return _json(DtoMapper.epic(EpicPlan.of(snapshot, epic.id, agent: agent, milestone: milestone)).toJson());
   }
 
   Future<Response> _startEpic(Request request) async {
     final payload = DispatchRequest.fromJson(await _body(request));
-    return _request(payload.item, StartKind.epic, fresh: payload.fresh);
+    return _request(payload.item, StartKind.epic, fresh: payload.fresh, milestone: payload.milestone);
   }
 
   Future<Response> _runAction(Request request, String ref, String name) async {

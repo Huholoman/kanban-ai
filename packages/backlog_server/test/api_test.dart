@@ -566,6 +566,32 @@ void main() {
       expect(during.members.single.state, 'in-progress');
     });
 
+    test('an epic limited to a milestone: checked and started with the scope', () async {
+      final api = dispatching();
+      final epic = await api.createItem(const NewItemRequest(title: 'Payments', type: 'epic'));
+      final now = await api.createItem(
+        NewItemRequest(title: 'Model', status: 'todo', parent: epic.item.id, milestone: 'v0.2'),
+      );
+      final later = await api.createItem(
+        NewItemRequest(title: 'Reports', status: 'todo', parent: epic.item.id, milestone: 'v0.3'),
+      );
+
+      final check = await api.epic(epic.item.id, milestone: 'v0.2');
+      expect(check.milestone, 'v0.2');
+      expect(check.skipped, [later.item.id]);
+      expect(check.next, now.item.id);
+      expect(check.members.map((m) => (m.milestone, m.inScope)), [('v0.2', true), ('v0.3', false)]);
+      expect(check.count('to-do'), 1);
+      expect(check.progress.map((p) => (p.milestone, p.settled, p.total)), [('v0.2', 0, 1), ('v0.3', 0, 1)]);
+      expect((await api.epic(epic.item.id)).milestone, isNull);
+
+      final started = await api.startEpic(epic.item.id, milestone: 'v0.2');
+      expect(launcher.started, ['${epic.item.id}@w1+epic@v0.2']);
+      expect(started.epicMilestones, {epic.item.id: 'v0.2'});
+      final again = (await api.startEpic(epic.item.id, milestone: 'v0.2')).queuedFor(epic.item.id)!;
+      expect((again.milestone, again.what), ('v0.2', 'Implement epic (v0.2)'));
+    });
+
     test('items that are not ready cannot be started', () async {
       final api = dispatching();
       final item = await api.createItem(const NewItemRequest(title: 'Later', status: 'backlog'));
@@ -723,6 +749,7 @@ final class _FakeLauncher extends AgentLauncher {
       agent: assignment.agentProfile.name,
       action: action?.name,
       epic: assignment.epic,
+      milestone: assignment.milestone,
     );
   }
 
@@ -734,6 +761,10 @@ final class _FakeLauncher extends AgentLauncher {
         epics: {
           for (final run in _runs.values)
             if (run.epic) run.item,
+        },
+        epicMilestones: {
+          for (final run in _runs.values)
+            if (run.epic) run.item: ?run.milestone,
         },
       );
 

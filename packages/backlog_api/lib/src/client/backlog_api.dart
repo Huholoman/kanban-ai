@@ -66,14 +66,16 @@ abstract interface class BacklogApi {
   Future<List<HistoryEntryDto>> history(String reference, {String? only});
 
   /// Whether one agent can implement the epic [reference] (any item with
-  /// children) on one branch, and how far its items are.
-  Future<EpicDto> epic(String reference);
+  /// children) on one branch, and how far its items are; with [milestone]
+  /// only the items of that milestone (and those without one).
+  Future<EpicDto> epic(String reference, {String? milestone});
 
   /// Starts one agent that implements the epic [reference] — all items under
-  /// it, on its branch, in one session — and returns the new plan; refused
-  /// when [epic] says it cannot start. It continues the epic's last session
-  /// when it can, unless [fresh].
-  Future<DispatchDto> startEpic(String reference, {bool fresh = false});
+  /// it (with [milestone] only those of that milestone and without one), on
+  /// its branch, in one session — and returns the new plan; refused when
+  /// [epic] says it cannot start. It continues the epic's last session when
+  /// it can, unless [fresh].
+  Future<DispatchDto> startEpic(String reference, {bool fresh = false, String? milestone});
 
   /// Starts the action [name] (`dispatcher.actions`) on [reference] now and
   /// returns the new plan.

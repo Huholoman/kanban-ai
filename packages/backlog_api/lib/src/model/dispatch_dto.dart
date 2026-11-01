@@ -156,6 +156,7 @@ final class QueuedStartDto {
     required this.position,
     this.action,
     this.fresh = false,
+    this.milestone,
     this.by,
   });
 
@@ -168,6 +169,7 @@ final class QueuedStartDto {
     position: json.integer('position', fallback: 1),
     action: json.optionalString('action'),
     fresh: json.boolean('fresh'),
+    milestone: json.optionalString('milestone'),
     by: json.optionalString('by'),
   );
 
@@ -179,11 +181,14 @@ final class QueuedStartDto {
   final int position;
   final String? action;
   final bool fresh;
+
+  /// The milestone an epic's run is limited to; null for all of it.
+  final String? milestone;
   final String? by;
 
-  /// `Start agent`, `Implement epic`, `"AI review"`.
+  /// `Start agent`, `Implement epic (v0.2)`, `"AI review"`.
   String get what => switch (kind) {
-    'epic' => 'Implement epic',
+    'epic' => milestone == null ? 'Implement epic' : 'Implement epic ($milestone)',
     'action' => '"$action"',
     _ => fresh ? 'Start fresh' : 'Start agent',
   };
@@ -197,6 +202,7 @@ final class QueuedStartDto {
     'position': position,
     'action': action,
     'fresh': fresh,
+    'milestone': milestone,
     'by': by,
   };
 }
@@ -308,6 +314,7 @@ final class DispatchDto {
     this.problems = const [],
     this.queuedReplies = const [],
     this.epics = const [],
+    this.epicMilestones = const {},
     this.queue = const [],
   });
 
@@ -334,6 +341,9 @@ final class DispatchDto {
     problems: json.objects('problems').map(ProblemItemDto.fromJson).toList(),
     queuedReplies: json.objects('queued_replies').map(HeldItemDto.fromJson).toList(),
     epics: json.strings('epics'),
+    epicMilestones: {
+      for (final MapEntry(:key, :value) in (json.optionalObject('epic_milestones') ?? const {}).entries) key: '$value',
+    },
     queue: json.objects('queue').map(QueuedStartDto.fromJson).toList(),
   );
 
@@ -405,6 +415,10 @@ final class DispatchDto {
 
   /// Unfinished epics one agent implements (running or last run), ids.
   final List<String> epics;
+
+  /// Epic id → the milestone its run is limited to (only those of [epics]
+  /// that are).
+  final Map<String, String> epicMilestones;
 
   /// Starts people asked for that wait until they can happen, in order.
   final List<QueuedStartDto> queue;
@@ -495,6 +509,7 @@ final class DispatchDto {
     'problems': [for (final problem in problems) problem.toJson()],
     'queued_replies': [for (final queued in queuedReplies) queued.toJson()],
     'epics': epics,
+    'epic_milestones': epicMilestones,
     'queue': [for (final queued in queue) queued.toJson()],
   };
 }
@@ -579,9 +594,10 @@ final class AgentLogDto {
 
 /// `POST /api/dispatch/start` and `/stop`.
 final class DispatchRequest {
-  const DispatchRequest(this.item, {this.fresh = false});
+  const DispatchRequest(this.item, {this.fresh = false, this.milestone});
 
-  factory DispatchRequest.fromJson(Json json) => DispatchRequest(json.string('item'), fresh: json.boolean('fresh'));
+  factory DispatchRequest.fromJson(Json json) =>
+      DispatchRequest(json.string('item'), fresh: json.boolean('fresh'), milestone: json.optionalString('milestone'));
 
   /// The item (a shortened id works too).
   final String item;
@@ -589,5 +605,9 @@ final class DispatchRequest {
   /// Start: a new agent session even when the last one could be continued.
   final bool fresh;
 
-  Json toJson() => {'item': item, if (fresh) 'fresh': fresh};
+  /// Implement epic: only the items of this milestone (and those without
+  /// one); null for all.
+  final String? milestone;
+
+  Json toJson() => {'item': item, if (fresh) 'fresh': fresh, 'milestone': ?milestone};
 }
