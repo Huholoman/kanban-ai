@@ -261,6 +261,16 @@ final class HttpProjectsApi implements ProjectsApi {
       ProjectDto.fromJson(asJson(await _default._send('PATCH', ApiPaths.project(id), {'pinned': pinned})));
 
   @override
+  Future<PreviewDto?> preview() async => switch (asJson(await _default._get(ApiPaths.preview))['preview']) {
+    final Json preview => PreviewDto.fromJson(preview),
+    _ => null,
+  };
+
+  @override
+  Future<PreviewDto> backToMain() async =>
+      PreviewDto.fromJson(asJson(await _default._send('POST', ApiPaths.previewMain, const {})));
+
+  @override
   BacklogApi project(String id) =>
       HttpBacklogApi(baseUri, token: token, project: id, client: _client, connectSocket: _connectSocket);
 

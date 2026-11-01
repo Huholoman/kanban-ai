@@ -108,11 +108,19 @@ abstract interface class ProjectsApi {
 
   /// Pins project [id] in the registry or unpins it; the updated project.
   Future<ProjectDto> setPinned(String id, bool pinned);
+
+  /// The local preview the server runs (the built-in action `preview`);
+  /// null when it runs its main build.
+  Future<PreviewDto?> preview();
+
+  /// "Back to main": ends the preview; the server restarts as its main
+  /// build right after answering. Returns the ended preview.
+  Future<PreviewDto> backToMain();
 }
 
 /// URL paths of the API, shared by the server and the client.
 ///
-/// Every path except [health] and [projects] also exists per project under
+/// Every path except [health], [projects] and [preview] also exists per project under
 /// [projectPrefix] (`/api/p/<id>/items`, …); the unprefixed paths address
 /// the default project.
 abstract final class ApiPaths {
@@ -130,6 +138,11 @@ abstract final class ApiPaths {
   static const events = '/api/events';
   static const health = '/api/health';
   static const projects = '/api/projects';
+
+  /// The server's local preview (`GET`); `POST` [previewMain] goes back to
+  /// main.
+  static const preview = '/api/preview';
+  static const previewMain = '/api/preview/main';
 
   static String projectPrefix(String id) => '/api/p/${Uri.encodeComponent(id)}';
 
