@@ -820,6 +820,16 @@ dispatcher:
 
     List<String> ids(ViewResult result) => result.items.map((i) => i.id.value).toList();
 
+    test('the one value a view requires of a field', () {
+      String? milestone(String filter) =>
+          parseViewYaml('v', 'filter:\n${filter.split('\n').map((l) => '  $l').join('\n')}').requiredValue('milestone');
+      expect(milestone('milestone: v0.2'), 'v0.2');
+      expect(milestone('milestone: v0.2\nstatus: todo'), 'v0.2');
+      expect(milestone('milestone: [v0.2, v0.3]'), isNull);
+      expect(milestone('or:\n  - milestone: v0.2\n  - labels: ui'), isNull);
+      expect(milestone('status: todo'), isNull);
+    });
+
     test('filter expressions: AND of entries, or, not, exists, computed fields', () {
       ViewResult run(String filter) => ViewEngine.evaluate(
         parseViewYaml('v', 'filter:\n${filter.split('\n').map((l) => '  $l').join('\n')}'),

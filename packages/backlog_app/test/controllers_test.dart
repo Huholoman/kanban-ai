@@ -39,6 +39,18 @@ void main() {
       expect(board.visible!.groups.expand((g) => g.items).map((i) => i.id), ['T-2']);
     });
 
+    test('the board\'s milestone: the one chosen in the filter, else the view\'s', () {
+      expect(board.milestone, isNull);
+      board.setFilter(BoardFilter.none.toggle(FilterFacet.milestone, 'v0.2'));
+      expect(board.milestone, 'v0.2');
+      board.setFilter(board.filter.toggle(FilterFacet.milestone, 'v0.3'));
+      expect(board.milestone, isNull, reason: 'two milestones are none');
+      board
+        ..setFilter(BoardFilter.none)
+        ..result = ViewResultDto.fromJson({...board.result!.toJson(), 'milestone': 'v0.4'});
+      expect(board.milestone, 'v0.4');
+    });
+
     test('views are grouped into sections and can be moved between them', () async {
       expect(board.viewSections.map((s) => '${s.$1}: ${s.$2.map((v) => v.id).join(',')}'), ['null: list,board']);
       await board.moveView('board', 'Planning');

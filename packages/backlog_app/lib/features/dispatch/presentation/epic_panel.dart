@@ -10,33 +10,136 @@ import 'dispatch_scope.dart';
 /// *Implement epic*: loads whether one agent can implement [item] on one
 /// branch, shows it and starts the agent when the reader agrees — a plain
 /// start when nothing stands in the way, *Start anyway* with warnings, no
-/// start when it cannot.
-Future<void> confirmEpicStart(BuildContext context, DispatchController dispatch, String item) async {
-  final epic = await dispatch.epic(item);
+/// start when it cannot. The run is limited to one milestone (and the items
+/// without one) or takes all of the epic; it starts with [milestone] (the
+/// board's, else the epic's) when the epic has unfinished items in it and in
+/// another milestone too.
+Future<void> confirmEpicStart(
+  BuildContext context,
+  DispatchController dispatch,
+  String item, {
+  String? milestone,
+}) async {
+  final all = await dispatch.epic(item);
   if (!context.mounted) return;
-  final start = await showDialog<bool>(
+  // The milestones with work left; with one (or none) the choice changes nothing.
+  final milestones = [
+    for (final entry in all?.progress ?? const <EpicProgressDto>[])
+      if (!entry.finished) ?entry.milestone,
+  ];
+  final scoped = milestones.length > 1 && milestones.contains(milestone) ? milestone : null;
+  final initial = scoped == null ? all : await dispatch.epic(item, milestone: scoped);
+  if (!context.mounted) return;
+  final chosen = await showDialog<_EpicChoice>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => _EpicDialog(
+      dispatch: dispatch,
+      item: item,
+      milestones: milestones.length > 1 ? milestones : const [],
+      milestone: scoped,
+      epic: initial,
+    ),
+  );
+  if (chosen != null) await dispatch.startEpic(item, milestone: chosen.milestone);
+}
+
+final class _EpicChoice {
+  const _EpicChoice(this.milestone);
+
+  final String? milestone;
+}
+
+class _EpicDialog extends StatefulWidget {
+  const _EpicDialog({
+    required this.dispatch,
+    required this.item,
+    required this.milestones,
+    required this.milestone,
+    required this.epic,
+  });
+
+  final DispatchController dispatch;
+  final String item;
+
+  /// The milestones of the epic's items to choose from; empty: no choice.
+  final List<String> milestones;
+  final String? milestone;
+  final EpicDto? epic;
+
+  @override
+  State<_EpicDialog> createState() => _EpicDialogState();
+}
+
+class _EpicDialogState extends State<_EpicDialog> {
+  late String? _milestone = widget.milestone;
+  late EpicDto? _epic = widget.epic;
+  bool _loading = false;
+
+  Future<void> _choose(String? milestone) async {
+    setState(() {
+      _milestone = milestone;
+      _loading = true;
+    });
+    final epic = await widget.dispatch.epic(widget.item, milestone: milestone);
+    if (!mounted || milestone != _milestone) return;
+    setState(() {
+      _epic = epic;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final epic = _epic;
+    return AlertDialog(
       key: const ValueKey('epic-dialog'),
-      title: Text('Implement $item as one epic?'),
+      title: Text('Implement ${widget.item} as one epic?'),
       content: SizedBox(
         width: 480,
-        child: epic == null
-            ? const Text('The server cannot say whether this epic can be implemented.')
-            : SingleChildScrollView(child: EpicSummary(epic: epic, intro: true)),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.milestones.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Wrap(
+                    key: const ValueKey('epic-scope'),
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final milestone in [...widget.milestones, null])
+                        ChoiceChip(
+                          key: ValueKey('epic-scope-${milestone ?? 'all'}'),
+                          label: Text(milestone ?? 'All'),
+                          selected: _milestone == milestone,
+                          onSelected: (_) => unawaited(_choose(milestone)),
+                        ),
+                    ],
+                  ),
+                ),
+              if (_loading)
+                const LinearProgressIndicator()
+              else if (epic == null)
+                const Text('The server cannot say whether this epic can be implemented.')
+              else
+                EpicSummary(epic: epic, intro: true),
+            ],
+          ),
+        ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-        if (epic != null && !epic.isForbidden)
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        if (epic != null && !epic.isForbidden && !_loading)
           FilledButton(
             key: const ValueKey('epic-start'),
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.of(context).pop(_EpicChoice(_milestone)),
             child: Text(epic.hasWarnings ? 'Start anyway' : 'Start'),
           ),
       ],
-    ),
-  );
-  if (start == true) await dispatch.startEpic(item);
+    );
+  }
 }
 
 /// What the implementation of an epic looks like: the verdict with its
@@ -76,9 +179,26 @@ class EpicSummary extends StatelessWidget {
       children: [
         if (intro)
           line(
-            'One agent works through all items below, one after another, in one session on the branch '
-            '${epic.branch}, hands each over to review and ends with one pull request for the epic. When the rest '
-            'waits for something outside the epic, it asks on the epic and stops.',
+            'One agent works through '
+            '${epic.milestone == null ? 'all items below' : 'the items of ${epic.milestone} (and those without a milestone)'}, '
+            'one after another, in one session on the branch ${epic.branch}, hands each over to review and ends '
+            'with one pull request for the epic. When the rest waits for something outside the epic, it asks on '
+            'the epic and stops.',
+          ),
+        if (epic.skipped.isNotEmpty)
+          line(
+            '${epic.skipped.length} item(s) of other milestones stay as they are: ${epic.skipped.join(', ')}.',
+            key: const ValueKey('epic-skipped'),
+            color: tokens.muted,
+          ),
+        if (epic.progress.length > 1)
+          line(
+            [
+              for (final entry in epic.progress)
+                '${entry.milestone ?? 'no milestone'} ${entry.finished ? 'done' : '${entry.settled}/${entry.total}'}',
+            ].join(' · '),
+            key: const ValueKey('epic-milestones'),
+            icon: Icons.flag_outlined,
           ),
         if (intro)
           line(
@@ -109,7 +229,7 @@ class EpicSummary extends StatelessWidget {
           key: const ValueKey('epic-counts'),
           color: tokens.muted,
         ),
-        for (final member in epic.members)
+        for (final member in epic.members.where((m) => m.inScope))
           line(
             '${member.id}  ${member.title} (${member.status})'
             '${member.id == epic.next ? ' · next' : ''}'
@@ -167,7 +287,7 @@ class _EpicProgressState extends State<EpicProgress> {
     if (dispatch == null || !dispatch.isEpic(widget.item.id) || _loading) return;
     _loading = true;
     unawaited(
-      dispatch.epic(widget.item.id).then((epic) {
+      dispatch.epic(widget.item.id, milestone: dispatch.epicMilestone(widget.item.id)).then((epic) {
         _loading = false;
         if (mounted) setState(() => _epic = epic);
       }),
@@ -192,7 +312,8 @@ class _EpicProgressState extends State<EpicProgress> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Epic implemented by one agent on ${epic.branch}',
+            'Epic implemented by one agent on ${epic.branch}'
+            '${epic.milestone == null ? '' : ', milestone ${epic.milestone}'}',
             style: Theme.of(context).textTheme.labelLarge?.copyWith(color: tokens.text),
           ),
           EpicSummary(epic: epic),

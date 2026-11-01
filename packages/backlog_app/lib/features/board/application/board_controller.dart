@@ -67,6 +67,15 @@ class BoardController extends ChangeNotifier {
 
   int get lintErrors => lint.where((issue) => issue.isError).length;
 
+  /// The milestone the board is about: the one chosen in [filter], else
+  /// the one the current view requires; null for none or several. Starts
+  /// from the board (Implement epic) default to it.
+  String? get milestone => switch (filter.valuesFor(FilterFacet.milestone)) {
+    final chosen when chosen.length == 1 => chosen.single,
+    final chosen when chosen.isEmpty => result?.milestone,
+    _ => null,
+  };
+
   /// The current view after [filter].
   ViewResultDto? get visible {
     final current = result;

@@ -25,6 +25,7 @@ class DetailHeader extends StatelessWidget {
     this.closeIcon = Icons.close,
     this.onScope,
     this.onAddChild,
+    this.milestone,
   });
 
   final ItemController controller;
@@ -45,6 +46,9 @@ class DetailHeader extends StatelessWidget {
 
   /// Creates a new item under this one, see [ItemDetailView.onAddChild].
   final ValueChanged<ItemDto>? onAddChild;
+
+  /// See [ItemDetailView.milestone].
+  final String? milestone;
 
   @override
   Widget build(BuildContext context) {
@@ -205,7 +209,9 @@ class DetailHeader extends StatelessWidget {
           label: 'Implement epic',
           icon: Icons.account_tree_outlined,
           tooltip: 'One agent implements all items under this one on one branch, with one pull request',
-          onPressed: enabled ? () => unawaited(confirmEpicStart(context, dispatch, item.id)) : null,
+          onPressed: enabled
+              ? () => unawaited(confirmEpicStart(context, dispatch, item.id, milestone: milestone ?? item.milestone))
+              : null,
         ),
       ...itemActions(context, item, controller.detail?.actions ?? const [], enabled: enabled),
       if (_epicOfBranch(item) case final epic?)
