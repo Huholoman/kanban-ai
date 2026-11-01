@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:backlog_core/backlog_core.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 /// Opens another storage over the same backlog, as another process would.
@@ -268,6 +269,71 @@ void storageContract(String name, Future<OpenStorage> Function() prepare, {bool 
       });
     });
 
+    group('changes reported', () {
+      late ChangeSource source;
+      final seen = <StorageChange>[];
+
+      setUp(() async {
+        seen.clear();
+        source = open().watch(debounce: const Duration(milliseconds: 20));
+        source.changes.listen(seen.add);
+        await source.start();
+      });
+
+      tearDown(() => source.close());
+
+      /// Waits until a reported change satisfies [test].
+      Future<StorageChange> reported(bool Function(StorageChange change) test) async {
+        for (var n = 0; n < 200; n++) {
+          final match = seen.where(test).firstOrNull;
+          if (match != null) return match;
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+        fail('No change reported; seen: ${[for (final change in seen) change.paths]}');
+      }
+
+      test('writes of items, claims, views and action requests by other storages', () async {
+        await stores().items.save(_item('T-0001'));
+        final item = await reported((change) => change.paths.isNotEmpty && !change.configuration);
+        expect(item.paths, everyElement(isNot(contains('.tmp'))));
+
+        seen.clear();
+        final now = DateTime.utc(2026, 11, 1, 12);
+        await stores().claims.tryAcquire(
+          Claim(
+            itemId: ItemId('T-0001'),
+            agent: 'one',
+            claimedAt: now,
+            heartbeatAt: now,
+            lease: const Duration(hours: 1),
+          ),
+        );
+        await reported((change) => change.paths.isNotEmpty);
+
+        seen.clear();
+        await stores().views.create('mine', const {'name': 'Mine', 'layout': 'list'});
+        await reported((change) => change.paths.isNotEmpty);
+
+        seen.clear();
+        await open().actionRequests.add(ActionRequest(item: 'T-0001', action: 'check', at: now));
+        await reported((change) => change.paths.isNotEmpty);
+      });
+
+      test('configuration edits are marked as such', () async {
+        await open().configuration.edit([
+          const WorkflowEdit.set(['claims', 'lease_minutes'], 30),
+        ]);
+        await reported((change) => change.configuration);
+      });
+
+      test('nothing is reported after close', () async {
+        await source.close();
+        await stores().items.save(_item('T-0001'));
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        expect(seen, isEmpty);
+      });
+    });
+
     if (files) {
       group('format kept', () {
         test('a save keeps comments, key order and unknown keys of the item file', () async {
@@ -286,6 +352,17 @@ void storageContract(String name, Future<OpenStorage> Function() prepare, {bool 
           expect(after, contains('# Written by hand, must survive.\nreviewer: someone   # unknown key\ntitle:'));
           expect(after, contains('status: done'));
           expect(after.indexOf('id:'), lessThan(after.indexOf('reviewer:')));
+        });
+
+        test('a view edit keeps comments and unknown keys of the view file', () async {
+          final id = await stores().views.create('mine', const {'name': 'Mine', 'layout': 'list'});
+          final path = p.join(p.dirname(open().configuration.location), 'views', '$id.yaml');
+          File(path).writeAsStringSync('# Kept.\n${File(path).readAsStringSync()}mine: {keep: true}\n');
+          await stores().views.setPinned(id, true);
+          final text = File(path).readAsStringSync();
+          expect(text, startsWith('# Kept.\n'));
+          expect(text, contains('mine: {keep: true}'));
+          expect(text, contains('pinned: true'));
         });
 
         test('an edit keeps comments and unknown keys of the configuration', () async {

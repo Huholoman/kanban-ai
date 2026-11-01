@@ -622,6 +622,12 @@ final class _RecordingStorage implements BacklogStorage {
   String get root => _inner.root;
 
   @override
+  Future<bool> exists() => _inner.exists();
+
+  @override
+  ChangeSource watch({Duration debounce = const Duration(milliseconds: 150)}) => _inner.watch(debounce: debounce);
+
+  @override
   WorkflowSource get configuration => _inner.configuration;
 
   @override

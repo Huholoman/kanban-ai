@@ -5,7 +5,6 @@ library;
 export 'src/backlog_host.dart';
 export 'src/backlog_server.dart';
 export 'src/events/agent_log_socket.dart';
-export 'src/events/change_feed.dart';
 export 'src/http/api_handler.dart';
 export 'src/http/client_filter.dart';
 export 'src/http/dto_mapper.dart';

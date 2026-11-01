@@ -10,15 +10,15 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
-  group('ChangeFeed.isRelevant', () {
+  group('FolderChangeSource.isRelevant', () {
     test('ignores git internals, temp files and editor leftovers', () {
-      expect(ChangeFeed.isRelevant('items/T-1-a.md'), isTrue);
-      expect(ChangeFeed.isRelevant('.locks/T-1.lock'), isTrue);
-      expect(ChangeFeed.isRelevant('backlog.yaml'), isTrue);
-      expect(ChangeFeed.isRelevant('.git/index'), isFalse);
-      expect(ChangeFeed.isRelevant('items/.T-1-a.md.123_4.tmp'), isFalse);
-      expect(ChangeFeed.isRelevant('.locks/T-1.lock.9.stale'), isFalse);
-      expect(ChangeFeed.isRelevant('items/T-1-a.md~'), isFalse);
+      expect(FolderChangeSource.isRelevant('items/T-1-a.md'), isTrue);
+      expect(FolderChangeSource.isRelevant('.locks/T-1.lock'), isTrue);
+      expect(FolderChangeSource.isRelevant('backlog.yaml'), isTrue);
+      expect(FolderChangeSource.isRelevant('.git/index'), isFalse);
+      expect(FolderChangeSource.isRelevant('items/.T-1-a.md.123_4.tmp'), isFalse);
+      expect(FolderChangeSource.isRelevant('.locks/T-1.lock.9.stale'), isFalse);
+      expect(FolderChangeSource.isRelevant('items/T-1-a.md~'), isFalse);
     });
   });
 

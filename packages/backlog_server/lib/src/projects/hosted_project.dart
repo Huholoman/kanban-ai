@@ -1,12 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_core/backlog_core.dart';
 import 'package:shelf/shelf.dart';
 
 import '../backlog_host.dart';
-import '../events/change_feed.dart';
 import '../events/event_socket.dart';
 import '../http/api_handler.dart';
 
@@ -55,19 +53,20 @@ final class ProjectRuntime {
   final StorageFactory storage;
 }
 
-/// One backlog of the server: its [BacklogHost], the watcher that feeds change
-/// events and the dispatcher, and the API answering under its prefix.
+/// One backlog of the server: its [BacklogHost], the [ChangeSource] of its
+/// storage that feeds change events and the dispatcher, and the API
+/// answering under its prefix.
 ///
 /// A project whose folder is missing or whose `backlog.yaml` is broken is
 /// still hosted: its requests fail with the backlog's error, and it starts
 /// watching as soon as the folder exists ([ensureStarted]).
 final class HostedProject {
-  /// A project that watches its folder and runs a dispatcher.
+  /// A project that watches its storage and runs a dispatcher.
   HostedProject.live(this.entry, ProjectRuntime runtime)
     : _runtime = runtime,
       host = BacklogHost(runtime.storage(entry.path), clock: runtime.clock);
 
-  /// A project fed by [events] instead of a watcher; its [dispatcher] (and
+  /// A project fed by [events] instead of its storage's changes; its [dispatcher] (and
   /// [launcher]) are run by the caller, if any.
   HostedProject.fixed(
     this.entry,
@@ -87,7 +86,7 @@ final class HostedProject {
   final ProjectRuntime? _runtime;
   final _events = StreamController<BacklogChangeEvent>.broadcast();
   StreamSubscription<BacklogChangeEvent>? _fixed;
-  ChangeFeed? _feed;
+  ChangeSource? _changes;
   Dispatcher? _dispatcher;
   AgentLauncher? _launcher;
   Future<void>? _starting;
@@ -118,7 +117,7 @@ final class HostedProject {
   /// already runs.
   Future<void> ensureStarted() async {
     final runtime = _runtime;
-    if (runtime == null || _feed != null || _closed) return;
+    if (runtime == null || _changes != null || _closed) return;
     final starting = _starting ??= _start(runtime);
     try {
       await starting;
@@ -128,11 +127,11 @@ final class HostedProject {
   }
 
   Future<void> _start(ProjectRuntime runtime) async {
-    if (!await Directory(host.root).exists()) return;
-    final feed = ChangeFeed(host.root, debounce: runtime.debounce);
-    await feed.start();
+    if (!await host.storage.exists()) return;
+    final changes = host.storage.watch(debounce: runtime.debounce);
+    await changes.start();
     if (_closed) {
-      await feed.close();
+      await changes.close();
       return;
     }
     final say = _say(runtime);
@@ -160,12 +159,12 @@ final class HostedProject {
       say(describePlan(plan));
       if (!_events.isClosed) _events.add(const BacklogChangeEvent.dispatch());
     });
-    feed.events.listen((event) {
-      if (event.paths.contains(BacklogLayout.configFileName)) host.reload();
+    changes.changes.listen((change) {
+      if (change.configuration) host.reload();
       dispatcher.notifyChanged();
-      if (!_events.isClosed) _events.add(event);
+      if (!_events.isClosed) _events.add(BacklogChangeEvent(change.paths));
     });
-    _feed = feed;
+    _changes = changes;
     _dispatcher = dispatcher;
     _launcher = launcher;
     launcher.attach(dispatcher.notifyChanged);
@@ -180,7 +179,7 @@ final class HostedProject {
 
   /// Why the backlog cannot be used now, or null when it opens.
   Future<String?> problem() async {
-    if (!await Directory(host.root).exists()) return 'Folder ${host.root} does not exist.';
+    if (!await host.storage.exists()) return 'Folder ${host.root} does not exist.';
     try {
       await host.backlog;
       return null;
@@ -203,7 +202,7 @@ final class HostedProject {
       await _dispatcher?.close();
       await _launcher?.close();
     }
-    await _feed?.close();
+    await _changes?.close();
     await _events.close();
   }
 

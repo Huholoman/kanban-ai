@@ -1,38 +1,42 @@
 import 'dart:async';
 
-import 'package:backlog_api/backlog_api.dart';
 import 'package:path/path.dart' as p;
 import 'package:watcher/watcher.dart';
+
+import '../../infrastructure/backlog_layout.dart';
+import '../domain/change_source.dart';
 
 /// Watches a backlog folder and reports changes in batches.
 ///
 /// Edits come from agents, from git and from editors, often as bursts of
 /// several file events (temp file, rename, lock); they are collected for
-/// [debounce] and reported as one [BacklogChangeEvent].
-final class ChangeFeed {
-  ChangeFeed(this.root, {this.debounce = const Duration(milliseconds: 150), Watcher? watcher})
+/// [debounce] and reported as one [StorageChange].
+final class FolderChangeSource implements ChangeSource {
+  FolderChangeSource(this.root, {this.debounce = const Duration(milliseconds: 150), Watcher? watcher})
     : _watcher = watcher ?? DirectoryWatcher(root);
 
   final String root;
   final Duration debounce;
   final Watcher _watcher;
-  final _events = StreamController<BacklogChangeEvent>.broadcast();
+  final _changes = StreamController<StorageChange>.broadcast();
   final _pending = <String>{};
   StreamSubscription<WatchEvent>? _subscription;
   Timer? _timer;
 
-  Stream<BacklogChangeEvent> get events => _events.stream;
+  @override
+  Stream<StorageChange> get changes => _changes.stream;
 
-  /// Completes once the watcher is ready, so that later changes are seen.
+  @override
   Future<void> start() async {
     _subscription ??= _watcher.events.listen(_onEvent);
     await _watcher.ready;
   }
 
+  @override
   Future<void> close() async {
     _timer?.cancel();
     await _subscription?.cancel();
-    await _events.close();
+    await _changes.close();
   }
 
   /// Whether a change of [relativePath] matters to clients.
@@ -52,9 +56,9 @@ final class ChangeFeed {
 
   void _flush() {
     _timer = null;
-    if (_pending.isEmpty || _events.isClosed) return;
+    if (_pending.isEmpty || _changes.isClosed) return;
     final paths = _pending.toList()..sort();
     _pending.clear();
-    _events.add(BacklogChangeEvent(paths));
+    _changes.add(StorageChange(paths, configuration: paths.contains(BacklogLayout.configFileName)));
   }
 }

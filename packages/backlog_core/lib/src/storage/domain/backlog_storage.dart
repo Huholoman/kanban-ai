@@ -6,6 +6,7 @@ import '../../items/domain/item_repository.dart';
 import '../../views/domain/view.dart';
 import '../../workflow/domain/workflow.dart';
 import '../../workflow/domain/workflow_source.dart';
+import 'change_source.dart';
 
 /// Where a backlog is kept (a port): the one place that decides which
 /// adapters store its configuration, items, claims, views and action
@@ -30,6 +31,9 @@ import '../../workflow/domain/workflow_source.dart';
 ///   request is taken exactly once.
 /// - **Nothing else changes.** A save of an item changes only that item; an
 ///   edit of the configuration or a view changes only what it names.
+/// - **Changes reported.** A started [watch] reports every finished write
+///   of any storage over the backlog (and, for files, edits made by hand or
+///   by git), configuration changes marked as such.
 /// - **Format kept (files).** What people edit by hand keeps its comments,
 ///   key order and unknown keys when the backlog writes it (item front
 ///   matter, `backlog.yaml`, views).
@@ -37,6 +41,14 @@ abstract interface class BacklogStorage {
   /// The folder the backlog belongs to: relative paths of its configuration
   /// (worktrees, repositories) resolve against it.
   String get root;
+
+  /// Whether the backlog's place is there (the folder exists); a missing
+  /// one may appear later.
+  Future<bool> exists();
+
+  /// A new source of the backlog's changes, bursts collected for
+  /// [debounce]; call [ChangeSource.start] before relying on it.
+  ChangeSource watch({Duration debounce = const Duration(milliseconds: 150)});
 
   /// Where the workflow configuration is kept.
   WorkflowSource get configuration;

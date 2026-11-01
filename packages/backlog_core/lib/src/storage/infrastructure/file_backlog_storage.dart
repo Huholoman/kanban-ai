@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import '../../claims/infrastructure/file_system_claim_store.dart';
 import '../../dispatch/domain/action_run.dart';
 import '../../dispatch/infrastructure/action_files.dart';
@@ -10,10 +12,12 @@ import '../../workflow/domain/workflow.dart';
 import '../../workflow/domain/workflow_source.dart';
 import '../../workflow/infrastructure/file_workflow_source.dart';
 import '../domain/backlog_storage.dart';
+import '../domain/change_source.dart';
+import 'folder_change_source.dart';
 
 /// A backlog folder: `backlog.yaml`, Markdown items with YAML front matter,
 /// claim locks in `.locks/`, views in `views/`, action requests and the git
-/// history of the item files.
+/// history of the item files; changes are seen by watching the folder.
 ///
 /// With [cacheItems] (long-running processes such as the server) parsed item
 /// files are kept in memory and only changed files are read again (see
@@ -26,6 +30,13 @@ final class FileBacklogStorage implements BacklogStorage {
 
   @override
   String get root => layout.root;
+
+  @override
+  Future<bool> exists() => Directory(root).exists();
+
+  @override
+  ChangeSource watch({Duration debounce = const Duration(milliseconds: 150)}) =>
+      FolderChangeSource(root, debounce: debounce);
 
   @override
   late final WorkflowSource configuration = FileWorkflowSource(layout);
