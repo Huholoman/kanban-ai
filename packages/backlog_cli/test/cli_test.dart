@@ -596,6 +596,24 @@ statuses: [{id: open, category: open, pickable: true}, {id: doing, category: act
     expect((await backlog(['comment', id, 'x'], env: {'USER': 'tobik'})).exitCode, 0);
   });
 
+  test('comment and ask --file take a long, multi-line text from a file', () async {
+    final id = await create('Export', ['-s', 'todo']);
+    final agent = {'BACKLOG_AGENT': 'monorepo-2'};
+    File(p.join(workspace.path, 'question.md')).writeAsStringSync('Two options:\n\n1. CSV\n2. JSON\n');
+    final asked = await backlog(['ask', id, '--file', 'question.md'], env: agent);
+    expect(asked.exitCode, 0, reason: '$asked');
+    final json = (await backlog(['--json', 'show', id])).json! as Map;
+    expect((json['discussion'] as List).last, containsPair('text', 'Two options:\n\n1. CSV\n2. JSON'));
+    expect(json['needs_human'], isTrue);
+
+    final both = await backlog(['comment', id, 'x', '--file', 'question.md'], env: agent);
+    expect(both.exitCode, ExitCode.usage, reason: 'the text or --file');
+    final missing = await backlog(['comment', id, '-F', 'nope.md'], env: agent);
+    expect(missing.exitCode, isNot(0));
+    expect(missing.err, contains('Cannot read'));
+    expect((await backlog(['comment', id, '--file', '-'], env: agent, input: 'From stdin.')).exitCode, 0);
+  });
+
   test('comment --note keeps an open question open', () async {
     final id = await create('Export', ['-s', 'todo']);
     await backlog(['ask', id, 'CSV or JSON?'], env: {'BACKLOG_AGENT': 'monorepo-2'});
