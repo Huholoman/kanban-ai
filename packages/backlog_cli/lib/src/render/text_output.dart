@@ -9,6 +9,10 @@ abstract final class TextOutput {
     return '${formatDay(local)} ${two(local.hour)}:${two(local.minute)}';
   }
 
+  /// A `created`/`updated` value: an instant in local time ([time]), a day
+  /// from an older file as it is, `-` for none.
+  static String itemTime(String? value) => ItemTime.hasTime(value) ? time(ItemTime.parse(value)!) : (value ?? '-');
+
   /// One aligned line per item.
   static List<String> rows(List<PlannedItem> items) {
     if (items.isEmpty) return const ['(nothing)'];
@@ -112,7 +116,7 @@ abstract final class TextOutput {
       if (item.touches.isNotEmpty) 'touches: ${item.touches.join(', ')}',
       for (final MapEntry(:key, :value) in item.extra.entries) '$key: $value',
       if (!planned.checklist.isEmpty) 'checklist: ${planned.checklist}',
-      'created: ${item.created ?? '-'}   updated: ${item.updated ?? '-'}',
+      'created: ${itemTime(item.created)}   updated: ${itemTime(item.updated)}',
       if (path != null) 'file: $path',
       if (item.body.trim().isNotEmpty) ...['', item.body.trimRight()],
     ];

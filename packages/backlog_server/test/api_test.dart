@@ -82,6 +82,8 @@ void main() {
     final detail = await api.item(first.item.id.substring(2));
     expect(detail.dependents.single.id, second.item.id);
     expect(detail.item.body, '');
+    expect(detail.item.createdAt, isNotNull);
+    expect(detail.item.created, ItemTime.format(detail.item.createdAt!));
   });
 
   test('touches: created, edited, and an overlapping open item waits', () async {

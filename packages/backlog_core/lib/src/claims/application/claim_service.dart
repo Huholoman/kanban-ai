@@ -126,11 +126,9 @@ final class ClaimService {
     final target =
         status ?? (_workflow.categoryOf(item.status) == StatusCategory.active ? _workflow.pickableStatus : item.status);
     _checkStatus(target);
-    final released = item.copyWith(
-      status: target,
-      assignee: item.assignee == claim?.agent ? () => null : null,
-      updated: () => _today,
-    );
+    final released = item
+        .copyWith(status: target, assignee: item.assignee == claim?.agent ? () => null : null)
+        .touchedSince(item, _clock.now());
     await _items.save(released);
     await _claims.remove(item.id);
     return released;
@@ -167,7 +165,9 @@ final class ClaimService {
     if (_workflow.categoryOf(target) != StatusCategory.done) {
       throw InvalidInputException('"$target" is not a done status.');
     }
-    final finished = item.copyWith(status: target, assignee: agent == null ? null : () => agent, updated: () => _today);
+    final finished = item
+        .copyWith(status: target, assignee: agent == null ? null : () => agent)
+        .touchedSince(item, _clock.now());
     await _items.save(finished);
     await _claims.remove(item.id);
     return finished;
@@ -260,12 +260,13 @@ final class ClaimService {
 
     if (!mirror) return ClaimOutcome(planned.item, claim, tookOver: tookOver);
     try {
-      final item = planned.item.copyWith(
-        status: planned.category == StatusCategory.open ? _workflow.activeStatus : null,
-        assignee: () => agent,
-        branch: branch == null ? null : () => branch,
-        updated: () => formatDay(now),
-      );
+      final item = planned.item
+          .copyWith(
+            status: planned.category == StatusCategory.open ? _workflow.activeStatus : null,
+            assignee: () => agent,
+            branch: branch == null ? null : () => branch,
+          )
+          .touchedSince(planned.item, now);
       await _items.save(item);
       return ClaimOutcome(item, claim, tookOver: tookOver);
     } catch (_) {
@@ -321,6 +322,4 @@ final class ClaimService {
     final id = ItemReference.resolve(reference, items.map((i) => i.id));
     return items.firstWhere((i) => i.id == id);
   }
-
-  String get _today => formatDay(_clock.now());
 }

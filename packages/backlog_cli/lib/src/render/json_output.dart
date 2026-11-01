@@ -25,6 +25,8 @@ abstract final class JsonOutput {
       'touches': item.touches,
       'created': item.created,
       'updated': item.updated,
+      'created_at': _instant(item.created),
+      'updated_at': _instant(item.updated),
       'extra': item.extra,
       'ready': planned.isReady,
       'blocked': planned.isBlocked,
@@ -45,6 +47,10 @@ abstract final class JsonOutput {
       if (withBody) 'checklist': [for (final entry in Checklist.entriesOf(item.body)) checklistEntry(entry)],
     };
   }
+
+  /// A `created`/`updated` value as an ISO instant in UTC; null for a day
+  /// (older files) or none.
+  static String? _instant(String? value) => ItemTime.hasTime(value) ? ItemTime.parse(value)!.toIso8601String() : null;
 
   static Map<String, Object?> checklistEntry(ChecklistEntry entry) => {
     'number': entry.number,

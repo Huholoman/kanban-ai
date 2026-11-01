@@ -120,4 +120,30 @@ estimate: 3d          # custom key
     expect(() => codec.decode('---\nid: T-1\ntitle: x\nparent: "bad id"\n---\n'), throwsFormatException);
     expect(() => codec.decode('---\nid: [\n---\n'), throwsFormatException);
   });
+
+  test('times are written plain in UTC; a day from an older file stays as it is', () {
+    const old = '---\nid: T-1\ntitle: x\ncreated: 2026-10-30\nupdated: 2026-10-30\n---\n';
+    final item = codec.decode(old);
+    expect(item.createdAt, DateTime.utc(2026, 10, 30));
+    final changed = codec.update(
+      old,
+      item.copyWith(updated: () => ItemTime.format(DateTime.utc(2026, 10, 31, 20, 27, 12))),
+    );
+    expect(changed, '---\nid: T-1\ntitle: x\ncreated: 2026-10-30\nupdated: 2026-10-31T20:27:12Z\n---\n');
+    expect(codec.decode(changed).updatedAt, DateTime.utc(2026, 10, 31, 20, 27, 12));
+    expect(codec.encode(codec.decode(changed)), contains('updated: 2026-10-31T20:27:12Z\n'));
+  });
+
+  test('ItemTime reads instants, days and times without a zone, and orders them', () {
+    expect(ItemTime.format(DateTime.utc(2026, 1, 2, 3, 4, 5, 600)), '2026-01-02T03:04:05Z');
+    expect(ItemTime.parse('2026-10-31T22:27:12+02:00'), DateTime.utc(2026, 10, 31, 20, 27, 12));
+    expect(ItemTime.parse('2026-10-31T20:27'), DateTime.utc(2026, 10, 31, 20, 27));
+    expect(ItemTime.parse('2026-10-31'), DateTime.utc(2026, 10, 31));
+    expect(ItemTime.parse('soon'), isNull);
+    expect(ItemTime.hasTime('2026-10-31'), isFalse);
+    expect(ItemTime.hasTime('2026-10-31T20:27:12Z'), isTrue);
+    final sorted = ['2026-10-31T08:00:00Z', null, 'soon', '2026-10-30', '2026-10-31T06:00:00+02:00']
+      ..sort(ItemTime.compare);
+    expect(sorted, ['2026-10-30', '2026-10-31T06:00:00+02:00', '2026-10-31T08:00:00Z', 'soon', null]);
+  });
 }

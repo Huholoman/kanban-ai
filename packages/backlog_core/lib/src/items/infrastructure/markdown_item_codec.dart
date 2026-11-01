@@ -116,6 +116,8 @@ final class MarkdownItemCodec {
       if (_equality.equals(before[key], value)) continue;
       if (_isEmpty(value)) {
         if (current.containsKey(key)) editor.remove([key]);
+      } else if (value is String && _instant.hasMatch(value)) {
+        editor.update([key], wrapAsYamlNode(value, scalarStyle: ScalarStyle.PLAIN));
       } else {
         editor.update([key], _node(value));
       }
@@ -207,6 +209,7 @@ final class MarkdownItemCodec {
     r"^[\p{L}\p{N}_./()]([\p{L}\p{N} _./()'+&!?-]*[\p{L}\p{N}_./()'!?])?$",
     unicode: true,
   );
+  static final _instant = RegExp(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$');
   static const _reserved = {'true', 'false', 'yes', 'no', 'on', 'off', 'null', '~', 'y', 'n'};
 
   /// Plain when YAML reads it back as the same string, double-quoted otherwise.
@@ -214,6 +217,7 @@ final class MarkdownItemCodec {
     if (value == null) return 'null';
     if (value is bool || value is num) return '$value';
     final text = '$value';
+    if (_instant.hasMatch(text)) return text;
     final plain = _plainSafe.hasMatch(text) && !_reserved.contains(text.toLowerCase()) && num.tryParse(text) == null;
     return plain ? text : jsonEncode(text);
   }

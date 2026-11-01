@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:backlog_cli/backlog_cli.dart';
+import 'package:backlog_cli/src/render/text_output.dart';
 import 'package:backlog_core/backlog_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -162,6 +163,21 @@ void main() {
     expect(json['touches'], ['lib/payments/', 'lib/*.{dart,yaml}', 'docs/']);
     expect((await backlog(['set', id, 'touches-=docs/'])).exitCode, 0);
     expect((await backlog(['show', id])).out, contains('touches: lib/payments/, lib/*.{dart,yaml}\n'));
+  });
+
+  test('times: UTC in the file and JSON, local time in show; a day from an older file stays', () async {
+    final id = await create('Payments');
+    final json = (await backlog(['--json', 'show', id])).json! as Map;
+    expect(json['created'], '2026-10-29T12:00:00Z');
+    expect(json['created_at'], '2026-10-29T12:00:00.000Z');
+    expect(json['updated_at'], '2026-10-29T12:00:00.000Z');
+    expect((await backlog(['show', id])).out, contains('created: ${TextOutput.time(DateTime.utc(2026, 10, 29, 12))}'));
+
+    expect((await backlog(['set', id, 'created=2026-10-01'])).exitCode, 0);
+    final old = (await backlog(['--json', 'show', id])).json! as Map;
+    expect(old['created'], '2026-10-01');
+    expect(old['created_at'], isNull);
+    expect((await backlog(['show', id])).out, contains('created: 2026-10-01 '));
   });
 
   test('an item overlapping work in progress waits: list, ready, show, JSON', () async {
