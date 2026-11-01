@@ -150,6 +150,47 @@ void main() {
       );
     });
 
+    test('archive moves old finished items to archive/, where they are still found', () async {
+      final (backlog, clock) = await tempBacklog();
+      final old = await backlog.items.create(const NewItem(title: 'Old', status: 'done'));
+      final folder = Directory(p.join(backlog.root, 'items', 'T-abcd-with-attachments'))..createSync();
+      File(
+        p.join(folder.path, 'index.md'),
+      ).writeAsStringSync('---\nid: T-abcd\ntitle: With attachments\nstatus: cancelled\nupdated: 2026-10-01\n---\n');
+      File(p.join(folder.path, 'screenshot.png')).writeAsBytesSync([0]);
+      await backlog.items.create(const NewItem(title: 'Open'));
+      clock.advance(const Duration(days: 40));
+      final recent = await backlog.items.create(NewItem(title: 'Recent', status: 'done', dependsOn: [old.id.value]));
+
+      final preview = await backlog.items.archive(dryRun: true);
+      expect(preview.map((i) => '${i.id}'), ['T-abcd', 'T-0001']);
+      expect(Directory(p.join(backlog.root, 'archive')).existsSync(), isFalse);
+
+      expect((await backlog.items.archive()).map((i) => '${i.id}'), ['T-abcd', 'T-0001']);
+      expect(p.relative((await backlog.items.locate('0001'))!, from: backlog.root), 'archive/T-0001-old.md');
+      expect(File(p.join(backlog.root, 'archive', 'T-abcd-with-attachments', 'screenshot.png')).existsSync(), isTrue);
+      expect(folder.existsSync(), isFalse);
+      expect((await backlog.items.get('abcd')).title, 'With attachments');
+      expect((await backlog.planning.snapshot())[recent.id]!.missingDependencies, isEmpty);
+      expect(await backlog.items.archive(), isEmpty, reason: 'archived already');
+
+      await expectLater(() => backlog.items.archive(references: ['0002']), throwsA(isA<InvalidInputException>()));
+      expect((await backlog.items.archive(references: ['0003'])).single.id, recent.id);
+
+      await backlog.items.update('0001', [FieldChange.parse('labels+=x')]);
+      expect(p.relative((await backlog.items.locate('0001'))!, from: backlog.root), 'archive/T-0001-old.md');
+      final archived = File((await backlog.items.locate('0001'))!);
+      archived.writeAsStringSync(archived.readAsStringSync().replaceFirst('status: done', 'status: todo'));
+      expect((await backlog.linter.run()).where((i) => i.code == 'archived-unfinished').single.item, 'T-0001');
+      await backlog.items.update('0001', [FieldChange.parse('status=todo')]);
+      expect(p.relative((await backlog.items.locate('0001'))!, from: backlog.root), 'items/T-0001-old.md');
+      expect(File(p.join(backlog.root, 'items', 'T-0001-old.md')).readAsStringSync(), contains('status: todo'));
+
+      expect(await backlog.items.restore('abcd'), isTrue);
+      expect(File(p.join(backlog.root, 'items', 'T-abcd-with-attachments', 'screenshot.png')).existsSync(), isTrue);
+      expect(await backlog.items.restore('abcd'), isFalse);
+    });
+
     test('update replaces the body and keeps the front matter', () async {
       final (backlog, _) = await tempBacklog();
       await backlog.items.create(const NewItem(title: 'Body', labels: ['a'], body: 'Old text.\n'));
@@ -667,4 +708,7 @@ final class _RecordingItems implements ItemRepository {
 
   @override
   Future<String?> locationOf(ItemId id) => _inner.locationOf(id);
+
+  @override
+  Future<void> setArchived(ItemId id, {required bool archived}) => _inner.setArchived(id, archived: archived);
 }

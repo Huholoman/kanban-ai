@@ -97,6 +97,19 @@ final class Linter {
       );
     }
 
+    for (final id in catalog.archived) {
+      if (snapshot[id] case final planned? when !planned.isDone) {
+        issues.add(
+          LintIssue(
+            Severity.warning,
+            'archived-unfinished',
+            'Item is ${planned.item.status} but archived (`backlog archive --restore $id` moves it back).',
+            item: '$id',
+          ),
+        );
+      }
+    }
+
     final active = snapshot.items.where((p) => p.category == StatusCategory.active && p.item.touches.isNotEmpty);
     final seenActive = <PlannedItem>[];
     for (final planned in active) {

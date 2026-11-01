@@ -14,11 +14,15 @@ final class LoadProblem {
 
 /// Everything the repository could read, plus what it could not.
 final class ItemCatalog {
-  const ItemCatalog(this.items, [this.problems = const []]);
+  const ItemCatalog(this.items, [this.problems = const [], this.archived = const {}]);
 
-  /// May contain duplicate ids; the linter reports them.
+  /// May contain duplicate ids; the linter reports them. Archived items are
+  /// included, so that references to them still resolve.
   final List<Item> items;
   final List<LoadProblem> problems;
+
+  /// Ids of the [items] stored in the archive.
+  final Set<ItemId> archived;
 }
 
 /// Port for item storage. Today it is a folder of Markdown files; a server
@@ -33,4 +37,8 @@ abstract interface class ItemRepository {
   /// Where the item is stored (a file path for the file-system adapter), so
   /// that a human or an agent can open it directly.
   Future<String?> locationOf(ItemId id);
+
+  /// Moves the item into the archive, or back out of it ([archived] false);
+  /// nothing happens when it is there already.
+  Future<void> setArchived(ItemId id, {required bool archived});
 }
