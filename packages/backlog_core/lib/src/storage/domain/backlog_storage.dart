@@ -12,6 +12,27 @@ import '../../workflow/domain/workflow_source.dart';
 /// requests. `Backlog.connect` and the server only receive it; today there is
 /// the folder of files ([FileBacklogStorage] in infrastructure, optionally
 /// caching parsed items).
+///
+/// The contract every implementation keeps (checked by the shared tests in
+/// `test/storage_contract.dart`, which each implementation runs). Several
+/// storages over the same backlog stand for several processes (CLI, agents,
+/// the server):
+///
+/// - **Atomic claims.** When any number of storages race to acquire the same
+///   item ([ClaimStore.tryAcquire]) or to replace the same expired claim
+///   ([ClaimStore.tryReplace]), exactly one of them wins.
+/// - **No lost writes.** A finished write (item, claim, view, configuration,
+///   action request) is seen by every later read of every storage, cached
+///   or not; writes of different items, also concurrent ones, never undo
+///   each other; a reader never sees half a write. Writes of the same item
+///   replace each other (the last one wins); configuration edits with an
+///   expected revision fail instead ([WorkflowSource.edit]). Each action
+///   request is taken exactly once.
+/// - **Nothing else changes.** A save of an item changes only that item; an
+///   edit of the configuration or a view changes only what it names.
+/// - **Format kept (files).** What people edit by hand keeps its comments,
+///   key order and unknown keys when the backlog writes it (item front
+///   matter, `backlog.yaml`, views).
 abstract interface class BacklogStorage {
   /// The folder the backlog belongs to: relative paths of its configuration
   /// (worktrees, repositories) resolve against it.
