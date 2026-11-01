@@ -78,13 +78,18 @@ final class ClaimService {
   }
 
   /// The implementation of the epic [reference] as [agent] sees it
-  /// ([EpicPlan]).
-  Future<EpicPlan> epic(String reference, {String? agent}) async {
+  /// ([EpicPlan]), limited to [milestone] when given (which must be one of
+  /// the workflow's).
+  Future<EpicPlan> epic(String reference, {String? agent, String? milestone}) async {
     final snapshot = await _planning.snapshot();
+    if (milestone != null && !snapshot.workflow.acceptsMilestone(milestone)) {
+      throw InvalidInputException('Unknown milestone "$milestone".');
+    }
     return EpicPlan.of(
       snapshot,
       ItemReference.resolve(reference, snapshot.ids),
       agent: agent == null ? null : Claim.validateAgent(agent),
+      milestone: milestone,
     );
   }
 
@@ -92,11 +97,16 @@ final class ClaimService {
   /// ([EpicPlan.next]: the one it has in progress, else the first that can
   /// start) and puts it on the epic's branch ([EpicPlan.branch]); items of
   /// the epic that are handed over count as done for it, so it is claimed
-  /// even when the snapshot calls it blocked. Returns the plan and the
-  /// claim, which is null when nothing can start.
-  Future<({EpicPlan plan, ClaimOutcome? outcome})> claimInEpic(String reference, String agent) async {
+  /// even when the snapshot calls it blocked. With [milestone] only items
+  /// of that milestone (and those without one) come up. Returns the plan and
+  /// the claim, which is null when nothing can start.
+  Future<({EpicPlan plan, ClaimOutcome? outcome})> claimInEpic(
+    String reference,
+    String agent, {
+    String? milestone,
+  }) async {
     agent = Claim.validateAgent(agent);
-    final plan = await epic(reference, agent: agent);
+    final plan = await epic(reference, agent: agent, milestone: milestone);
     if (plan.epic.isDone) throw InvalidInputException('${plan.id} is already ${plan.epic.item.status}.');
     final next = plan.next;
     if (next == null) return (plan: plan, outcome: null);

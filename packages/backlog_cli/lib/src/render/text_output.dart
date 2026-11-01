@@ -60,8 +60,14 @@ abstract final class TextOutput {
     final idWidth = members.isEmpty ? 0 : members.map((m) => m.id.value.length).reduce((a, b) => a > b ? a : b);
     final stateWidth = members.isEmpty ? 0 : members.map((m) => m.state.id.length).reduce((a, b) => a > b ? a : b);
     final next = plan.next?.id;
+    final skipped = plan.skipped;
     return [
       '${plan.id}  ${plan.epic.item.title}  (branch ${plan.branch})',
+      if (plan.milestone case final milestone?)
+        'Milestone $milestone (and items without one)'
+            '${skipped.isEmpty ? '' : ': ${skipped.length} item(s) of other milestones stay as they are'}.',
+      if (plan.progress.length > 1)
+        'Progress: ${plan.progress.map((p) => '${p.milestone ?? 'no milestone'} ${p.finished ? 'done' : '${p.settled}/${p.total}'}').join(', ')}',
       switch (plan.verdict) {
         EpicVerdict.ok => 'Can be implemented in one go.',
         EpicVerdict.warning => 'Can start, with warnings:',
@@ -72,10 +78,15 @@ abstract final class TextOutput {
       '${plan.count(EpicMemberState.done)} done, ${plan.count(EpicMemberState.handedOver)} handed over, '
           '${plan.count(EpicMemberState.inProgress)} in progress, ${plan.count(EpicMemberState.remaining)} to do:',
       for (final member in members)
-        '${member.id == next ? '→' : ' '} ${member.id.value.padRight(idWidth)}  '
+        '${member.id == next
+                ? '→'
+                : member.inScope
+                ? ' '
+                : '-'} ${member.id.value.padRight(idWidth)}  '
             '${member.state.id.padRight(stateWidth)}  ${member.item.item.title}'
             '${member.after.isEmpty ? '' : '  after ${member.after.join(', ')}'}'
-            '${member.waits.isEmpty ? '' : '  waits for ${member.waits.join(', ')}'}',
+            '${member.waits.isEmpty ? '' : '  waits for ${member.waits.join(', ')}'}'
+            '${member.inScope ? '' : '  (${member.item.item.milestone}, not in this run)'}',
     ];
   }
 

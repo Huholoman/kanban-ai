@@ -125,7 +125,15 @@ abstract final class JsonOutput {
           'state': member.state.id,
           'after': [for (final id in member.after) id.value],
           'waits': member.waits,
+          'milestone': member.item.item.milestone,
+          'in_scope': member.inScope,
         },
+    ],
+    'milestone': plan.milestone,
+    'skipped': [for (final member in plan.skipped) member.id.value],
+    'progress': [
+      for (final progress in plan.progress)
+        {'milestone': progress.milestone, 'settled': progress.settled, 'total': progress.total},
     ],
   };
 

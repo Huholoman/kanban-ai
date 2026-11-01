@@ -82,6 +82,11 @@ final class EpicCommand extends BacklogCommand {
           'Claim the next item of the epic (the one you have in progress, else the first that can start) and put '
           'it on the epic\'s branch. Exits with 2 when nothing can start.',
     );
+    argParser.addOption(
+      'milestone',
+      abbr: 'm',
+      help: 'Only the items of this milestone (and those without one); the others stay as they are.',
+    );
   }
 
   @override
@@ -93,25 +98,27 @@ final class EpicCommand extends BacklogCommand {
       'is next.';
 
   @override
-  String get invocation => 'backlog epic <id> [--next --as <agent>]';
+  String get invocation => 'backlog epic <id> [--milestone <m>] [--next --as <agent>]';
 
   @override
   Future<int> run() async {
     final backlog = await openBacklog();
     final reference = singleArgument('item id');
+    final milestone = args.option('milestone');
     if (!args.flag('next')) {
-      final plan = await backlog.claims.epic(reference, agent: optionalAgent);
+      final plan = await backlog.claims.epic(reference, agent: optionalAgent, milestone: milestone);
       json ? emitJson(JsonOutput.epic(plan)) : lines(TextOutput.epic(plan));
       return 0;
     }
-    final (:plan, :outcome) = await backlog.claims.claimInEpic(reference, agent);
+    final (:plan, :outcome) = await backlog.claims.claimInEpic(reference, agent, milestone: milestone);
     if (outcome == null) {
       if (json) {
         emitJson({'item': null, 'epic': JsonOutput.epic(plan)});
       } else {
         line(
           plan.finished
-              ? 'Nothing left in ${plan.id}: every item is handed over or done.'
+              ? 'Nothing left in ${plan.id}${plan.milestone == null ? '' : ' (${plan.milestone})'}: every item is handed '
+                    'over or done.'
               : 'Nothing in ${plan.id} can start now.',
         );
         lines(TextOutput.epic(plan));
@@ -123,7 +130,7 @@ final class EpicCommand extends BacklogCommand {
     if (json) {
       emitJson({
         'item': JsonOutput.item(snapshot[id]!, path: await backlog.items.locationOf(id), withBody: true),
-        'epic': JsonOutput.epic(EpicPlan.of(snapshot, plan.id, agent: plan.agent)),
+        'epic': JsonOutput.epic(EpicPlan.of(snapshot, plan.id, agent: plan.agent, milestone: plan.milestone)),
       });
     } else {
       line('Claimed $id for ${outcome.claim.agent}, on the branch ${plan.branch} of ${plan.id}.');

@@ -43,7 +43,13 @@ enum EpicMemberState {
 
 /// An item under the epic (at any depth) and what it waits for.
 final class EpicMember {
-  const EpicMember({required this.item, required this.state, this.after = const [], this.waits = const []});
+  const EpicMember({
+    required this.item,
+    required this.state,
+    this.after = const [],
+    this.waits = const [],
+    this.inScope = true,
+  });
 
   final PlannedItem item;
   final EpicMemberState state;
@@ -56,10 +62,28 @@ final class EpicMember {
   /// person's answer to its question`, …).
   final List<String> waits;
 
+  /// It belongs to the run's milestone ([EpicPlan.milestone]); always true
+  /// without one.
+  final bool inScope;
+
   ItemId get id => item.id;
 
   /// The agent can take it now.
-  bool get canStart => state == EpicMemberState.remaining && after.isEmpty && waits.isEmpty;
+  bool get canStart => inScope && state == EpicMemberState.remaining && after.isEmpty && waits.isEmpty;
+}
+
+/// How far the items of an epic in one milestone are ([EpicPlan.progress]).
+final class EpicMilestoneProgress {
+  const EpicMilestoneProgress({required this.milestone, required this.settled, required this.total});
+
+  /// Null for the items without a milestone.
+  final String? milestone;
+
+  /// Handed over or done.
+  final int settled;
+  final int total;
+
+  bool get finished => settled == total;
 }
 
 /// The implementation of an epic (or any item with children) by one agent
@@ -73,6 +97,12 @@ final class EpicMember {
 /// (or missing) forbids the start, as do dependency cycles among its items.
 /// Items waiting for a person or for overlapping work outside the epic are
 /// warnings.
+///
+/// With a [milestone] the run implements only the items of that milestone
+/// and those without one ([EpicMember.inScope]); the others stay as they are
+/// ([skipped]). An item in the scope that comes after an unsettled item
+/// outside it (a dependency or a child) forbids the start: the agent would
+/// get stuck there.
 final class EpicPlan {
   const EpicPlan._({
     required this.epic,
@@ -80,12 +110,17 @@ final class EpicPlan {
     required this.members,
     required this.problems,
     required this.warnings,
+    required this.progress,
     this.agent,
+    this.milestone,
   });
 
   /// The plan of [id] in [snapshot]; [agent] is the one implementing it
-  /// (its claims do not count as someone else's).
-  factory EpicPlan.of(BacklogSnapshot snapshot, ItemId id, {String? agent}) {
+  /// (its claims do not count as someone else's); [milestone] limits the
+  /// run to the items of that milestone (and those without one).
+  factory EpicPlan.of(BacklogSnapshot snapshot, ItemId id, {String? agent, String? milestone}) {
+    milestone = milestone?.trim();
+    if (milestone != null && milestone.isEmpty) milestone = null;
     final epic = snapshot[id]!;
     final workflow = snapshot.workflow;
 
@@ -109,6 +144,11 @@ final class EpicPlan {
       _ => EpicMemberState.remaining,
     };
     final states = {for (final planned in byDefault) planned.id: stateOf(planned)};
+    bool inScope(ItemId member) {
+      if (milestone == null) return true;
+      final own = snapshot[member]!.item.milestone;
+      return own == null || own == milestone;
+    }
 
     // Children before their parent, dependencies before their dependents,
     // otherwise most urgent first; a cycle is cut where it is found.
@@ -160,6 +200,10 @@ final class EpicPlan {
     final members = <EpicMember>[];
     for (final planned in ordered) {
       final state = states[planned.id]!;
+      if (!inScope(planned.id)) {
+        members.add(EpicMember(item: planned, state: state, inScope: false));
+        continue;
+      }
       final claimedByOther = planned.isClaimed && planned.claim!.agent != agent;
       if (state == EpicMemberState.inProgress && claimedByOther) {
         warnings.add('${planned.id} is in progress, claimed by ${planned.claim!.agent}; the items after it wait.');
@@ -167,6 +211,15 @@ final class EpicPlan {
       if (state != EpicMemberState.remaining) {
         members.add(EpicMember(item: planned, state: state));
         continue;
+      }
+      // Across the scope's border: the agent would wait for an item it never takes.
+      for (final other in before(planned)) {
+        if (states[other]!.settled || inScope(other)) continue;
+        final kind = planned.item.dependsOn.contains(other) ? 'depends on' : 'has the open child';
+        problems.add(
+          '${planned.id} ($milestone) $kind ${describe(other)} of ${snapshot[other]!.item.milestone}, outside the '
+          'scope $milestone: implement that milestone too (or all of it).',
+        );
       }
       final waits = outside(planned);
       if (planned.category == null) {
@@ -209,11 +262,27 @@ final class EpicPlan {
     }
     if (epic.isDone) problems.insert(0, '$id is already ${epic.item.status}.');
     if (epic.isClaimed && epic.claim!.agent != agent) problems.add('$id is claimed by ${epic.claim!.agent}.');
+    final scoped = members.where((m) => m.inScope);
     if (members.isEmpty) {
       problems.add('$id has no child items to implement.');
-    } else if (members.every((m) => m.state.settled)) {
-      problems.add('Nothing left to implement: every item of $id is handed over or done.');
+    } else if (scoped.isEmpty) {
+      problems.add('$id has no items in $milestone (or without a milestone).');
+    } else if (scoped.every((m) => m.state.settled)) {
+      problems.add(
+        milestone == null
+            ? 'Nothing left to implement: every item of $id is handed over or done.'
+            : 'Nothing left to implement in $milestone: every item of $id in it is handed over or done.',
+      );
     }
+
+    final groups = <String?, List<EpicMember>>{};
+    for (final member in members) {
+      (groups[member.item.item.milestone] ??= []).add(member);
+    }
+    final milestones = groups.keys.toList();
+    int rank(String? milestone) =>
+        milestone == null ? workflow.milestones.length + 1 : workflow.milestoneRank(milestone);
+    mergeSort(milestones, compare: (a, b) => rank(a).compareTo(rank(b)));
 
     final own = epic.item.branch?.trim();
     return EpicPlan._(
@@ -222,7 +291,16 @@ final class EpicPlan {
       members: List.unmodifiable(members),
       problems: List.unmodifiable(problems),
       warnings: List.unmodifiable(warnings),
+      progress: List.unmodifiable([
+        for (final key in milestones)
+          EpicMilestoneProgress(
+            milestone: key,
+            settled: groups[key]!.where((m) => m.state.settled).length,
+            total: groups[key]!.length,
+          ),
+      ]),
       agent: agent,
+      milestone: milestone,
     );
   }
 
@@ -244,6 +322,21 @@ final class EpicPlan {
   /// Whose claims count as the implementing agent's own.
   final String? agent;
 
+  /// The milestone this run implements (with the items without one); null
+  /// for all items of the epic.
+  final String? milestone;
+
+  /// Items outside [milestone] that are not handed over or done: this run
+  /// leaves them as they are.
+  List<EpicMember> get skipped => [
+    for (final member in members)
+      if (!member.inScope && !member.state.settled) member,
+  ];
+
+  /// How far the items are per milestone, in the workflow's order of
+  /// milestones (those without one last), whatever the scope.
+  final List<EpicMilestoneProgress> progress;
+
   ItemId get id => epic.id;
 
   EpicVerdict get verdict => problems.isNotEmpty
@@ -255,15 +348,15 @@ final class EpicPlan {
   /// An item in progress that nobody else holds: the agent goes on with it
   /// before it takes a new one.
   EpicMember? get current => members.firstWhereOrNull(
-    (m) => m.state == EpicMemberState.inProgress && (!m.item.isClaimed || m.item.claim!.agent == agent),
+    (m) => m.inScope && m.state == EpicMemberState.inProgress && (!m.item.isClaimed || m.item.claim!.agent == agent),
   );
 
   /// What the agent takes next: [current], else the first item that can
   /// start; null when nothing can.
   EpicMember? get next => current ?? members.firstWhereOrNull((m) => m.canStart);
 
-  /// Every item is handed over or done.
-  bool get finished => members.isNotEmpty && members.every((m) => m.state.settled);
+  /// Every item (in [milestone]) is handed over or done.
+  bool get finished => members.any((m) => m.inScope) && members.where((m) => m.inScope).every((m) => m.state.settled);
 
   /// How many items are in [state].
   int count(EpicMemberState state) => members.where((m) => m.state == state).length;
