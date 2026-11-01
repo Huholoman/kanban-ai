@@ -44,9 +44,9 @@ final class BacklogChangeEvent {
   bool get isDispatch => type == 'dispatch';
 
   /// What the change concerns, so that clients reload only that: `backlog.yaml`
-  /// the workflow, `items/` and `.locks/` (claims) the items, `views/` the
-  /// views, a dispatch event the plan; `docs/` nothing, any other path
-  /// everything.
+  /// the workflow, `items/`, `archive/` and `.locks/` (claims) the items,
+  /// `views/` the views, a dispatch event the plan; `docs/` nothing, any
+  /// other path everything.
   Set<BacklogPart> get parts {
     if (isDispatch) return const {BacklogPart.plan};
     final parts = <BacklogPart>{};
@@ -55,7 +55,7 @@ final class BacklogChangeEvent {
       switch (top) {
         case 'backlog.yaml':
           parts.add(BacklogPart.workflow);
-        case 'items' || '.locks':
+        case 'items' || 'archive' || '.locks':
           parts.add(BacklogPart.items);
         case 'views':
           parts.add(BacklogPart.views);
