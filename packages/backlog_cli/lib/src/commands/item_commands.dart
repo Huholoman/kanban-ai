@@ -372,6 +372,64 @@ final class PathCommand extends BacklogCommand {
   }
 }
 
+final class ArchiveCommand extends BacklogCommand {
+  ArchiveCommand(super.context) {
+    argParser
+      ..addOption('older-than', help: 'Days a finished item must be unchanged to be archived.', defaultsTo: '30')
+      ..addFlag('dry-run', negatable: false, help: 'Only list what would move.')
+      ..addFlag('restore', negatable: false, help: 'Move the named items back out of the archive.');
+  }
+
+  @override
+  String get name => 'archive';
+
+  @override
+  String get description =>
+      'Move finished items to archive/: the named ones, or all unchanged for --older-than days. '
+      'Archived items are still found by id.';
+
+  @override
+  String get invocation => 'backlog archive [<id> …] [--older-than <days>] [--dry-run] | --restore <id> …';
+
+  @override
+  Future<int> run() async {
+    final backlog = await openBacklog();
+    final references = args.rest;
+    final List<ItemId> moved;
+    if (args.flag('restore')) {
+      if (references.isEmpty) throw UsageException('Name the items to restore.', usage);
+      moved = [
+        for (final reference in references)
+          if (await backlog.items.restore(reference)) (await backlog.items.get(reference)).id,
+      ];
+    } else {
+      final days = int.tryParse(args.option('older-than')!);
+      if (days == null || days < 0) throw UsageException('--older-than takes a number of days.', usage);
+      moved = [
+        for (final item in await backlog.items.archive(
+          references: references,
+          olderThan: Duration(days: days),
+          dryRun: args.flag('dry-run'),
+        ))
+          item.id,
+      ];
+    }
+    final snapshot = await backlog.planning.snapshot();
+    if (json) {
+      emitJson([for (final id in moved) JsonOutput.item(snapshot[id]!, path: await backlog.items.locationOf(id))]);
+      return 0;
+    }
+    final verb = args.flag('restore') ? 'Restored' : (args.flag('dry-run') ? 'Would archive' : 'Archived');
+    if (moved.isEmpty) {
+      line('Nothing to move.');
+    } else {
+      line('$verb ${moved.length}:');
+      lines(TextOutput.rows([for (final id in moved) snapshot[id]!]));
+    }
+    return 0;
+  }
+}
+
 final class SetCommand extends BacklogCommand {
   SetCommand(super.context);
 

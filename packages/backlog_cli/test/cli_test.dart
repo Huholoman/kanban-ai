@@ -67,6 +67,29 @@ void main() {
     expect(File(p.join(backlogDir, 'items', '$id-zurich-db-backups.md')).existsSync(), isTrue);
   });
 
+  test('archive moves finished items to archive/ and back; they are still found by id', () async {
+    final finished = await create('Finished', ['-s', 'done']);
+    final open = await create('Open', ['-s', 'todo']);
+
+    expect((await backlog(['archive'])).out, contains('Nothing to move.'), reason: 'not old enough');
+    final preview = await backlog(['archive', '--older-than', '0', '--dry-run']);
+    expect(preview.out, contains('Would archive 1:'), reason: '$preview');
+    expect(preview.out, contains(finished));
+    expect(Directory(p.join(backlogDir, 'archive')).existsSync(), isFalse);
+
+    final archived = await backlog(['--json', 'archive', finished]);
+    expect(archived.exitCode, 0, reason: '$archived');
+    final path = (archived.json! as List).single['path'] as String;
+    expect(p.relative(path, from: backlogDir), 'archive/$finished-finished.md');
+    expect((await backlog(['show', finished])).out, contains('Finished'));
+    expect((await backlog(['archive', open])).exitCode, isNot(0));
+    expect((await backlog(['archive', '--older-than', 'x'])).exitCode, isNot(0));
+
+    final restored = await backlog(['archive', '--restore', finished]);
+    expect(restored.out, contains('Restored 1:'));
+    expect(File(p.join(backlogDir, 'items', '$finished-finished.md')).existsSync(), isTrue);
+  });
+
   test('a full agent session: next, heartbeat, set, done unblocks the dependent', () async {
     final first = await create('First', ['-s', 'todo', '-p', 'p1']);
     final second = await create('Second', ['-s', 'todo', '-p', 'p0', '-d', first]);
