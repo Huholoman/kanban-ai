@@ -132,6 +132,9 @@ dispatcher:
       run: [sh, -c, "echo checking {id} on \$(git symbolic-ref --short HEAD) as \$BACKLOG_AGENT; echo out-line; exit 3"]
     - name: Noop
       run: noop
+    - name: AI review
+      statuses: [review]
+      review: true
 ''');
     clock = FixedClock(DateTime.utc(2026, 10, 31, 12));
     backlog = await Backlog.open(path('backlog'), clock: clock, ids: SequentialIds());
@@ -714,6 +717,35 @@ dispatcher:
       await finish('T-0001', 3);
       expect((await notes()).single.text, startsWith('The action "Fix" (agent fake in wt-1) exited with code 3 after'));
       expect((await notes()).single.note, isTrue);
+    });
+
+    test('an AI review that records no verdict is a problem with a note; one that does is not', () async {
+      await reviewed();
+      await launcher.launch((await plan()).actionStart('T-0001', 'AI review').agent!);
+      await finish('T-0001', 0);
+      expect((await notes()).single.text, contains('It recorded no review (`backlog review`)'));
+      expect((await plan()).problems.single.problems, ['the review was not recorded (no `backlog review`)']);
+
+      clock.advance(const Duration(minutes: 1));
+      File(path('go-T-0001')).deleteSync();
+      await launcher.launch((await plan()).actionStart('T-0001', 'AI review').agent!);
+      await backlog.items.comment('T-0001', author: 'wt-1', text: 'Fine.', review: ReviewVerdict.ok);
+      await finish('T-0001', 0);
+      expect(await notes(), hasLength(1), reason: 'no new note');
+      expect((await plan()).problems, isEmpty);
+    });
+
+    test('git ignores the scratch folder of agents in every worktree', () async {
+      await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
+      await launcher.launch((await plan()).assignmentFor('T-0001'));
+      final exclude = File(path('repo/.git/info/exclude')).readAsStringSync();
+      expect(exclude, contains('\n/.kanban-ai/\n'));
+      await Directory(path('wt-2/.kanban-ai')).create();
+      File(path('wt-2/.kanban-ai/review.md')).writeAsStringSync('x');
+      expect(await ProcessAgentLauncher.worktreeProblem(path('wt-2')), isNull);
+      await ProcessAgentLauncher.ignoreScratch(path('wt-2'));
+      expect(File(path('repo/.git/info/exclude')).readAsStringSync(), exclude, reason: 'added once');
+      await finish('T-0001', 0);
     });
 
     test('a fresh prompt action is a side session that does not replace the item session', () async {

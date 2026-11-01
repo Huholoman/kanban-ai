@@ -518,7 +518,15 @@ final class DispatcherConfig {
       'Running things: run the project\'s scripts directly as `./script args` (not `sh script`), one command per '
       'call without `;` or `&&` chains, and prefer your Read, Grep and Glob tools for files; besides backlog, git, '
       'mise, dart, flutter, common read-only commands (ls, cat, grep, find, …) and web search/fetch, only what the '
-      'project allows runs: anything else needs an approval nobody can give and is denied.';
+      'project allows runs: anything else needs an approval nobody can give and is denied. Keep every command on '
+      'one line: for a long or multi-line text write it with your Write tool to a file in $scratchFolder/ (git '
+      'ignores that folder in your worktree) and pass the file: `backlog comment {id} --file $scratchFolder/x.md` '
+      '(also `ask` and `review`).';
+
+  /// The folder (relative to an agent's worktree) for texts an agent writes
+  /// for the backlog CLI ([runRules]); the launcher makes git ignore it
+  /// (`info/exclude`), so the worktree stays clean.
+  static const scratchFolder = '.kanban-ai';
 
   /// The prompt every agent gets unless `dispatcher.prompt` replaces it.
   static const defaultPrompt =
@@ -562,9 +570,10 @@ final class DispatcherConfig {
       '2. The worktree is on branch {branch}, prepared for this item: commit there and do not switch branches. '
       'Make small commits; every commit message contains {id}.\n'
       '3. When the work is finished, open a pull request: write its description yourself (what changed and why, '
-      'how you verified it, and that it implements backlog item {id}) and run '
-      '`backlog pr {id} --description "<description>"`. It pushes {branch} and opens the pull request (when one '
-      'exists already, it only pushes). Then run `backlog set {id} status=review`.\n'
+      'how you verified it, and that it implements backlog item {id}) with your Write tool to '
+      '$scratchFolder/pr-{id}.md and run `backlog pr {id} --description-file $scratchFolder/pr-{id}.md`. It pushes '
+      '{branch} and opens the pull request (when one exists already, it only pushes). Then run '
+      '`backlog set {id} status=review`.\n'
       '4. Never run `git push` yourself, never push other branches and never merge: `backlog pr {id}` is the only '
       'way your work leaves this worktree. If it fails, say why with `backlog comment {id} "…"` and still set the '
       'status to review.\n'
@@ -584,7 +593,8 @@ final class DispatcherConfig {
       '`backlog comment {id} "…"` and stop: change no code and leave the status as it is.\n'
       '- If they answer your question or ask for changes, continue the work (no comment to acknowledge it) under the same rules as before: small commits containing {id} on {branch}; when finished, '
       '`backlog pr {id}` (it pushes {branch} and opens the pull request when there is none yet; give '
-      '`--description "…"` then) and `backlog set {id} status=review`; never run `git push` yourself.\n'
+      '`--description-file $scratchFolder/pr-{id}.md` then, written with your Write tool) and '
+      '`backlog set {id} status=review`; never run `git push` yourself.\n'
       '- Without new comments, continue the work under the same rules.\n'
       '- If the discussion changed what the item asks for, update its description or acceptance criteria in the body '
       'above `## Discussion` (never edit the comments; no comment about it is needed).\n'

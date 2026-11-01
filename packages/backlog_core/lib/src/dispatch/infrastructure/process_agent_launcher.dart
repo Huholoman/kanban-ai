@@ -311,6 +311,34 @@ final class ProcessAgentLauncher extends AgentLauncher {
     return (sessions: sessions, starts: starts, epics: epics);
   }
 
+  /// Makes git ignore the agents' scratch folder
+  /// ([DispatcherConfig.scratchFolder]) in every worktree of the repository
+  /// of [path], through its shared `info/exclude` (never committed), so that
+  /// the texts an agent writes for the CLI leave its worktree clean.
+  static Future<void> ignoreScratch(String path) async {
+    final ProcessResult common;
+    try {
+      common = await Process.run('git', ['rev-parse', '--git-common-dir'], workingDirectory: path);
+    } on ProcessException {
+      return;
+    }
+    if (common.exitCode != 0) return;
+    final exclude = File(p.join(p.normalize(p.join(path, '${common.stdout}'.trim())), 'info', 'exclude'));
+    const entry = '/${DispatcherConfig.scratchFolder}/';
+    try {
+      final text = await exclude.exists() ? await exclude.readAsString() : '';
+      if (LineSplitter.split(text).any((line) => line.trim() == entry)) return;
+      await exclude.parent.create(recursive: true);
+      await exclude.writeAsString(
+        '${text.isEmpty || text.endsWith('\n') ? '' : '\n'}# kanban-ai: texts agents write for the backlog CLI\n'
+        '$entry\n',
+        mode: FileMode.append,
+      );
+    } on FileSystemException {
+      // Not fatal: the agent's scratch files would then show as untracked.
+    }
+  }
+
   /// Why an agent cannot start in the worktree at [path]; null when it is a
   /// git worktree without uncommitted changes or untracked files.
   static Future<String?> worktreeProblem(String path) async {
@@ -514,8 +542,18 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final session = claude ? await _claudeSession(run.log) ?? record.resumed : record.resumed;
     final end = claude ? await _claudeEnd(run.log) : null;
     final failed = builtIn != null ? !builtIn.ok : !stopped && exitCode != 0;
+    // An AI review that ended without its verdict (`backlog review`) is lost work.
+    final unrecorded =
+        planned != null &&
+        !stopped &&
+        record.kind == RunKind.agent &&
+        backlog.workflow.dispatcher?.action(run.action!)?.review == true &&
+        !planned.item.discussion.comments.any(
+          (c) => c.review != null && !c.at.isBefore(run.startedAt.subtract(const Duration(seconds: 1))),
+        );
     final problems = [
       if (failed) record.kind == RunKind.agent ? 'the agent $reason' : 'the action "${run.action}" $reason',
+      if (unrecorded) 'the review was not recorded (no `backlog review`)',
       ...?end?.problems,
     ];
     final ended = _clock.now();
@@ -547,11 +585,15 @@ final class ProcessAgentLauncher extends AgentLauncher {
     _log('Dispatcher: the action "${run.action}" for $id in ${run.worktree} $reason; $outcome.');
     if (planned == null) return;
     // An agent that did its job says so itself when the action asks for it;
-    // only failures and the output of commands get a note.
-    if (record.kind == RunKind.agent && exitCode == 0) return;
+    // only failures, a review without its verdict and the output of commands
+    // get a note.
+    if (record.kind == RunKind.agent && exitCode == 0 && !unrecorded) return;
     final took = _duration(ended.difference(run.startedAt));
     final where = record.kind == RunKind.agent ? 'agent ${run.agent} in ${run.worktree}' : run.worktree;
     final text = StringBuffer('The action "${run.action}" ($where) $reason after $took.');
+    if (unrecorded) {
+      text.write(' It recorded no review (`backlog review`), so the review is lost; run the action again.');
+    }
     if (record.kind == RunKind.command) {
       final tail = await _outputTail(run.log);
       if (tail.isNotEmpty) {
@@ -776,6 +818,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final action = assignment.action;
     // Once an epic, the item's own runs stay the epic's (replies, fixes).
     final epic = action == null && (assignment.epic || await _lastWasEpic(id));
+    await ignoreScratch(assignment.path);
     await File(log).writeAsString(
       '# kanban-ai: ${assignment.agentProfile.name} for ${epic ? 'the epic ' : ''}$id'
       '${action == null ? '' : ' (action "${action.name}", ${assignment.trigger.id})'} in ${assignment.agent} (${assignment.path}), '
