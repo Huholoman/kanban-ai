@@ -24,6 +24,7 @@ export 'src/items/application/item_service.dart';
 export 'src/items/domain/checklist.dart';
 export 'src/items/domain/discussion.dart';
 export 'src/items/domain/item.dart';
+export 'src/items/domain/item_body.dart';
 export 'src/items/domain/item_id.dart';
 export 'src/items/domain/item_repository.dart';
 export 'src/items/domain/path_glob.dart';

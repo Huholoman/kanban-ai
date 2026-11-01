@@ -271,6 +271,15 @@ final class Discussion {
     return [before, after].where((part) => part.isNotEmpty).join('\n\n');
   }
 
+  /// [body] split at its discussion section: the description before it and
+  /// the rest from the `## Discussion` heading on (empty without one).
+  static ({String description, String rest}) split(String body) {
+    final lines = body.split('\n');
+    final section = _section(lines);
+    if (section == null) return (description: body, rest: '');
+    return (description: lines.sublist(0, section.start).join('\n'), rest: lines.sublist(section.start).join('\n'));
+  }
+
   /// Line range of the section: its heading and the end (exclusive).
   static ({int start, int end})? _section(List<String> lines) {
     int? start;

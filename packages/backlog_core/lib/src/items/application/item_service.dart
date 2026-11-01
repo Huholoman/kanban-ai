@@ -4,6 +4,7 @@ import '../../workflow/domain/workflow.dart';
 import '../domain/checklist.dart';
 import '../domain/discussion.dart';
 import '../domain/item.dart';
+import '../domain/item_body.dart';
 import '../domain/item_id.dart';
 import '../domain/item_repository.dart';
 import 'field_change.dart';
@@ -150,6 +151,25 @@ final class ItemService {
       commit: commit,
     );
     return update(item.id.value, const [], body: Discussion.append(item.body, comment));
+  }
+
+  /// Replaces the description of the item (its body above `## Discussion`)
+  /// with [text], or with a [section] only the content of the section
+  /// headed `## <section>` (added when missing); the discussion stays.
+  Future<Item> describe(String reference, String text, {String? section}) async {
+    final item = await get(reference);
+    if (section != null && !ItemBody.isSectionName(section)) {
+      throw InvalidInputException(
+        '"$section" is not a section of the description (not empty, one line, not the discussion).',
+      );
+    }
+    return update(
+      item.id.value,
+      const [],
+      body: section == null
+          ? ItemBody.withDescription(item.body, text)
+          : ItemBody.withSection(item.body, section, text),
+    );
   }
 
   /// Checks ([done]) or unchecks the checklist items of the item that
