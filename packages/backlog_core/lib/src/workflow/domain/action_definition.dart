@@ -34,6 +34,7 @@ final class ActionDefinition {
     this.review = false,
     this.autoFix = 0,
     this.changesCode = false,
+    this.then,
   }) : statuses = statuses == null ? null : List.unmodifiable(statuses),
        fresh = fresh || review {
     final label = 'dispatcher.actions "$name"';
@@ -54,6 +55,12 @@ final class ActionDefinition {
     }
     if (autoFix < 0) throw ConfigurationException('$label: auto_fix must be 0 or more rounds.');
     if (autoFix > 0 && !review) throw ConfigurationException('$label: auto_fix only applies to a review.');
+    if (then != null && !review) throw ConfigurationException('$label: then only applies to a review.');
+    if (then != null && (onEnter == null || then == onEnter)) {
+      throw ConfigurationException(
+        '$label: then needs on_enter (the status the review runs in) and must name another status.',
+      );
+    }
     if (changesCode && (kind != ActionKind.prompt || review)) {
       throw ConfigurationException('$label: changes_code only applies to prompt actions (not to a review).');
     }
@@ -139,6 +146,12 @@ final class ActionDefinition {
   /// for the item's own agent. Other actions leave the status alone.
   final bool changesCode;
 
+  /// For a [review] that runs [onEnter] a status of its own (`ai-review`):
+  /// where the item goes on to when the review is over — after `ok` (or no
+  /// verdict), and after `changes` that no automatic fix round takes up —
+  /// typically `review`, where a person looks at it (`then: review`).
+  final String? then;
+
   ActionKind get kind => prompt != null || review
       ? ActionKind.prompt
       : command != null
@@ -186,7 +199,7 @@ final class ActionDefinition {
   /// One line for logs and lists: `prompt`, `run: sh -c …`, `run: merge`.
   String get summary => switch (kind) {
     ActionKind.prompt =>
-      '${review ? 'AI review${autoFix > 0 ? ' (auto-fix $autoFix)' : ''}, ' : ''}agent${agent == null ? '' : ' $agent'}${fresh ? ', new session' : ''}${changesCode ? ', changes code' : ''}',
+      '${review ? 'AI review${autoFix > 0 ? ' (auto-fix $autoFix)' : ''}${then == null ? '' : ', then $then'}, ' : ''}agent${agent == null ? '' : ' $agent'}${fresh ? ', new session' : ''}${changesCode ? ', changes code' : ''}',
     ActionKind.command => 'run: $command',
     ActionKind.builtIn => 'run: $builtIn',
   };

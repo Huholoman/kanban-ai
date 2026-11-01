@@ -50,6 +50,7 @@ final class ActionCommand extends BacklogCommand {
               'review': action.review,
               'auto_fix': action.autoFix,
               'changes_code': action.changesCode,
+              'then': action.then,
             },
         ]);
         return 0;

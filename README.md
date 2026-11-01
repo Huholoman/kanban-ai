@@ -468,6 +468,27 @@ Commands are split into arguments like in a shell, but no shell runs them (use `
 
 The verdict is a review comment in the discussion (`### reviewer · … · review changes @1a2b3c4d5e6f`): it is for the person and for the item's agent — a later resume of the agent shows it in `{news}` — but, like a note, it does not answer a question and does not wake the agent by itself. With `pr.review` configured (`tea comment {pr_number}`, `gh pr review {pr} --comment --body-file -`; the review comes on stdin and in `{body}`) `backlog review` also posts it to the item's pull request as a comment — never as an approval; when that fails the review stays in the discussion and a note says why. The item's `review` state follows the latest one: `ok`, `changes` (with the number of findings), `stale` once the item's branch has newer commits than the reviewed one, `none`.
 
+**A column for the AI review** (optional): add a status `ai-review` (category `active`) between `in-progress` and `review` and put the AI review there with `then`:
+
+```yaml
+statuses:
+  # … todo, in-progress
+  - id: ai-review
+    category: active
+  - id: review
+    category: active
+  # … done
+dispatcher:
+  actions:
+    - name: AI review
+      review: true
+      on_enter: ai-review
+      then: review
+      auto_fix: 2
+```
+
+Agents then hand their work over to `ai-review` (the prompt's `{handover}`), the review runs there, and when it is over the item moves on to `review` by itself — so `review` always means *waits for you*. With `auto_fix` the agent fixes what it can and gives the item back to `ai-review`; when a finding needs your decision (or it is not sure), it says so and sends the item to `review` itself.
+
 **Review ↔ fix loop** (optional, off by default): with `auto_fix: 2` on the review action a review that asks for changes wakes the item's own agent in its session with a prompt to fix the findings (commit, `backlog pr`, set the status again; a comment only for findings it leaves unfixed); once it has pushed new commits the review runs again, at most two rounds, then a note says a person decides. A fix without new commits, an `ok` review or one without a verdict end the loop, and so does a merge (the item is done). It runs in `manual` mode too, like hooks. After a failed merge (below) the item is back in `review`; the agent woken by the failure comment takes it to `in-progress`, fixes the branch and hands it back, and the AI review then looks at the fixed one.
 
 ```yaml

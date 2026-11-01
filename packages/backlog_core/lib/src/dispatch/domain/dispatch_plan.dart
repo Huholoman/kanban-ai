@@ -320,6 +320,11 @@ final class DispatchAssignment {
         'reviewer': fix.review.author,
         'reviewed': fix.review.commit == null ? 'no commit named' : 'of commit ${fix.review.commit}',
         'review': fix.review.text,
+        'decide': fix.then == null
+            ? ''
+            : ' If a finding needs a person\'s decision or you are not sure how to fix it, do not guess: leave it, '
+                  'say which and why in one comment (or ask with `backlog ask ${item.id} "…"`), run '
+                  '`backlog set ${item.id} status=${fix.then}` instead (a person looks at it there) and stop.',
       });
     } else if (repair) {
       prompt = repairFrame.render({
@@ -503,8 +508,8 @@ final class DispatchAssignment {
     'An AI review of your work asks for changes (automatic fix round {round} of {rounds}). Fix its findings '
     'below in small commits whose messages contain {id}. Where a finding is wrong, do not change the code; say '
     'why in exactly one comment (`backlog comment {id} "…"`); what you fixed belongs in the commit messages, not '
-    'in a comment. {publish} Then run `backlog set {id} status={status}` and stop. If something is unclear, ask '
-    'with `backlog ask {id} "<your question>"` and stop.\n'
+    'in a comment. {publish} Then run `backlog set {id} status={status}` (that reviews it again) and stop.{decide} '
+    'If something is unclear, ask with `backlog ask {id} "<your question>"` and stop.\n'
     '${DispatcherConfig.checklistRules}\n${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}\n\n'
     'The review by {reviewer} ({reviewed}):\n\n{review}',
     known: const [
@@ -517,6 +522,7 @@ final class DispatchAssignment {
       'reviewer',
       'reviewed',
       'review',
+      'decide',
     ],
     label: 'fix prompt',
   );
@@ -637,11 +643,16 @@ final class DispatchAssignment {
 /// Round [round] of [rounds] (`auto_fix`) of fixing the findings of the AI
 /// [review].
 final class ReviewFix {
-  const ReviewFix({required this.review, required this.round, required this.rounds});
+  const ReviewFix({required this.review, required this.round, required this.rounds, this.then});
 
   final Comment review;
   final int round;
   final int rounds;
+
+  /// Where the agent sends the item instead when a finding needs a person
+  /// (the review's [ActionDefinition.then]); null: it always gives the item
+  /// back for review.
+  final String? then;
 }
 
 /// What the dispatcher would do with one [BacklogSnapshot]: which ready items
@@ -1218,7 +1229,13 @@ final class DispatchPlan {
   /// item's branch is checked out, else in any free (or new) worktree.
   /// Fails with `UnavailableException` while something runs for the item or
   /// no worktree is free, `ClaimConflictException` when it is claimed.
-  DispatchAssignment fixStart(ItemId id, {required Comment review, required int round, required int rounds}) {
+  DispatchAssignment fixStart(
+    ItemId id, {
+    required Comment review,
+    required int round,
+    required int rounds,
+    String? then,
+  }) {
     final planned = snapshot[id] ?? (throw NotFoundException('No item $id.'));
     if (runFor(id) case final run?) {
       throw UnavailableException('${run.action ?? 'An agent'} already runs for $id.');
@@ -1241,7 +1258,7 @@ final class DispatchPlan {
       backlogRoot: backlogRoot,
       resume: own == null ? null : session,
       create: target.isNew,
-      fix: ReviewFix(review: review, round: round, rounds: rounds),
+      fix: ReviewFix(review: review, round: round, rounds: rounds, then: then),
     );
   }
 
