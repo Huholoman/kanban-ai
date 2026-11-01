@@ -544,7 +544,8 @@ final class DispatcherConfig {
       'one line: for a long or multi-line text write it with your Write tool to a file in $scratchFolder/ (git '
       'ignores that folder in your worktree) and pass the file: `backlog comment {id} --file $scratchFolder/x.md` '
       '(also `ask` and `review`). The backlog (item files, its own git repository outside your worktree) is '
-      'committed by the board: never commit it and never report its uncommitted changes as a problem.';
+      'committed by the board: never commit it and never report its uncommitted changes as a problem; look at it '
+      'with `backlog`, never with git. Run git only in your worktree, without `-C <dir>` (denied).';
 
   /// The folder (relative to an agent's worktree) for texts an agent writes
   /// for the backlog CLI ([runRules]); the launcher makes git ignore it

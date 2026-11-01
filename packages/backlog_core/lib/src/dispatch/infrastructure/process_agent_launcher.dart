@@ -615,10 +615,11 @@ final class ProcessAgentLauncher extends AgentLauncher {
         !planned.item.discussion.comments.any(
           (c) => c.review != null && !c.at.isBefore(run.startedAt.subtract(const Duration(seconds: 1))),
         );
+    final ending = _deniedIsProblem(end, failed: failed || unrecorded);
     final problems = [
       if (failed) record.kind == RunKind.agent ? 'the agent $reason' : 'the action "${run.action}" $reason',
       if (unrecorded) 'the review was not recorded (no `backlog review`)',
-      ...?end?.problems,
+      ...ending.problems,
     ];
     final ended = _clock.now();
     final side = record.kind != RunKind.agent || record.side;
@@ -634,11 +635,14 @@ final class ProcessAgentLauncher extends AgentLauncher {
       'session_id': session,
       'result': end?.result,
       'problems': problems,
+      'notices': ending.notices,
     });
     try {
-      await File(
-        run.log,
-      ).writeAsString('# kanban-ai: the action "${run.action}" $reason; $outcome\n', mode: FileMode.append);
+      await File(run.log).writeAsString(
+        '# kanban-ai: the action "${run.action}" $reason; $outcome'
+        '${ending.notices.isEmpty ? '' : ' (${ending.notices.join('; ')})'}\n',
+        mode: FileMode.append,
+      );
     } on FileSystemException {
       // The log was removed; the outcome is still in the server log.
     }
@@ -1049,6 +1053,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final planned = snapshot[id];
     var outcome = '';
     var handedOver = false;
+    var unfinished = false;
     final members = run.epic ? await _releaseMembers(backlog, snapshot, record) : '';
     if (planned == null) {
       outcome = 'the item is gone';
@@ -1065,6 +1070,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
         await backlog.claims.release(id.value, agent: run.worktree, force: true);
         outcome = 'it asked a question; released, waits for a person to answer';
       } else if (planned.item.status == backlog.workflow.activeStatus) {
+        unfinished = true;
         await backlog.claims.release(id.value, agent: run.worktree, force: true);
         await _write(_holdFile(id), {
           'reason': 'The last agent ($reason) left it unfinished.',
@@ -1084,7 +1090,9 @@ final class ProcessAgentLauncher extends AgentLauncher {
         ? await _claudeSession(run.log) ?? record.resumed
         : record.resumed;
     final end = record.output == AgentOutput.claudeStreamJson ? await _claudeEnd(run.log) : null;
-    final problems = [if (!stopped && exitCode != 0) 'the agent $reason', ...?end?.problems];
+    final failed = !stopped && exitCode != 0;
+    final ending = _deniedIsProblem(end, failed: failed || unfinished);
+    final problems = [if (failed) 'the agent $reason', ...ending.problems];
     if (handedOver && planned != null) {
       if (await _pullRequestFallback(backlog, record, planned.item, end?.result) case final done?) {
         outcome = '$outcome; ${done.text}';
@@ -1102,10 +1110,12 @@ final class ProcessAgentLauncher extends AgentLauncher {
       'session_id': session,
       'result': end?.result,
       'problems': problems,
+      'notices': ending.notices,
     });
     try {
       await File(run.log).writeAsString(
         '# kanban-ai: the agent $reason; $outcome'
+        '${ending.notices.isEmpty ? '' : ' (${ending.notices.join('; ')})'}'
         '${session == null ? '' : '; resume with: cd ${record.path} && claude --resume $session'}\n',
         mode: FileMode.append,
       );
@@ -1213,10 +1223,12 @@ final class ProcessAgentLauncher extends AgentLauncher {
   }
 
   /// How a Claude run ended, from its last `result` event: the agent's final
-  /// message and what went wrong (an error ending, denied tool calls).
-  static Future<({String? result, List<String> problems})> _claudeEnd(String log) async {
+  /// message, what went wrong (an error ending) and the tool calls that were
+  /// denied (`denied`, one line; null without any) — a problem only when
+  /// the run did not succeed, see [_deniedIsProblem].
+  static Future<({String? result, List<String> problems, String? denied})> _claudeEnd(String log) async {
     final file = File(log);
-    if (!await file.exists()) return (result: null, problems: const <String>[]);
+    if (!await file.exists()) return (result: null, problems: const <String>[], denied: null);
     Map<Object?, Object?>? end;
     for (final line in await file.readAsLines(encoding: const Utf8Codec(allowMalformed: true))) {
       if (!line.startsWith('{') || !line.contains('"type":"result"')) continue;
@@ -1226,7 +1238,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
         continue;
       }
     }
-    if (end == null) return (result: null, problems: const <String>[]);
+    if (end == null) return (result: null, problems: const <String>[], denied: null);
     final result = switch (end['result']) {
       final String text when text.trim().isNotEmpty => text.trim(),
       _ => null,
@@ -1239,12 +1251,27 @@ final class ProcessAgentLauncher extends AgentLauncher {
     ];
     return (
       result: result,
-      problems: [
-        if (end['is_error'] == true) 'the agent ended with an error (${end['subtype'] ?? 'unknown'})',
-        if (denials.isNotEmpty)
-          '${denials.length == 1 ? 'a tool call was' : '${denials.length} tool calls were'} denied: '
-              '${denials.toSet().take(5).join(', ')}${denials.toSet().length > 5 ? ', …' : ''}',
-      ],
+      problems: [if (end['is_error'] == true) 'the agent ended with an error (${end['subtype'] ?? 'unknown'})'],
+      denied: denials.isEmpty
+          ? null
+          : '${denials.length == 1 ? 'a tool call was' : '${denials.length} tool calls were'} denied: '
+                '${denials.toSet().take(5).join(', ')}${denials.toSet().length > 5 ? ', …' : ''}',
+    );
+  }
+
+  /// Denied tool calls need a person only when the run did not succeed
+  /// ([failed]: a failed exit, an error ending, an unrecorded review, an item
+  /// left unfinished); after a run that went well they are a notice in its
+  /// record and log — the agent found another way.
+  static ({List<String> problems, List<String> notices}) _deniedIsProblem(
+    ({String? result, List<String> problems, String? denied})? end, {
+    required bool failed,
+  }) {
+    final denied = end?.denied;
+    final failedRun = failed || (end?.problems.isNotEmpty ?? false);
+    return (
+      problems: [...?end?.problems, if (denied != null && failedRun) denied],
+      notices: [if (denied != null && !failedRun) denied],
     );
   }
 

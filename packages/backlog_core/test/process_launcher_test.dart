@@ -402,6 +402,43 @@ dispatcher:
     });
   });
 
+  test('denied tool calls of a run that went well are a notice, of one left unfinished a problem', () async {
+    await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
+    await backlog.items.create(const NewItem(title: 'B', status: 'todo'));
+    Future<Map<String, Object?>> run(String id, {required bool handOver}) async {
+      await launcher.launch((await plan()).assignmentFor(id));
+      await waitForLog(id, 'agent wt-');
+      File((await launcher.agentLogSource(ItemId(id)))!.path).writeAsStringSync(
+        '${jsonEncode({
+          'type': 'result',
+          'subtype': 'success',
+          'is_error': false,
+          'result': 'Done.',
+          'permission_denials': [
+            {
+              'tool_name': 'Bash',
+              'tool_input': {'command': 'git -C ../backlog status --short'},
+            },
+          ],
+        })}\n',
+        mode: FileMode.append,
+      );
+      if (handOver) await backlog.items.update(id, [FieldChange.parse('status=review')]);
+      await finish(id, 0);
+      return (await launcher.agentLog(ItemId(id)))!.last!;
+    }
+
+    final fine = await run('T-0001', handOver: true);
+    expect(fine['problems'], isEmpty);
+    expect(fine['notices'], ['a tool call was denied: Bash(git -C ../backlog status --short)']);
+    expect(await logOf('T-0001'), contains('(a tool call was denied: Bash(git -C ../backlog status --short))'));
+    expect((await plan()).problems, isEmpty);
+
+    final left = await run('T-0002', handOver: false);
+    expect(left['problems'], ['a tool call was denied: Bash(git -C ../backlog status --short)']);
+    expect(left['notices'], isEmpty);
+  });
+
   test('the end of a run keeps the final message and the problems: denied tools, an error ending', () async {
     await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
     await launcher.launch((await plan()).assignmentFor('T-0001'));
