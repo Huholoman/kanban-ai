@@ -83,11 +83,38 @@ enum ItemFlag {
   };
 }
 
+/// How recently items were changed (`updated`) for the board to show them.
+enum ItemAge {
+  day('24 h', Duration(hours: 24), '24h'),
+  week('7 days', Duration(days: 7), '7d'),
+  month('30 days', Duration(days: 30), '30d');
+
+  const ItemAge(this.title, this.duration, this.condition);
+
+  final String title;
+  final Duration duration;
+
+  /// The age in the view filter grammar (`updated: {within: 7d}`).
+  final String condition;
+
+  static final _day = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+
+  /// [item] was changed at most [duration] before [now]; a day from an older
+  /// file counts as its midnight UTC.
+  bool of(ItemDto item, DateTime now) {
+    final updated = item.updated?.trim();
+    final at =
+        item.updatedAt ??
+        (updated != null && _day.hasMatch(updated) ? DateTime.tryParse('${updated}T00:00:00Z') : null);
+    return at != null && now.difference(at) <= duration;
+  }
+}
+
 /// Client-side narrowing of the current view: free text, facet values and
 /// flags. Values of one facet are alternatives (any of them); facets, flags
 /// and text must all match.
 final class BoardFilter {
-  const BoardFilter({this.text = '', this.selected = const {}, this.flags = const {}});
+  const BoardFilter({this.text = '', this.selected = const {}, this.flags = const {}, this.age});
 
   static const none = BoardFilter();
 
@@ -96,25 +123,35 @@ final class BoardFilter {
   final Map<FilterFacet, Set<String>> selected;
   final Set<ItemFlag> flags;
 
-  bool get isEmpty => text.trim().isEmpty && flags.isEmpty && selected.values.every((values) => values.isEmpty);
+  /// Only items changed within this age; null for any.
+  final ItemAge? age;
+
+  bool get isEmpty =>
+      text.trim().isEmpty && flags.isEmpty && age == null && selected.values.every((values) => values.isEmpty);
 
   Set<String> valuesFor(FilterFacet facet) => selected[facet] ?? const {};
 
-  BoardFilter withText(String text) => BoardFilter(text: text, selected: selected, flags: flags);
+  BoardFilter withText(String text) => BoardFilter(text: text, selected: selected, flags: flags, age: age);
+
+  /// This filter with [age], or without one when it is [age] already.
+  BoardFilter toggleAge(ItemAge age) =>
+      BoardFilter(text: text, selected: selected, flags: flags, age: this.age == age ? null : age);
 
   BoardFilter toggle(FilterFacet facet, String value) {
     final values = {...valuesFor(facet)};
     if (!values.remove(value)) values.add(value);
-    return BoardFilter(text: text, selected: {...selected, facet: values}, flags: flags);
+    return BoardFilter(text: text, selected: {...selected, facet: values}, flags: flags, age: age);
   }
 
   BoardFilter toggleFlag(ItemFlag flag) {
     final next = {...flags};
     if (!next.remove(flag)) next.add(flag);
-    return BoardFilter(text: text, selected: selected, flags: next);
+    return BoardFilter(text: text, selected: selected, flags: next, age: age);
   }
 
-  bool matches(ItemDto item, [Map<String, ItemDto> index = const {}]) {
+  /// [now] is the current time for [age] ([DateTime.now] when null).
+  bool matches(ItemDto item, [Map<String, ItemDto> index = const {}, DateTime? now]) {
+    if (age case final age? when !age.of(item, now ?? DateTime.now())) return false;
     final query = text.trim().toLowerCase();
     if (query.isNotEmpty && ![item.id, item.title, ?item.branch].any((field) => field.toLowerCase().contains(query))) {
       return false;
@@ -153,6 +190,10 @@ final class BoardFilter {
             _ => {facet.name: values.toList()},
           },
       for (final flag in flags) {flag.field: true},
+      if (age case final age?)
+        {
+          'updated': {'within': age.condition},
+        },
     ];
   }
 

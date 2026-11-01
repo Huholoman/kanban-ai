@@ -179,4 +179,31 @@ void main() {
     final counts = BoardFilter.counts([epic, child], index: {'E': epic, 'C': child});
     expect(counts[FilterFacet.epic], {'E': 2});
   });
+
+  test('age keeps items changed recently, also by a day from an older file, and saves as within', () {
+    final now = DateTime.utc(2026, 11, 1, 12);
+    ItemDto changed(String id, {String? updated, DateTime? at}) =>
+        ItemDto(id: id, title: id, type: 'task', status: 'todo', priority: 'p2', updated: updated, updatedAt: at);
+    final hour = changed('A', updated: '2026-11-01T11:00:00Z', at: DateTime.utc(2026, 11, 1, 11));
+    final days = changed('B', updated: '2026-10-29');
+    final old = changed('C', updated: '2026-09-01T00:00:00Z', at: DateTime.utc(2026, 9));
+    final none = changed('D');
+    List<String> kept(ItemAge age) => [
+      for (final item in [hour, days, old, none])
+        if (BoardFilter.none.toggleAge(age).matches(item, const {}, now)) item.id,
+    ];
+    expect(kept(ItemAge.day), ['A']);
+    expect(kept(ItemAge.week), ['A', 'B']);
+    expect(kept(ItemAge.month), ['A', 'B']);
+    final week = BoardFilter.none.toggleAge(ItemAge.week);
+    expect(week.isEmpty, isFalse);
+    expect(week.toggleAge(ItemAge.week).age, isNull, reason: 'the same age again turns it off');
+    expect(week.toggleAge(ItemAge.day).age, ItemAge.day);
+    expect(week.withText('x').toggle(FilterFacet.type, 'bug').age, ItemAge.week);
+    expect(week.toConditions(), [
+      {
+        'updated': {'within': '7d'},
+      },
+    ]);
+  });
 }

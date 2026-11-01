@@ -30,6 +30,26 @@ void main() {
     item('T-3', status: 'in-progress', labels: ['ui', 'web'], priority: 'p3'),
   ];
 
+  testWidgets('the age segments keep only recently changed items', (tester) async {
+    await pumpApp(tester, [
+      ItemDto(
+        id: 'T-1',
+        title: 'Fresh',
+        type: 'task',
+        status: 'todo',
+        priority: 'p2',
+        updatedAt: DateTime.now().toUtc().subtract(const Duration(hours: 2)),
+      ),
+      item('T-2', status: 'todo'),
+    ]);
+    expect(find.text('Item T-2'), findsOneWidget);
+    await tapKey(tester, 'filter-age-day');
+    expect(find.text('Fresh'), findsOneWidget);
+    expect(find.text('Item T-2'), findsNothing);
+    await tapKey(tester, 'filter-age-day');
+    expect(find.text('Item T-2'), findsOneWidget);
+  });
+
   testWidgets('ticking a label in the popover filters the board and adds a chip', (tester) async {
     await pumpApp(tester, items);
     await tapKey(tester, 'filter-button');
