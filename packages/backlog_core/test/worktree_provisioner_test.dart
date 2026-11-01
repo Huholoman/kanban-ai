@@ -80,6 +80,8 @@ $extra''');
     )!;
   }
 
+  Future<PlannedItem> planned(String id) async => (await backlog.planning.snapshot())[ItemId(id)]!;
+
   /// Waits until the agent of [id] ended and the launcher dealt with it.
   Future<void> ended(String id) async {
     final waited = Stopwatch()..start();
@@ -131,6 +133,61 @@ $extra''');
     final full = await plan();
     expect(full.spare, isEmpty);
     expect(full.assignments.map((a) => a.agent), ['repo-3']);
+  });
+
+  test('setup prepares a new worktree before the agent; when it fails the worktree is removed again', () async {
+    await configure('''
+  max_worktrees: 2
+  setup:
+    - [sh, -c, "echo set up {worktree} at {path} from {repo} on {base} >> ../setup.txt"]
+    - echo second
+''');
+    backlog = await Backlog.open(path('backlog'), clock: clock, ids: SequentialIds());
+    await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
+    await launcher.launch((await plan()).assignmentFor('T-0001'));
+    expect(
+      File(path('setup.txt')).readAsStringSync(),
+      'set up repo-3 at ${path('repo-3')} from ${path('repo')} on main\n',
+    );
+    final setupLog = Directory(
+      p.join(stateDir(), 'logs', 'demo'),
+    ).listSync().whereType<File>().singleWhere((f) => p.basename(f.path).startsWith('worktree-repo-3-'));
+    expect(setupLog.readAsStringSync(), allOf(contains('# command: echo second'), contains('is set up')));
+    expect((await planned('T-0001')).claim?.agent, 'repo-3');
+    await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+    await ended('T-0001');
+    // An existing worktree is not set up again.
+    await backlog.items.create(const NewItem(title: 'B', status: 'todo'));
+    await launcher.launch((await plan()).assignmentFor('T-0002'));
+    expect(File(path('setup.txt')).readAsLinesSync(), hasLength(1));
+    await backlog.items.update('T-0002', [FieldChange.parse('status=review')]);
+    await ended('T-0002');
+
+    await configure('''
+  max_worktrees: 2
+  setup: [[sh, -c, "echo no network; exit 4"]]
+''');
+    backlog = await Backlog.open(path('backlog'), clock: clock, ids: SequentialIds());
+    await backlog.items.create(const NewItem(title: 'C', status: 'todo'));
+    await launcher.launch((await plan()).assignmentFor('T-0003')); // repo-3 is busy now
+    await backlog.items.create(const NewItem(title: 'D', status: 'todo'));
+    final next = (await plan()).assignmentFor('T-0004');
+    expect((next.agent, next.createFrom), ('repo-4', path('repo')));
+    await expectLater(
+      launcher.launch(next),
+      throwsA(
+        isA<UnavailableException>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('Cannot use the new worktree repo-4'), contains('exited with code 4'), contains('log ')),
+        ),
+      ),
+    );
+    expect(Directory(path('repo-4')).existsSync(), isFalse);
+    expect(await _git(path('repo'), ['worktree', 'list']), isNot(contains(path('repo-4'))));
+    expect(File(p.join(stateDir(), 'worktrees', 'demo', 'repo-4.json')).existsSync(), isFalse);
+    expect((await planned('T-0004')).claim, isNull, reason: 'nothing was claimed');
+    expect(logs, contains(contains('setting up worktree repo-4 failed')));
   });
 
   test('forgets a created worktree whose folder was removed', () async {

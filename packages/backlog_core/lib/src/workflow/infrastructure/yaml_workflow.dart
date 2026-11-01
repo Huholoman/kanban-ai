@@ -89,6 +89,7 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     'worktree_name',
     'max_worktrees',
     'cleanup_after_days',
+    'setup',
     'base',
     'agent',
     'agents',
@@ -169,11 +170,11 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
 }
 
 /// `dispatcher.repo` with `worktree_name`, `max_worktrees` (default
-/// `max_agents`) and `cleanup_after_days`; null without `repo`.
+/// `max_agents`), `cleanup_after_days` and `setup`; null without `repo`.
 NewWorktrees? _newWorktrees(YamlMap yaml, String origin) {
   final repo = yaml['repo'];
   if (repo == null) {
-    for (final key in ['worktree_name', 'max_worktrees', 'cleanup_after_days']) {
+    for (final key in ['worktree_name', 'max_worktrees', 'cleanup_after_days', 'setup']) {
       if (yaml[key] != null) throw ConfigurationException('dispatcher.$key needs dispatcher.repo.');
     }
     return null;
@@ -193,6 +194,10 @@ NewWorktrees? _newWorktrees(YamlMap yaml, String origin) {
     name: yaml['worktree_name'] == null ? null : _string(yaml['worktree_name'], 'dispatcher.worktree_name', origin),
     maxWorktrees: max,
     cleanupAfter: days == null ? null : Duration(days: days),
+    setup: [
+      for (final (index, command) in _list(yaml['setup'] ?? const [], 'dispatcher.setup', origin).indexed)
+        _template(command, 'dispatcher.setup[$index]', NewWorktrees.setupPlaceholders, origin)!,
+    ],
   );
 }
 
@@ -535,6 +540,7 @@ claims:
 #   worktree_name: "{repo}-{n}"   # default; the first unused n from 2 on
 #   max_worktrees: 4      # listed + created (default: max_agents)
 #   cleanup_after_days: 14   # remove created ones idle this long that lose nothing (default: keep)
+#   setup: [[mise, trust], [mise, run, get]]   # prepare a created worktree; one fails: it is removed again
 #   base: main            # new branches agent/<id> start here (an item's own branch field wins)
 #   agent: claude         # built-in: claude; unverified presets: codex, gemini, aider
 #   # Claude Code tool rules added to the built-in whitelist (backlog, git,

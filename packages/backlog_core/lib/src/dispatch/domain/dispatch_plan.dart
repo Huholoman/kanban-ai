@@ -210,6 +210,7 @@ final class DispatchAssignment {
     this.base,
     this.resume,
     this.createFrom,
+    this.setup = const [],
     this.action,
     this.trigger = ActionTrigger.request,
     this.fix,
@@ -325,6 +326,7 @@ final class DispatchAssignment {
       base: config.base,
       resume: session,
       createFrom: create ? config.newWorktrees?.resolveRepo(backlogRoot) : null,
+      setup: create ? config.newWorktrees?.setup ?? const [] : const [],
       action: action,
       trigger: trigger,
       fix: fix,
@@ -424,6 +426,10 @@ final class DispatchAssignment {
   /// The primary clone to add the worktree from (`git worktree add`) before
   /// the agent starts; null when the worktree exists.
   final String? createFrom;
+
+  /// The commands that prepare the worktree created from [createFrom]
+  /// (`dispatcher.setup`, [NewWorktrees.setup]).
+  final List<CommandTemplate> setup;
 
   /// The prompt action the agent runs for; null for the item's own work.
   /// Such an agent takes the claim without changing the item (status,
