@@ -71,7 +71,7 @@ final class AgentLog {
   final bool running;
 
   /// How the last run ended (`exit_code`, `reason`, `outcome`, `ended_at`,
-  /// `session_id`); null while it runs.
+  /// `session_id`, `result`, `problems`); null while it runs.
   final Map<String, Object?>? last;
 }
 
@@ -90,6 +90,7 @@ final class DispatchConditions {
     this.spare = const [],
     this.branches = const {},
     this.pending = const [],
+    this.problems = const {},
     this.epics = const {},
   });
 
@@ -140,6 +141,11 @@ final class DispatchConditions {
   /// `on_enter` actions waiting to run.
   final List<PendingAction> pending;
 
+  /// Unfinished items whose latest run (of their agent or an action) ended
+  /// with problems → what went wrong (a failed exit, denied permissions, a
+  /// pull request that could not be opened, …).
+  final Map<ItemId, List<String>> problems;
+
   /// These conditions with [pending] in place of the current ones.
   DispatchConditions withPending(List<PendingAction> pending) => DispatchConditions(
     unavailable: unavailable,
@@ -152,6 +158,7 @@ final class DispatchConditions {
     spare: spare,
     branches: branches,
     pending: pending,
+    problems: problems,
     epics: epics,
   );
 }
@@ -561,6 +568,7 @@ final class DispatchPlan {
     this.pending = const [],
     this.branches = const {},
     this.waitingReasons = const {},
+    this.problems = const [],
     this.epics = const {},
   });
 
@@ -814,6 +822,16 @@ final class DispatchPlan {
       runs: List.unmodifiable(conditions.runs),
       pending: List.unmodifiable(conditions.pending),
       branches: Map.unmodifiable(conditions.branches),
+      // Held items say why already; a running item has a new run.
+      problems: List.unmodifiable([
+        for (final planned in snapshot.items)
+          if (conditions.problems[planned.id] case final problems?
+              when problems.isNotEmpty &&
+                  !planned.isDone &&
+                  !runningItems.contains(planned.id) &&
+                  !conditions.held.containsKey(planned.id))
+            (item: planned, problems: List<String>.unmodifiable(problems)),
+      ]),
       epics: Set.unmodifiable(epics),
     );
   }
@@ -839,6 +857,11 @@ final class DispatchPlan {
 
   /// Ready items the dispatcher does not start by itself, with the reason.
   final List<({PlannedItem item, String reason})> held;
+
+  /// Unfinished items whose latest run ended with problems
+  /// ([DispatchConditions.problems]) and that neither run nor are [held]:
+  /// they need a person.
+  final List<({PlannedItem item, List<String> problems})> problems;
 
   /// Worktrees the dispatcher may still create (`dispatcher.repo`), in the
   /// order it would; [WorktreeState.isNew].
@@ -1199,11 +1222,15 @@ final class DispatchPlan {
         waiting.map((i) => '${i.id}:${waitingReasons[i.id]}'),
       ) &&
       _sameList(other.held.map((h) => '${h.item.id}:${h.reason}'), held.map((h) => '${h.item.id}:${h.reason}')) &&
+      _sameList(other.problems.map(_problemKey), problems.map(_problemKey)) &&
       _sameList(other.worktrees.map(_worktreeKey), worktrees.map(_worktreeKey)) &&
       _sameList(other.runs.map(_runKey), runs.map(_runKey)) &&
       _sameList(other.pending.map(_pendingKey), pending.map(_pendingKey));
 
   static String _runKey(AgentRun run) => '${run.item}:${run.worktree}:${run.pid}:${run.action}';
+
+  static String _problemKey(({PlannedItem item, List<String> problems}) entry) =>
+      '${entry.item.id}:${entry.problems.join('\n')}';
 
   static String _pendingKey(PendingAction action) => '${action.item}:${action.action}:${action.status}';
 

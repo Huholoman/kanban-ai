@@ -42,6 +42,9 @@ void main() {
         waiting: const ['X-3'],
         waitingReasons: const [HeldItemDto(item: 'X-3', title: 'Three', reason: 'no free worktree')],
         held: const [HeldItemDto(item: 'X-4', title: 'Four', reason: 'stopped')],
+        problems: const [
+          ProblemItemDto(item: 'X-6', title: 'Six', problems: ['the agent exited with code 1']),
+        ],
         sessions: [
           AgentSessionDto(item: 'X-4', session: 'sess-4', worktree: 'w1', endedAt: DateTime.utc(2026), reason: 'x'),
         ],
@@ -52,6 +55,8 @@ void main() {
       expect(copy.heldReason('X-4'), 'stopped');
       expect(copy.waitingReason('X-3'), 'no free worktree');
       expect(copy.waitingReason('X-4'), isNull);
+      expect(copy.problemsOf('X-6'), ['the agent exited with code 1']);
+      expect(copy.problemsOf('X-4'), isEmpty);
       expect(copy.sessionFor('X-4')!.session, 'sess-4');
       expect(copy.sessionFor('X-2'), isNull);
       expect(copy.assignments.map((a) => (a.resume, a.newWorktree)), [('sess-2', false), (null, true)]);
@@ -64,9 +69,19 @@ void main() {
         path: '/l',
         running: false,
         lines: const ['a'],
-        last: AgentRunEndDto(exitCode: 0, outcome: 'review', endedAt: DateTime.utc(2026), sessionId: 's'),
+        last: AgentRunEndDto(
+          exitCode: 0,
+          outcome: 'review',
+          endedAt: DateTime.utc(2026),
+          sessionId: 's',
+          result: 'Done.',
+          problems: const ['a tool call was denied: WebFetch'],
+        ),
       );
-      expect(AgentLogDto.fromJson(jsonDecode(jsonEncode(log.toJson())) as Json).toJson(), log.toJson());
+      final logCopy = AgentLogDto.fromJson(jsonDecode(jsonEncode(log.toJson())) as Json);
+      expect(logCopy.toJson(), log.toJson());
+      expect(logCopy.last!.result, 'Done.');
+      expect(logCopy.last!.problems, ['a tool call was denied: WebFetch']);
       expect(BacklogChangeEvent.fromJson(const BacklogChangeEvent.dispatch().toJson()).isDispatch, isTrue);
       expect(
         BacklogChangeEvent.fromJson(const {

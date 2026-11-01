@@ -142,6 +142,24 @@ final class HeldItemDto {
   Json toJson() => {'item': item, 'title': title, 'reason': reason};
 }
 
+/// An unfinished item whose latest run ended with problems: it needs a
+/// person.
+final class ProblemItemDto {
+  const ProblemItemDto({required this.item, required this.title, required this.problems});
+
+  factory ProblemItemDto.fromJson(Json json) =>
+      ProblemItemDto(item: json.string('item'), title: json.string('title'), problems: json.strings('problems'));
+
+  final String item;
+  final String title;
+
+  /// What went wrong (`the agent exited with code 1`, `2 tool calls were
+  /// denied: …`, `opening its pull request failed: …`).
+  final List<String> problems;
+
+  Json toJson() => {'item': item, 'title': title, 'problems': problems};
+}
+
 /// A ready item proposed for (or, in auto mode, about to start in) a worktree.
 final class DispatchAssignmentDto {
   const DispatchAssignmentDto({
@@ -228,6 +246,7 @@ final class DispatchDto {
     this.spareWorktrees = 0,
     this.runs = const [],
     this.pendingActions = const [],
+    this.problems = const [],
     this.epics = const [],
   });
 
@@ -251,6 +270,7 @@ final class DispatchDto {
     spareWorktrees: json.integer('spare_worktrees'),
     runs: json.objects('runs').map(AgentRunDto.fromJson).toList(),
     pendingActions: json.objects('pending_actions').map(PendingActionDto.fromJson).toList(),
+    problems: json.objects('problems').map(ProblemItemDto.fromJson).toList(),
     epics: json.strings('epics'),
   );
 
@@ -295,6 +315,17 @@ final class DispatchDto {
   /// `on_enter` actions waiting to run.
   final List<PendingActionDto> pendingActions;
 
+  /// Unfinished items whose latest run ended with problems, which neither
+  /// run nor are [held].
+  final List<ProblemItemDto> problems;
+
+  /// What went wrong in the latest run of [item]; empty when nothing did.
+  List<String> problemsOf(String item) {
+    for (final entry in problems) {
+      if (entry.item == item) return entry.problems;
+    }
+    return const [];
+  }
   /// Unfinished epics one agent implements (running or last run), ids.
   final List<String> epics;
 
@@ -362,13 +393,22 @@ final class DispatchDto {
     'spare_worktrees': spareWorktrees,
     'runs': [for (final run in runs) run.toJson()],
     'pending_actions': [for (final pending in pendingActions) pending.toJson()],
+    'problems': [for (final problem in problems) problem.toJson()],
     'epics': epics,
   };
 }
 
 /// The end of an agent's last run.
 final class AgentRunEndDto {
-  const AgentRunEndDto({this.exitCode, this.reason, this.outcome, this.endedAt, this.sessionId});
+  const AgentRunEndDto({
+    this.exitCode,
+    this.reason,
+    this.outcome,
+    this.endedAt,
+    this.sessionId,
+    this.result,
+    this.problems = const [],
+  });
 
   factory AgentRunEndDto.fromJson(Json json) => AgentRunEndDto(
     exitCode: json['exit_code'] is int ? json['exit_code']! as int : null,
@@ -379,6 +419,8 @@ final class AgentRunEndDto {
       null => null,
     },
     sessionId: json.optionalString('session_id'),
+    result: json.optionalString('result'),
+    problems: json.strings('problems'),
   );
 
   final int? exitCode;
@@ -389,12 +431,21 @@ final class AgentRunEndDto {
   /// Claude Code's session id: `claude --resume <id>` continues the run.
   final String? sessionId;
 
+  /// The agent's final message (Claude's `result`); null for other agents
+  /// and commands.
+  final String? result;
+
+  /// What went wrong; empty when the run went well.
+  final List<String> problems;
+
   Json toJson() => {
     'exit_code': exitCode,
     'reason': reason,
     'outcome': outcome,
     'ended_at': endedAt?.toUtc().toIso8601String(),
     'session_id': sessionId,
+    'result': result,
+    'problems': problems,
   };
 }
 

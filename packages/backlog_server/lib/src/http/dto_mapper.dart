@@ -271,6 +271,10 @@ abstract final class DtoMapper {
           since: pending.since,
         ),
     ],
+    problems: [
+      for (final (:item, :problems) in plan.problems)
+        ProblemItemDto(item: item.id.value, title: item.item.title, problems: problems),
+    ],
     epics: [for (final id in plan.epics) id.value]..sort(),
   );
 
