@@ -44,6 +44,7 @@ export 'src/projects/infrastructure/yaml_project_registry.dart';
 export 'src/settings/application/config_editor.dart';
 export 'src/settings/domain/config_draft.dart';
 export 'src/settings/domain/config_file.dart';
+export 'src/settings/domain/registry_settings.dart';
 export 'src/settings/domain/server_config.dart';
 export 'src/settings/domain/server_settings.dart';
 export 'src/settings/domain/text_diff.dart';

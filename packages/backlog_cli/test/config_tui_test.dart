@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:backlog_cli/backlog_cli.dart';
 import 'package:backlog_core/backlog_core.dart'
-    show BacklogLayout, StatusCategory, parseServerConfigYaml, parseWorkflowYaml;
+    show BacklogLayout, StatusCategory, parseProjectRegistryYaml, parseServerConfigYaml, parseWorkflowYaml;
 import 'package:dart_tui/dart_tui.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -274,8 +274,32 @@ void main() {
     final (code, err) = await run(['config', '--projects', registry], driver);
     expect(code, 0, reason: err);
     expect(driver.last, contains('backlog config › Global › Projects'));
-    expect(driver.last, contains('hb  Hobby  $backlogDir  (default)  (pinned)'));
+    expect(driver.last, contains('Hobby  $backlogDir  default  pinned  opens'));
     expect(driver.quit, isTrue);
+  });
+
+  test('the registry page adds a project, makes it the default and saves', () async {
+    final registry = p.join(workspace.path, 'projects.yaml');
+    File(registry).writeAsStringSync('# mine\nprojects:\n  - id: hb\n    path: backlog\n');
+    final driver = Driver([
+      enter, enter, // Global → Projects
+      down, enter, ...type('elsewhere'), enter, // Add a project…
+      enter, // elsewhere (the cursor stays on the second entry)
+      down, down, down, enter, // Make default
+      key(KeyCode.escape),
+      end, enter, // Review and save
+      char('y'),
+      ctrlC,
+    ]);
+    final (code, err) = await run(['config', '--projects', registry], driver);
+    expect(code, 0, reason: err);
+    expect(driver.showed('Added elsewhere (not saved yet).'), isTrue);
+    expect(driver.showed('Folder ${p.join(workspace.path, 'elsewhere')} does not exist.'), isTrue);
+    expect(driver.showed('Moved elsewhere to position 1 (not saved yet).'), isTrue);
+    expect(driver.showed('Saved $registry.'), isTrue, reason: driver.last);
+    final saved = File(registry).readAsStringSync();
+    expect(saved, startsWith('# mine\n'));
+    expect(parseProjectRegistryYaml(saved, baseDir: workspace.path).entries.map((e) => e.id), ['elsewhere', 'hb']);
   });
 
   test('the project picker lists the registry; a missing backlog cannot be opened', () async {

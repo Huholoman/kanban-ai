@@ -1,7 +1,7 @@
 import 'package:backlog_core/backlog_core.dart';
 import 'package:dart_tui/dart_tui.dart' show Cmd;
-import 'package:path/path.dart' as p;
 
+import 'projects_page.dart';
 import 'screen.dart';
 import 'server_page.dart';
 import 'widgets.dart';
@@ -12,7 +12,10 @@ import 'workflow_pages.dart';
 /// them, and the backlog found from the current folder (null when there is
 /// none).
 final class ConfigLocations {
-  const ConfigLocations({this.registryFile, this.serverFile, this.home, this.currentBacklog});
+  const ConfigLocations({this.registryFile, this.serverFile, this.home, this.currentBacklog, this.cwd = '.'});
+
+  /// The current folder, for folders typed relative to it.
+  final String cwd;
 
   final String? registryFile;
   final String? serverFile;
@@ -60,11 +63,13 @@ Future<Screen> _globalScreen(ConfigLocations locations) async {
     sections: (screen) => [
       MenuEntry(
         'Projects',
-        detail: 'the backlogs in the registry (view only for now)',
-        onSelect: (navigator) {
-          navigator.push(TextScreen('Projects', () => _registryLines(screen, locations)));
-          return null;
-        },
+        detail: 'the backlogs in the registry: add, remove, order (the default), ids, names, pins',
+        enabled: screen.draft.isYaml,
+        onSelect: (_) => Navigator.task(() async {
+          final projects = ProjectsScreen(screen, home: locations.home, cwd: locations.cwd, problems: {});
+          final problems = await ProjectsScreen.check([for (final entry in projects.settings.entries) entry.path]);
+          return (navigator) => navigator.push(projects..problems.addAll(problems));
+        }),
       ),
       MenuEntry(
         'Server',
@@ -82,25 +87,6 @@ Future<Screen> _globalScreen(ConfigLocations locations) async {
       const MenuEntry('Doctor', detail: 'not yet: check the installation and the projects', enabled: false),
     ],
   );
-}
-
-List<String> _registryLines(ConfigFileScreen screen, ConfigLocations locations) {
-  final ProjectRegistry registry;
-  try {
-    registry = parseProjectRegistryYaml(
-      screen.draft.text,
-      baseDir: p.dirname(screen.editor.location),
-      home: locations.home,
-    );
-  } on ConfigurationException catch (e) {
-    return [Look.red(e.message)];
-  }
-  if (registry.isEmpty) return ['No projects in ${screen.editor.location}.'];
-  return [
-    for (final entry in registry.entries)
-      '${entry.id}  ${entry.displayName}  ${entry.path}'
-          '${entry == registry.defaultProject ? '  (default)' : ''}${entry.pinned ? '  (pinned)' : ''}',
-  ];
 }
 
 /// Picks the project whose `backlog.yaml` to edit: the backlog found here

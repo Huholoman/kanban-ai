@@ -46,6 +46,7 @@ final class ConfigCommand extends BacklogCommand {
             },
             home: context.environment['HOME'],
             currentBacklog: current,
+            cwd: context.cwd,
           ),
         ),
       ),
