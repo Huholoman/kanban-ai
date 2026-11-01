@@ -235,6 +235,7 @@ dispatcher:
     await backlog.items.create(const NewItem(title: 'Epic', type: 'epic', status: 'todo'));
     await backlog.items.create(const NewItem(title: 'One', parent: 'T-0001', status: 'todo'));
     await backlog.items.create(const NewItem(title: 'Two', parent: 'T-0001', status: 'todo'));
+    await backlog.items.create(const NewItem(title: 'Three', parent: 'T-0001', status: 'todo'));
     await launcher.launch((await plan()).epicStart('T-0001'));
     final epic = await planned('T-0001');
     expect((epic.claim!.agent, epic.item.status, epic.item.branch), ('wt-1', 'in-progress', 'agent/T-0001'));
@@ -243,6 +244,12 @@ dispatcher:
     await backlog.claims.claimInEpic('T-0001', 'wt-1');
     await backlog.items.update('T-0002', [FieldChange.parse('status=review')]);
     expect((await backlog.claims.claimInEpic('T-0001', 'wt-1')).outcome!.item.id, ItemId('T-0003'));
+    // Claimed and handed over without `backlog epic --next`, with its own branch field.
+    await backlog.claims.claim('T-0004', 'wt-1');
+    await backlog.items.update('T-0004', [
+      FieldChange.parse('status=review'),
+      FieldChange.parse('branch=agent/T-0004'),
+    ]);
     final during = await plan();
     expect(during.epics, {ItemId('T-0001')});
     expect(during.worktrees.first.run!.epic, isTrue);
@@ -254,7 +261,8 @@ dispatcher:
     expect((handedOver.item.status, handedOver.claim), ('review', null));
     final unfinished = await planned('T-0003');
     expect((unfinished.item.status, unfinished.claim), ('todo', null));
-    expect(logs.last, contains('released the unfinished T-0003; dropped the claims on T-0002'));
+    expect(logs.last, contains('released the unfinished T-0003; dropped the claims on T-0002, T-0004'));
+    expect((await planned('T-0004')).item.branch, 'agent/T-0001', reason: 'the epic agent did it on its branch');
     final after = await plan();
     expect(after.epics, {ItemId('T-0001')}, reason: 'the epic in review is still implemented as a whole');
     expect(after.assignments, isEmpty, reason: 'T-0003 stays with the epic');

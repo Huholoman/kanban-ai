@@ -1005,6 +1005,12 @@ final class ProcessAgentLauncher extends AgentLauncher {
         await backlog.claims.release(planned.id.value, agent: worktree, force: true);
         released.add(planned.id);
       } else {
+        // Handed over by the epic's agent: its work is on the epic's branch,
+        // which reviews and the merge go by.
+        final branch = record.run.branch;
+        if (branch != null && planned.item.branch?.trim() != branch) {
+          await backlog.items.update(planned.id.value, [FieldChange.parse('branch=$branch')]);
+        }
         await backlog.claims.drop(planned.id.value, worktree);
         dropped.add(planned.id);
       }
