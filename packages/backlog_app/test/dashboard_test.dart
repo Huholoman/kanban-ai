@@ -1,8 +1,9 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/backlog_app.dart';
+import 'package:backlog_app/features/board/presentation/view_layouts.dart';
 import 'package:backlog_app/features/dashboard/application/dashboard_controller.dart';
 import 'package:backlog_app/features/dashboard/application/project_digest.dart';
-import 'package:backlog_app/features/dashboard/presentation/dashboard_page.dart';
+import 'package:backlog_app/features/dashboard/presentation/dashboard_view.dart';
 import 'package:backlog_app/features/item/presentation/item_page.dart';
 import 'package:backlog_app/features/projects/application/project_memory.dart';
 import 'package:backlog_app/features/projects/application/projects_controller.dart';
@@ -193,10 +194,8 @@ void main() {
       expect(dashboard.digests.first.questions['A-1']?.text, 'CSV or JSON?');
       expect(dashboard.digests.last.runs.map((r) => r.item), ['B-1']);
       expect(api.backlogs['b']!.listening, isTrue, reason: 'live although project a is open');
-
-      dashboard.showOnly('b');
-      expect(dashboard.shown.map((d) => d.project?.id), ['b']);
-      expect(dashboard.needsMe, 3, reason: 'the badge counts every project');
+      expect((dashboard.needsMeIn('a'), dashboard.needsMeIn('b')), (3, 0));
+      expect(dashboard.digestOf('b')?.runs.map((r) => r.item), ['B-1']);
     });
 
     test('an answer goes into the discussion and the question is gone', () async {
@@ -216,28 +215,59 @@ void main() {
     });
   });
 
-  group('DashboardPage', () {
+  group('DashboardView', () {
     Future<FakeProjectsApi> pumpApp(
       WidgetTester tester, {
       double width = 1400,
       PreviewDto? preview,
       FakeProjectsApi? projects,
+      String project = 'a',
     }) async {
       tester.view.physicalSize = Size(width, 1000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final api = (projects ?? _projects())..currentPreview = preview;
-      await tester.pumpWidget(BacklogApp(projects: api, initialRoute: '/p/a', memory: InMemoryProjectMemory()));
+      await tester.pumpWidget(BacklogApp(projects: api, initialRoute: '/p/$project', memory: InMemoryProjectMemory()));
       await tester.pumpAndSettle();
       return api;
     }
 
+    Future<void> openDashboard(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('open-dashboard')));
+      await tester.pumpAndSettle();
+    }
+
     String title(WidgetTester tester) => tester.widget<MaterialApp>(find.byType(MaterialApp)).title ?? '';
 
-    testWidgets('the navigation and the page title count what waits for you', (tester) async {
+    testWidgets('the navigation counts the open project, the page title every project', (tester) async {
+      final projects = _projects();
+      projects.backlogs['b']!.externalChange(item('B-2', needsHuman: true));
+      await pumpApp(tester, projects: projects, project: 'b');
+      expect(title(tester), '(4) Project b');
+      expect(find.descendant(of: find.byKey(const ValueKey('dashboard-badge')), matching: find.text('1')), findsOne);
+
+      await tester.tap(find.byKey(const ValueKey('project-switcher')));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('project-needs-a')), matching: find.text('3')),
+        findsOne,
+        reason: 'the switcher says which other project waits for you',
+      );
+      expect(find.byKey(const ValueKey('project-needs-b')), findsNothing, reason: 'the open one is ticked');
+    });
+
+    testWidgets('takes the place of the board and a view brings the board back', (tester) async {
       await pumpApp(tester);
-      expect(title(tester), '(3) Project a');
-      expect(find.descendant(of: find.byKey(const ValueKey('dashboard-badge')), matching: find.text('3')), findsOne);
+      expect(find.byType(KanbanBoard), findsOneWidget);
+      await openDashboard(tester);
+      expect(find.byType(DashboardView), findsOneWidget);
+      expect(find.byType(KanbanBoard), findsNothing);
+      expect(find.text('Dashboard · 3 need you'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('view-board')));
+      await tester.pumpAndSettle();
+      expect(find.byType(DashboardView), findsNothing);
+      expect(find.byType(KanbanBoard), findsOneWidget);
     });
 
     testWidgets('shows the running preview with Back to main', (tester) async {
@@ -255,8 +285,7 @@ void main() {
           mainServer: 'backlog-server',
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('open-dashboard')));
-      await tester.pumpAndSettle();
+      await openDashboard(tester);
       expect(find.text('Preview of B-1 running'), findsOneWidget);
       expect(find.byKey(const ValueKey('preview-back-to-main')), findsOneWidget);
     });
@@ -270,22 +299,19 @@ void main() {
         held: const [HeldItemDto(item: 'A-1', title: 'Item A-1', reason: 'the agent ended without finishing')],
       );
       await pumpApp(tester, projects: projects);
-      await tester.tap(find.byKey(const ValueKey('open-dashboard')));
-      await tester.pumpAndSettle();
+      await openDashboard(tester);
       expect(find.text('the agent exited with code 1'), findsOneWidget);
       expect(find.text('the agent ended without finishing'), findsOneWidget);
     });
 
-    testWidgets('shows questions, approvals, held and running work of every project', (tester) async {
+    testWidgets('shows questions, approvals, held and running work of the open project', (tester) async {
       final api = await pumpApp(tester);
-      await tester.tap(find.byKey(const ValueKey('open-dashboard')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('a:question-A-1')), findsOneWidget);
+      await openDashboard(tester);
+      expect(find.byKey(const ValueKey('dashboard:question-A-1')), findsOneWidget);
       expect(find.text('CSV or JSON?'), findsOneWidget);
-      expect(find.byKey(const ValueKey('a:approve-A-2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('dashboard:approve-A-2')), findsOneWidget);
       expect(find.text('AI review: 2 findings'), findsOneWidget);
       expect(find.byKey(const ValueKey('action-A-2-Merge')), findsOneWidget);
-      expect(find.byKey(const ValueKey('b:run-B-1')), findsOneWidget);
       // Rows that wait for you say what to do next, with the buttons that do it.
       expect(
         tester.widget<Text>(find.byKey(const ValueKey('next-step-A-2'))).data,
@@ -299,49 +325,41 @@ void main() {
       // Every row says who has the ball, the same badge as on cards.
       expect(find.byKey(const ValueKey('ball-you-A-1')), findsOneWidget);
       expect(find.byKey(const ValueKey('ball-you-A-2')), findsOneWidget);
-      expect(find.byKey(const ValueKey('ball-agent-B-1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('ball-queue-B-2')), findsOneWidget);
-      expect(find.byKey(const ValueKey('a:unavailable-w2')), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('b:unavailable-w2')),
-        findsOneWidget,
-        reason: 'same worktree name, two projects',
-      );
-      expect(find.text('Project b'), findsWidgets, reason: 'rows name their project');
+      expect(find.byKey(const ValueKey('dashboard:unavailable-w2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('dashboard:run-B-1')), findsNothing, reason: 'project b is not open');
 
       await tester.ensureVisible(find.byKey(const ValueKey('next-start-A-3')));
       await tester.tap(find.byKey(const ValueKey('next-start-A-3')));
       await tester.pumpAndSettle();
       expect(api.backlogs['a']!.started, ['A-3']);
-
-      await tester.tap(find.byKey(const ValueKey('dashboard-project')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('dashboard-project-b')).last);
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('a:question-A-1')), findsNothing);
-      expect(find.byKey(const ValueKey('b:run-B-1')), findsOneWidget);
     });
 
     testWidgets('answers a question, runs an action, cancels a queued start and stops an agent', (tester) async {
       final api = await pumpApp(tester);
-      await tester.tap(find.byKey(const ValueKey('open-dashboard')));
-      await tester.pumpAndSettle();
+      await openDashboard(tester);
 
       await tester.enterText(find.byKey(const ValueKey('answer-A-1')), 'JSON.');
       await tester.tap(find.byKey(const ValueKey('send-A-1')));
       await tester.pumpAndSettle();
       expect(api.backlogs['a']!.discussions['A-1']!.last.text, 'JSON.');
-      expect(find.byKey(const ValueKey('a:question-A-1')), findsNothing);
+      expect(find.byKey(const ValueKey('dashboard:question-A-1')), findsNothing);
 
       await tester.tap(find.byKey(const ValueKey('action-A-2-Merge')));
       await tester.pumpAndSettle();
       expect(api.backlogs['a']!.actionsRun, ['A-2 Merge']);
 
+      await tester.tap(find.byKey(const ValueKey('project-switcher')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('project-b')).last);
+      await tester.pumpAndSettle();
+      await openDashboard(tester);
+      expect(find.byKey(const ValueKey('ball-agent-B-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('ball-queue-B-2')), findsOneWidget);
       expect(find.text('In the queue (1): "AI review" waits for max_agents (2) reached'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('cancel-queued-B-2')));
       await tester.pumpAndSettle();
       expect(api.backlogs['b']!.cancelled, ['B-2']);
-      expect(find.byKey(const ValueKey('b:queued-B-2')), findsNothing);
+      expect(find.byKey(const ValueKey('dashboard:queued-B-2')), findsNothing);
 
       await tester.tap(find.byKey(const ValueKey('stop-B-1')));
       await tester.pumpAndSettle();
@@ -350,34 +368,32 @@ void main() {
       expect(api.backlogs['b']!.stopped, ['B-1']);
     });
 
-    testWidgets('opens an item of another project with that project', (tester) async {
+    testWidgets('opens an item in the panel beside the dashboard, as on the board', (tester) async {
       await pumpApp(tester);
-      await tester.tap(find.byKey(const ValueKey('open-dashboard')));
+      await openDashboard(tester);
+      await tester.tap(find.byKey(const ValueKey('dashboard:approve-A-2')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('b:run-B-1')));
-      await tester.pumpAndSettle();
-      expect(find.byType(ItemPage), findsOneWidget);
-      expect(find.text('Item B-1'), findsWidgets);
-      expect(
-        find.byKey(const ValueKey('a:question-A-1')),
-        findsNothing,
-        reason: 'the item is a page over the dashboard',
-      );
+      expect(find.byKey(const ValueKey('detail-A-2')), findsOneWidget);
+      expect(find.byType(ItemPage), findsNothing, reason: 'not a page over it');
+      expect(find.byType(DashboardView), findsOneWidget, reason: 'the dashboard stays');
     });
 
     testWidgets('on a phone the sections are one column, Needs you first', (tester) async {
       await pumpApp(tester, width: 400);
       await tester.tap(find.byKey(const ValueKey('bottom-more')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('open-dashboard')));
-      await tester.pumpAndSettle();
+      await openDashboard(tester);
       final needsYou = tester.getTopLeft(find.byKey(const ValueKey('needs-you')));
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('running')),
         200,
-        scrollable: find.descendant(of: find.byType(DashboardPage), matching: find.byType(Scrollable)).first,
+        scrollable: find.descendant(of: find.byType(DashboardView), matching: find.byType(Scrollable)).first,
       );
       expect(tester.getTopLeft(find.byKey(const ValueKey('running'))).dx, needsYou.dx, reason: 'one column');
+
+      await tester.tap(find.byKey(const ValueKey('dashboard:approve-A-2')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ItemPage), findsOneWidget, reason: 'a phone opens items as a page');
     });
   });
 }
