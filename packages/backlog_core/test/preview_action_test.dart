@@ -198,11 +198,32 @@ dispatcher:
     expect(await FilePreviewStore(stateDir).read(), isNotNull, reason: 'it may be another server\'s');
   });
 
+  test('a folder that is not the helper worktree is never checked out by force', () async {
+    // Someone's worktree with a branch and uncommitted work where the preview's should be.
+    await git(path('repo'), ['worktree', 'add', '-q', '-b', 'mine', path('repo-preview')]);
+    File(path('repo-preview/work.txt')).writeAsStringSync('unsaved\n');
+    await git(path('repo-preview'), ['add', 'work.txt']);
+    var result = await preview();
+    expect(result.ok, isFalse);
+    expect(result.summary, contains('is not the preview\'s helper worktree: it has the branch mine checked out'));
+    expect(await git(path('repo-preview'), ['rev-parse', '--abbrev-ref', 'HEAD']), 'mine');
+    expect(await git(path('repo-preview'), ['status', '--porcelain']), 'A  work.txt');
+
+    await git(path('repo'), ['worktree', 'remove', '--force', path('repo-preview')]);
+    Directory(path('repo-preview')).createSync();
+    result = await preview();
+    expect(result.summary, contains('it is not a worktree of'));
+    expect(await FilePreviewStore(stateDir).read(), isNull);
+  });
+
   test('dispatcher.preview is validated', () async {
     for (final (yaml, message) in [
       ('{colour: red}', 'unknown key "dispatcher.preview.colour"'),
       ('{worktree: "a/b"}', 'not a folder name'),
       ('{check: "make {nope}"}', 'unknown placeholder "{nope}"'),
+      ('{worktree: "{repo}"}', 'must not be the primary clone itself'),
+      ('{worktree: wt-1}', 'names a worktree of the dispatcher'),
+      ('{worktree: "{repo}-2"}', 'names a worktree of the dispatcher'),
     ]) {
       await expectLater(
         configure(yaml),

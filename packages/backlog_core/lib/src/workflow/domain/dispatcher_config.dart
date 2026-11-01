@@ -425,6 +425,22 @@ final class DispatcherConfig {
         );
       }
     }
+    if (preview != null) {
+      // The preview worktree is checked out with --force: never an agent's.
+      final listed = {for (final w in worktrees) w.name, for (final w in worktrees) p.basename(p.normalize(w.path))};
+      final created = newWorktrees == null
+          ? const <String>{}
+          : {for (var n = 1; n <= newWorktrees.maxWorktrees + 1; n++) newWorktrees.nameFor(n)};
+      final repoName = newWorktrees == null ? null : p.basename(p.normalize(newWorktrees.repo));
+      final name = preview.worktreeName(repoName ?? 'repo');
+      if (repoName != null && (listed.contains(name) || created.contains(name)) ||
+          repoName == null && listed.contains(preview.worktree.text)) {
+        throw ConfigurationException(
+          'dispatcher.preview.worktree "${preview.worktree.text}" names a worktree of the dispatcher; '
+          'the preview needs its own, e.g. "{repo}-preview".',
+        );
+      }
+    }
     final merging = merge != null || actions.any((action) => action.builtIn == 'merge');
     final mergeConfig =
         merge ??

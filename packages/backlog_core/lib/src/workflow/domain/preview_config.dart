@@ -23,6 +23,11 @@ final class PreviewConfig {
         'dispatcher.preview.worktree gives "$example", which is not a folder name next to the primary clone.',
       );
     }
+    if (example == 'repo') {
+      throw const ConfigurationException(
+        'dispatcher.preview.worktree must not be the primary clone itself ("{repo}"); e.g. "{repo}-preview".',
+      );
+    }
     for (final (key, program) in [('server', server), ('main_server', mainServer)]) {
       if (program != null && (program.trim().isEmpty || program != program.trim())) {
         throw ConfigurationException('dispatcher.preview.$key must be a program name or path.');
