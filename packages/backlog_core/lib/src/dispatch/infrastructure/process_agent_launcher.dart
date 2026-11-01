@@ -234,8 +234,8 @@ final class ProcessAgentLauncher extends AgentLauncher {
     );
   }
 
-  /// The problems of the latest run ([_lastRun]) of each unfinished item
-  /// whose run ended with some.
+  /// The problems of the latest run ([_lastRun], which keeps those of the
+  /// item session's run) of each unfinished item whose run ended with some.
   Future<Map<ItemId, List<String>>> _problems(BacklogSnapshot snapshot) async {
     final dir = Directory(agentsDir);
     if (!await dir.exists()) return const {};
@@ -1171,22 +1171,34 @@ final class ProcessAgentLauncher extends AgentLauncher {
 
   /// How the latest run for [id] ended: of `<id>.last.json` and
   /// `<id>.action.json` the one that ended last; null when none ran.
+  ///
+  /// The problems of the item session's run hold until its next run: after
+  /// them an action without problems (an AI review on entering review) does
+  /// not count, and the problems of one that has some are added to them.
   Future<Map<String, Object?>?> _lastRun(ItemId id) async {
-    Map<String, Object?>? latest;
-    for (final file in [_lastFile(id), _actionFile(id)]) {
-      final text = await _read(file);
-      if (text == null) continue;
-      final Map<String, Object?> json;
-      try {
-        json = (jsonDecode(text) as Map).cast<String, Object?>();
-      } on FormatException {
-        continue;
-      }
-      final ended = DateTime.tryParse(json['ended_at'] as String? ?? '');
-      final before = DateTime.tryParse(latest?['ended_at'] as String? ?? '');
-      if (latest == null || (ended != null && (before == null || !ended.isBefore(before)))) latest = json;
+    final agent = await _readJson(_lastFile(id));
+    final action = await _readJson(_actionFile(id));
+    if (agent == null || action == null) return agent ?? action;
+    DateTime? ended(Map<String, Object?> run) => DateTime.tryParse(run['ended_at'] as String? ?? '');
+    final (agentEnded, actionEnded) = (ended(agent), ended(action));
+    if (actionEnded == null || (agentEnded != null && actionEnded.isBefore(agentEnded))) return agent;
+    List<Object?> problems(Map<String, Object?> run) => run['problems'] as List<Object?>? ?? const [];
+    if (problems(agent).isEmpty) return action;
+    if (problems(action).isEmpty) return agent;
+    return {
+      ...action,
+      'problems': [...problems(agent), ...problems(action)],
+    };
+  }
+
+  Future<Map<String, Object?>?> _readJson(String file) async {
+    final text = await _read(file);
+    if (text == null) return null;
+    try {
+      return (jsonDecode(text) as Map).cast<String, Object?>();
+    } on FormatException {
+      return null;
     }
-    return latest;
   }
 
   /// The last run of [id]'s own agent implemented it as an epic.

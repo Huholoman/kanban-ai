@@ -735,6 +735,42 @@ dispatcher:
       expect((await plan()).problems, isEmpty);
     });
 
+    test('the problems of the agent stay after an action that went well, until the agent runs again', () async {
+      await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
+      await launcher.launch((await plan()).assignmentFor('T-0001'));
+      await waitForLog('T-0001', 'agent wt-1');
+      File((await launcher.agentLogSource(ItemId('T-0001')))!.path).writeAsStringSync(
+        '${jsonEncode({'type': 'result', 'subtype': 'error_during_execution', 'is_error': true, 'result': 'Push failed.'})}\n',
+        mode: FileMode.append,
+      );
+      await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+      await finish('T-0001', 0);
+      const problems = ['the agent ended with an error (error_during_execution)'];
+
+      clock.advance(const Duration(minutes: 1));
+      File(path('go-T-0001')).deleteSync();
+      await launcher.launch((await plan()).actionStart('T-0001', 'AI review').agent!);
+      await backlog.items.comment('T-0001', author: 'wt-1', text: 'Fine.', review: ReviewVerdict.ok);
+      await finish('T-0001', 0);
+      expect((await plan()).problems.single.problems, problems);
+      final last = (await launcher.agentLog(ItemId('T-0001')))!.last!;
+      expect((last['result'], last['action']), ('Push failed.', null), reason: 'the run of the agent');
+
+      // An action with problems of its own adds them.
+      clock.advance(const Duration(minutes: 1));
+      File(path('go-T-0001')).deleteSync();
+      await launcher.runJob((await plan()).actionStart('T-0001', 'Check').job!);
+      await finish('T-0001', 0);
+      expect((await plan()).problems.single.problems, [...problems, 'the action "Check" exited with code 3']);
+
+      // The next run of the agent replaces them.
+      clock.advance(const Duration(minutes: 1));
+      File(path('go-T-0001')).deleteSync();
+      await launcher.launch((await plan()).actionStart('T-0001', 'Fix').agent!);
+      await finish('T-0001', 0);
+      expect((await plan()).problems, isEmpty);
+    });
+
     test('git ignores the scratch folder of agents in every worktree', () async {
       await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
       await launcher.launch((await plan()).assignmentFor('T-0001'));
