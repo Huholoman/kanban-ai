@@ -208,6 +208,16 @@ class DetailHeader extends StatelessWidget {
           onPressed: enabled ? () => unawaited(confirmEpicStart(context, dispatch, item.id)) : null,
         ),
       ...itemActions(context, item, controller.detail?.actions ?? const [], enabled: enabled),
+      if (_epicOfBranch(item) case final epic?)
+        BarAction(
+          key: const ValueKey('deploy-epic'),
+          label: 'Deploy epic ${epic.id}',
+          icon: Icons.rocket_launch_outlined,
+          tooltip:
+              'This work is on the branch of ${epic.id}; when other items are on it too, Merge refuses this one: '
+              'open ${epic.id} and move it to deploy',
+          onPressed: () => onOpen(epic.id),
+        ),
       if (onAddChild case final onAddChild?)
         BarAction(
           key: const ValueKey('add-child'),
@@ -224,6 +234,19 @@ class DetailHeader extends StatelessWidget {
           onPressed: () => onScope(item.id),
         ),
     ];
+  }
+
+  /// The nearest ancestor whose branch (its `branch`, else `agent/<id>`)
+  /// the unfinished [item] has its work on: deploying it means deploying
+  /// that epic.
+  ItemDto? _epicOfBranch(ItemDto item) {
+    final branch = item.branch?.trim();
+    if (item.isDone || branch == null || branch.isEmpty) return null;
+    for (final ancestor in controller.ancestors.reversed) {
+      final own = ancestor.item.branch?.trim();
+      if ((own == null || own.isEmpty ? 'agent/${ancestor.item.id}' : own) == branch) return ancestor.item;
+    }
+    return null;
   }
 
   static String _capitalized(String text) => text.isEmpty ? text : '${text[0].toUpperCase()}${text.substring(1)}';

@@ -17,7 +17,7 @@ List<ItemDto> _tree() => [
   item('S-2', type: 'story', parent: 'E-1', dependsOn: ['S-1'], body: '## Plan\nTime the restore.\n- [ ] script\n'),
   item('S-3', type: 'story', parent: 'E-1'),
   item('T-1', parent: 'S-2', body: 'Record restore time into the runbook.', status: 'done'),
-  item('T-2', parent: 'S-2'),
+  item('T-2', parent: 'S-2', branch: 'agent/E-1'),
   item('T-3', parent: 'T-1'),
   item('W-1', status: 'in-progress', touches: ['lib/pay/']),
   item('W-2', touches: ['lib/pay/stripe.dart', 'docs/*.{md,txt}'], conflictsWith: ['W-1']),
@@ -258,6 +258,14 @@ void main() {
     await _tap(tester, _key('open-S-1'));
     expect(find.text('S-1 Item S-1'), findsOneWidget);
     expect(_key('scope-board'), findsNothing);
+  });
+
+  testWidgets('an item on its epic\'s branch leads to the epic to deploy it', (tester) async {
+    await _pumpDetail(tester, 'T-2');
+    expect(_key('deploy-epic'), findsOneWidget);
+    await _tap(tester, _key('deploy-epic'));
+    expect(find.text('E-1 Item E-1'), findsOneWidget);
+    expect(_key('deploy-epic'), findsNothing);
   });
 
   testWidgets('without onScope there is no Scope board button', (tester) async {

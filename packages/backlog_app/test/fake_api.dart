@@ -33,8 +33,10 @@ ItemDto item(
   int reviewFindings = 0,
   Progress children = Progress.none,
   String? claimedBy,
+  String? branch,
 }) => ItemDto(
   id: id,
+  branch: branch,
   title: 'Item $id',
   type: type,
   status: status,
@@ -462,6 +464,7 @@ final class FakeBacklogApi implements BacklogApi {
     conflictsWith: item.conflictsWith,
     ready: item.ready,
     parent: item.parent,
+    branch: item.branch,
     dependsOn: item.dependsOn,
     children: children ?? item.children,
     needsHuman: needsHuman ?? item.needsHuman,
