@@ -1,3 +1,4 @@
+import '../../items/domain/item_time.dart';
 import '../../planning/domain/planned_item.dart';
 import 'item_fields.dart';
 
@@ -38,15 +39,22 @@ final class Not extends Filter {
 }
 
 /// True when any value of [field] is one of [values]; for list fields like
-/// `labels` that means "contains one of".
+/// `labels` that means "contains one of". A `created` or `updated` instant
+/// also matches its UTC day, so `created: 2026-10-31` finds items created
+/// at any time of that day.
 final class FieldIn extends Filter {
   FieldIn(this.field, Iterable<String> values) : values = values.toSet();
+
+  static const _times = {'created', 'updated'};
 
   final String field;
   final Set<String> values;
 
   @override
-  bool matches(PlannedItem item) => ItemFields.valuesOf(item, field).any(values.contains);
+  bool matches(PlannedItem item) => ItemFields.valuesOf(
+    item,
+    field,
+  ).any((v) => values.contains(v) || (_times.contains(field) && values.contains(ItemTime.day(v))));
 }
 
 /// True when any value of [field] contains [text], ignoring case.

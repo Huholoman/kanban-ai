@@ -361,7 +361,7 @@ fields: [estimate]         # extra fields for cards/tables
 
 ### 6.1 Filter grammar
 
-A mapping is an AND of its entries; `and: [...]`, `or: [...]`, `not: <expr>` combine expressions; `field: value` or `field: [a, b]` matches any of the values; `field: {in: [...]}`, `{not: [...]}`, `{exists: true|false}`, `{contains: text}` (substring of any value, ignoring case) refine it.
+A mapping is an AND of its entries; `and: [...]`, `or: [...]`, `not: <expr>` combine expressions; `field: value` or `field: [a, b]` matches any of the values; `field: {in: [...]}`, `{not: [...]}`, `{exists: true|false}`, `{contains: text}` (substring of any value, ignoring case) refine it. A day as a value of `created` or `updated` (`created: 2026-10-31`) also matches the instants of that UTC day.
 
 ### 6.2 Fields
 
