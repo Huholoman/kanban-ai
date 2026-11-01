@@ -8,7 +8,9 @@ import '../../../shared/pr_link.dart';
 import '../../../shared/review_badge.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
+import '../../dispatch/application/ball.dart';
 import '../../dispatch/presentation/agent_panel.dart';
+import '../../dispatch/presentation/ball_badge.dart';
 import '../application/dashboard_controller.dart';
 import '../application/project_digest.dart';
 
@@ -426,8 +428,8 @@ class _ActionButton extends StatelessWidget {
   );
 }
 
-/// One item: icon, id and title (a tap opens it), tags, a note line and
-/// buttons.
+/// One item: icon, id and title (a tap opens it), tags (who has the ball
+/// first), a note line and buttons.
 class _ItemRow extends StatelessWidget {
   const _ItemRow({
     super.key,
@@ -458,6 +460,11 @@ class _ItemRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = BoardTokens.of(context);
     final small = Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.muted);
+    final ball = switch (digest.item(id)) {
+      final item? => Ball.of(item, digest.plan, digest.workflow),
+      null => null,
+    };
+    final tags = [if (labelled) _ProjectTag(digest), if (ball != null) BallBadge(ball, item: id), ...details];
     return InkWell(
       onTap: () => unawaited(onOpen(digest, id)),
       child: Padding(
@@ -491,10 +498,10 @@ class _ItemRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (note case final note?) Text(note, style: small),
-                  if (labelled || details.isNotEmpty)
+                  if (tags.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: Wrap(spacing: 6, runSpacing: 4, children: [if (labelled) _ProjectTag(digest), ...details]),
+                      child: Wrap(spacing: 6, runSpacing: 4, children: tags),
                     ),
                   if (actions.isNotEmpty)
                     Padding(

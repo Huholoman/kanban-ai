@@ -6,7 +6,7 @@ import 'package:backlog_app/features/board/presentation/item_card.dart';
 import 'package:backlog_app/features/dispatch/application/agent_log_controller.dart';
 import 'package:backlog_app/features/dispatch/application/dispatch_controller.dart';
 import 'package:backlog_app/features/dispatch/presentation/action_buttons.dart';
-import 'package:backlog_app/features/dispatch/presentation/agent_state_badge.dart';
+import 'package:backlog_app/features/dispatch/presentation/ball_badge.dart';
 import 'package:backlog_app/features/dispatch/presentation/dispatch_overview.dart';
 import 'package:backlog_app/features/dispatch/presentation/dispatch_scope.dart';
 import 'package:backlog_app/features/item/presentation/item_page.dart';
@@ -407,6 +407,7 @@ void main() {
     expect(find.text('w1 · R-1'), findsOneWidget);
     expect(find.textContaining('Agent claude in w1 since'), findsOneWidget);
     expect(find.textContaining('agent/R-1'), findsWidgets);
+    expect(_key('ball-agent-R-1'), findsOneWidget, reason: 'the box says who has the ball');
 
     expect(api.followedLogs, ['R-1']);
     api.agentLogUpdates.add(
@@ -486,6 +487,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(api2.actionsRun, ['R-1 Tests']);
       expect(find.textContaining('Action "Tests" (command) in w1 since'), findsOneWidget);
+      expect(_key('ball-agent-R-1'), findsOneWidget, reason: 'an action that is no AI review');
       final button = tester.widget<SecondaryButton>(_key('action-Fix comments'));
       expect(button.onPressed, isNotNull, reason: 'while something runs for the item it is queued');
       expect(dispatch.configured, isTrue);
@@ -524,6 +526,7 @@ void main() {
       expect(DispatchDto.fromJson(plan.toJson()).toJson(), plan.toJson());
       await _pumpDetailWith(tester, 'R-1', plan, actions: actions);
       expect(_key('action-queued-AI review'), findsOneWidget);
+      expect(_key('ball-queue-R-1'), findsOneWidget);
     });
 
     testWidgets('a card offers the actions of its status in a menu', (tester) async {
@@ -661,7 +664,7 @@ void main() {
     expect(find.text('• a tool call was denied: Bash(git push)'), findsOneWidget);
   });
 
-  testWidgets('a card shows that its last run has problems, or that it is held', (tester) async {
+  testWidgets('a card shows who has the ball: problems and holds wait for you', (tester) async {
     final api = FakeBacklogApi(_items())
       ..plan = DispatchDto(
         configured: true,
@@ -681,22 +684,17 @@ void main() {
           body: DispatchScope(
             controller: dispatch,
             child: Column(
-              children: [
-                for (final item in _items())
-                  ItemCard(
-                    item: item,
-                    menu: AgentStateBadge(item: item),
-                  ),
-              ],
+              children: [for (final item in _items()) ItemCard(item: item, menu: BallBadge.of(item, null))],
             ),
           ),
         ),
       ),
     );
-    expect(_key('agent-problems-R-2'), findsOneWidget);
-    expect(_key('agent-held-R-3'), findsOneWidget);
-    expect(_key('agent-problems-R-1'), findsNothing);
-    expect(_key('agent-held-B-1'), findsNothing);
+    expect(_key('ball-you-R-2'), findsOneWidget);
+    expect(_key('ball-you-R-3'), findsOneWidget);
+    expect(_key('ball-you-R-1'), findsNothing);
+    expect(_key('ball-you-B-1'), findsNothing);
+    expect(find.byIcon(Icons.error_outline), findsOneWidget); // R-2's problems, red
   });
 
   testWidgets('a child an epic\'s agent works on shows that agent and its live log', (tester) async {
