@@ -173,6 +173,7 @@ final class WorktreeProvisioner extends AgentLauncher {
         'Cannot create worktree $name from $repo: ${'${result.stderr}'.trim().split('\n').last}',
       );
     }
+    await ProcessAgentLauncher.ignoreScratch(path);
     final setup = assignment.setup;
     if (setup.isNotEmpty) {
       final failure = await _setUp(setup, name: name, path: path, repo: repo, base: base);

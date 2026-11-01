@@ -789,6 +789,13 @@ dispatcher:
       await Directory(path('wt-2/.kanban-ai')).create();
       File(path('wt-2/.kanban-ai/review.md')).writeAsStringSync('x');
       expect(await ProcessAgentLauncher.worktreeProblem(path('wt-2')), isNull);
+      // Not even where git does not ignore it: the folder never makes a worktree dirty.
+      File(path('repo/.git/info/exclude')).writeAsStringSync('');
+      expect(await ProcessAgentLauncher.worktreeProblem(path('wt-2')), isNull);
+      File(path('wt-2/other.md')).writeAsStringSync('x');
+      expect(await ProcessAgentLauncher.worktreeProblem(path('wt-2')), 'uncommitted changes (1 paths)');
+      File(path('wt-2/other.md')).deleteSync();
+      File(path('repo/.git/info/exclude')).writeAsStringSync(exclude);
       await ProcessAgentLauncher.ignoreScratch(path('wt-2'));
       expect(File(path('repo/.git/info/exclude')).readAsStringSync(), exclude, reason: 'added once');
       await finish('T-0001', 0);

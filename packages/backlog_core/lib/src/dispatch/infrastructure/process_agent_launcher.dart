@@ -340,7 +340,9 @@ final class ProcessAgentLauncher extends AgentLauncher {
   }
 
   /// Why an agent cannot start in the worktree at [path]; null when it is a
-  /// git worktree without uncommitted changes or untracked files.
+  /// git worktree without uncommitted changes or untracked files. The
+  /// agents' scratch folder ([DispatcherConfig.scratchFolder]) does not
+  /// count, even where git does not ignore it (yet).
   static Future<String?> worktreeProblem(String path) async {
     if (!await Directory(path).exists()) return 'folder $path does not exist';
     final ProcessResult status;
@@ -350,8 +352,19 @@ final class ProcessAgentLauncher extends AgentLauncher {
       return 'git cannot run: ${error.message}';
     }
     if (status.exitCode != 0) return 'not a git worktree (${_firstLine(status.stderr)})';
-    final changes = LineSplitter.split('${status.stdout}').where((line) => line.trim().isNotEmpty).length;
+    final changes = LineSplitter.split(
+      '${status.stdout}',
+    ).where((line) => line.trim().isNotEmpty && !_isScratch(line)).length;
     return changes == 0 ? null : 'uncommitted changes ($changes paths)';
+  }
+
+  /// A line of `git status --porcelain` about the agents' scratch folder.
+  static bool _isScratch(String line) {
+    if (line.length < 4) return false;
+    var path = line.substring(3);
+    if (path.startsWith('"')) path = path.substring(1);
+    const folder = DispatcherConfig.scratchFolder;
+    return path == folder || path.startsWith('$folder/');
   }
 
   @override
