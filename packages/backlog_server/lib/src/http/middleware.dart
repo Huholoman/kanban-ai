@@ -9,10 +9,12 @@ import 'package:shelf/shelf.dart';
 String generateToken({Random? random}) => generateServerToken(random: random);
 
 /// Requires `Authorization: Bearer <token>` (or `?token=` for WebSockets,
-/// which browsers open without custom headers) on `/api/` requests.
+/// which browsers open without custom headers) on `/api/` and `/mcp`
+/// requests.
 Middleware requireToken(String token) =>
     (inner) => (request) {
-      if (!request.url.path.startsWith('api/') || request.url.path == 'api/health') return inner(request);
+      final path = request.url.path;
+      if (!(path.startsWith('api/') || path == 'mcp') || path == 'api/health') return inner(request);
       final header = request.headers['authorization'];
       final given = header != null && header.startsWith('Bearer ')
           ? header.substring('Bearer '.length)
