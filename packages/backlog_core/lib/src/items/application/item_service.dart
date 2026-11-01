@@ -6,6 +6,7 @@ import '../domain/discussion.dart';
 import '../domain/item.dart';
 import '../domain/item_id.dart';
 import '../domain/item_repository.dart';
+import '../domain/item_time.dart';
 import 'field_change.dart';
 
 /// Input for [ItemService.create]. References (`parent`, `dependsOn`, …) may be
@@ -78,7 +79,7 @@ final class ItemService {
   Future<Item> create(NewItem draft) async {
     final items = (await _repository.load()).items;
     final known = {for (final item in items) item.id};
-    final today = formatDay(_clock.now());
+    final now = ItemTime.format(_clock.now());
 
     final item = Item(
       id: _freshId(known),
@@ -96,8 +97,8 @@ final class ItemService {
       assignee: draft.assignee,
       branch: draft.branch,
       pr: draft.pr,
-      created: today,
-      updated: today,
+      created: now,
+      updated: now,
       body: draft.body,
     );
     await _repository.save(item);
@@ -105,7 +106,7 @@ final class ItemService {
   }
 
   /// Applies [changes] in order, replaces the Markdown [body] when given and
-  /// bumps `updated` unless a change sets it.
+  /// bumps `updated` unless a change sets it or nothing changed.
   Future<Item> update(String reference, Iterable<FieldChange> changes, {String? body}) async {
     final items = (await _repository.load()).items;
     final known = {for (final item in items) item.id};
@@ -119,7 +120,7 @@ final class ItemService {
     }
     if (body != null) item = item.copyWith(body: body);
     if (!setsUpdated) {
-      item = item.copyWith(updated: () => formatDay(_clock.now()));
+      item = item.touchedSince(original, _clock.now());
     }
     await _repository.save(item);
     return item;

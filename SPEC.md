@@ -200,8 +200,8 @@ pr: https://github.com/org/repo/pull/42
 labels: [infra, db]
 docs: [backups]          # names of files in docs/
 touches: [deploy/backup/, "scripts/*.sh"]   # paths/globs in the code repository the work changes (§3.2)
-created: 2026-10-29
-updated: 2026-10-29
+created: 2026-10-29T08:12:00Z   # UTC; older files: a day (2026-10-29)
+updated: 2026-10-29T14:05:31Z
 estimate: 3d             # any unknown key is kept and can be filtered on
 ---
 
@@ -237,7 +237,7 @@ Rules:
   1. lib/export.dart:40 – the header row is missing.
   2. No test for an empty backlog.
   ```
-- `updated` is set to today on every change made through the tool.
+- **Times:** `created` (set when the tool creates the item) and `updated` (set on every change made through the tool that changes something) are UTC instants to the second, `2026-10-29T14:05:31Z`. Older files with only a day (`2026-10-29`) are still read (as midnight UTC) and keep their value until the tool changes that key; a hand-written time with an offset or without a zone (taken as UTC) works too. Sorting by them (the default order, `sort: created`) is chronological. The CLI text output shows them in the system's time zone (`show`), JSON as written plus `created_at`/`updated_at` (ISO 8601 in UTC, null for a day only).
 
 ### 3.1 Derived state (computed, never stored)
 
@@ -309,7 +309,7 @@ Global options: `-C/--dir <folder>`, `--json` (machine-readable output; JSON fie
 | `init [folder] [--preset name\|folder \| --from backlog] [--prefix X] [--repo folder] [--agents-file f] [--no-register]`, `init --list-presets` | create `backlog.yaml`, `items/`, `views/`, `docs/`, `.gitignore` from a preset (§2.1, default `default`), and register the backlog in the project registry (§1.2) unless it is there already or `--no-register` is given (no registry location — no `HOME`, `XDG_CONFIG_HOME` or `BACKLOG_PROJECTS` — skips it; a broken registry only warns). `--prefix` sets the id prefix (default `T`, or the one of a preset folder or `--from` backlog that names its own); `--repo` the code repository for presets with a dispatcher (default `..`, written relative to the new folder); a preset's guide for agents is printed, or appended to `--agents-file` (e.g. the repository's `CLAUDE.md` / `AGENTS.md`) unless its first line is there already. Nothing is written when the preset's configuration or a view does not parse. `--list-presets`: name, description and folder of user presets; JSON `[{name, description, source, agents_guide}]`. JSON `{root, project?: {id, name}, preset, prefix, agents_guide, agents_file}` |
 | `new <title> [-t type] [-s status] [-p priority] [-m milestone] [--parent id] [-d id,…] [--related id,…] [-l label,…] [--doc name] [--touches glob,…] [--assignee a] [--branch b] [--pr url] [--body md \| --body-file f]` | create an item, prints it |
 | `list [-a] [-s status] [-m milestone] [-l label] [-t type] [-w cond]…` | open items (all with `-a`), most urgent first |
-| `show <id>` | item with relations (parent, children, dependencies, dependents, related, the active items it waits for and the open items it holds up through `touches`), claim and body; JSON items always have `needs_human`, `review` and `review_findings` (§3.1), details also `discussion: [{author, at, text, question, note, review, commit}]` and `checklist: [{number, text, done}]` |
+| `show <id>` | item with relations (parent, children, dependencies, dependents, related, the active items it waits for and the open items it holds up through `touches`), claim and body; JSON items always have `needs_human`, `review` and `review_findings` (§3.1) and `created_at`/`updated_at` (§3), details also `discussion: [{author, at, text, question, note, review, commit}]` and `checklist: [{number, text, done}]` |
 | `path <id>` | file path of the item |
 | `check <id> [<n>… \| <text…>]`, `uncheck …` | tick (untick) checklist items — the `- [ ]` / `- [x]` lines of the body outside code fences, numbered from 1 as in `progress` — by number (several numbers allowed) or by text (the words are one text: the item whose text equals it ignoring case, else the only one containing it; several matches are an error naming them); only the box character of those lines changes (and `updated`), the file is not written when nothing changes. Without a selector it lists the numbered checklist. Text: what changed, then the checklist; JSON: the item plus `checklist: [{number, text, done}]` and `changed: [numbers]`. No checklist or no such item: exit 4 |
 | `set <id> <change>…` | change fields: `status=review`, `labels+=infra`, `depends_on-=X-7f3a`, `touches+=lib/a/`, `milestone=` (empty clears); unknown keys become custom fields |

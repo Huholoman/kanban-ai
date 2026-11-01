@@ -1,3 +1,4 @@
+import '../../items/domain/item_time.dart';
 import '../../planning/domain/backlog_snapshot.dart';
 import '../../planning/domain/planned_item.dart';
 import '../../workflow/domain/workflow.dart';
@@ -159,6 +160,10 @@ abstract final class ViewEngine {
         return workflow.priorityRank(a.item.priority).compareTo(workflow.priorityRank(b.item.priority));
       case 'status':
         return workflow.statusRank(a.item.status).compareTo(workflow.statusRank(b.item.status));
+      case 'created':
+        return ItemTime.compare(a.item.created, b.item.created);
+      case 'updated':
+        return ItemTime.compare(a.item.updated, b.item.updated);
     }
     final left = ItemFields.valuesOf(a, field);
     final right = ItemFields.valuesOf(b, field);

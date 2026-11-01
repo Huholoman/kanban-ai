@@ -66,6 +66,8 @@ abstract final class DtoMapper {
       touches: item.touches,
       created: item.created,
       updated: item.updated,
+      createdAt: ItemTime.hasTime(item.created) ? item.createdAt : null,
+      updatedAt: ItemTime.hasTime(item.updated) ? item.updatedAt : null,
       extra: item.extra,
       ready: planned.isReady,
       blocked: planned.isBlocked,

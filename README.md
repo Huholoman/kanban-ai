@@ -289,8 +289,8 @@ pr: https://github.com/org/repo/pull/42   # shown as a clickable "PR #42"
 labels: [infra, db]
 docs: [backups]
 touches: [deploy/backup/, "scripts/*.sh"]   # files in the code repository the work changes
-created: 2026-10-29
-updated: 2026-10-29
+created: 2026-10-29T08:12:00Z   # UTC, set by the tool (older files: a day)
+updated: 2026-10-29T14:05:31Z
 estimate: 3d             # unknown keys are kept and can be filtered on
 ---
 
