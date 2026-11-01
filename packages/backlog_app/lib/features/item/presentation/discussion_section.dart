@@ -4,10 +4,12 @@ import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
+import '../../../app/app_scope.dart';
 import '../../../shared/item_style.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
 import '../../dispatch/presentation/dispatch_scope.dart';
+import '../application/drafts.dart';
 import '../application/item_controller.dart';
 
 /// The item's discussion (the `## Discussion` section of its body): the
@@ -17,6 +19,8 @@ import '../application/item_controller.dart';
 /// reply by itself, in either mode. *Note only* (when there
 /// is an agent session or an open question) saves a note that neither wakes
 /// the agent nor answers the question; a resumed agent sees it as context.
+/// An unsent reply is kept as a draft of the item ([Drafts]) and is back in
+/// the field when the item is opened again.
 class DiscussionSection extends StatefulWidget {
   const DiscussionSection({super.key, required this.controller});
 
@@ -29,10 +33,23 @@ class DiscussionSection extends StatefulWidget {
 class _DiscussionSectionState extends State<DiscussionSection> {
   final _reply = TextEditingController();
 
+  /// Where the unsent reply is kept while the item is left.
+  Drafts? _drafts;
+  var _started = false;
+
+  String get _item => widget.controller.detail!.item.id;
+
   @override
-  void initState() {
-    super.initState();
-    _reply.addListener(() => setState(() {}));
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    final drafts = _drafts = AppScope.of(context).drafts;
+    if (drafts != null) _reply.text = drafts.reply(_item);
+    _reply.addListener(() {
+      _drafts?.keepReply(_item, _reply.text);
+      setState(() {});
+    });
   }
 
   @override
@@ -44,8 +61,10 @@ class _DiscussionSectionState extends State<DiscussionSection> {
   Future<void> _send({bool note = false}) async {
     final text = _reply.text.trim();
     if (text.isEmpty) return;
+    final item = _item;
     if (!await widget.controller.comment(text, note: note)) return;
-    _reply.clear();
+    _drafts?.keepReply(item, ''); // also when the item was left meanwhile
+    if (mounted) _reply.clear();
   }
 
   @override

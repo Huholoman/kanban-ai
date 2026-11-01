@@ -58,6 +58,7 @@ class _DashboardPageState extends State<DashboardPage> {
           projects: scope.projects,
           dashboard: scope.dashboard,
           preview: scope.preview,
+          drafts: scope.drafts?.of(digest.project?.id),
           child: _ProjectItemPage(reference: item),
         ),
       ),
