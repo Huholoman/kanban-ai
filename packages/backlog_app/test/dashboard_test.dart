@@ -217,11 +217,11 @@ void main() {
   });
 
   group('DashboardPage', () {
-    Future<FakeProjectsApi> pumpApp(WidgetTester tester, {double width = 1400}) async {
+    Future<FakeProjectsApi> pumpApp(WidgetTester tester, {double width = 1400, FakeProjectsApi? projects}) async {
       tester.view.physicalSize = Size(width, 1000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      final api = _projects();
+      final api = projects ?? _projects();
       await tester.pumpWidget(BacklogApp(projects: api, initialRoute: '/p/a', memory: InMemoryProjectMemory()));
       await tester.pumpAndSettle();
       return api;
@@ -233,6 +233,21 @@ void main() {
       await pumpApp(tester);
       expect(title(tester), '(3) Project a');
       expect(find.descendant(of: find.byKey(const ValueKey('dashboard-badge')), matching: find.text('3')), findsOne);
+    });
+
+    testWidgets('a question as the next step hides no problem and no reason of a hold', (tester) async {
+      final projects = _projects();
+      projects.backlogs['a']!.plan = _plan(
+        problems: const [
+          ProblemItemDto(item: 'A-1', title: 'Item A-1', problems: ['the agent exited with code 1']),
+        ],
+        held: const [HeldItemDto(item: 'A-1', title: 'Item A-1', reason: 'the agent ended without finishing')],
+      );
+      await pumpApp(tester, projects: projects);
+      await tester.tap(find.byKey(const ValueKey('open-dashboard')));
+      await tester.pumpAndSettle();
+      expect(find.text('the agent exited with code 1'), findsOneWidget);
+      expect(find.text('the agent ended without finishing'), findsOneWidget);
     });
 
     testWidgets('shows questions, approvals, held and running work of every project', (tester) async {

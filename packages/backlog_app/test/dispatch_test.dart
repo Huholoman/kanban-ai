@@ -297,6 +297,24 @@ void main() {
       epics: const ['E-1'],
     );
 
+    testWidgets('a ready epic\'s next step opens the Implement epic dialog', (tester) async {
+      final (api, _) = await _pumpDetail(
+        tester,
+        'E-1',
+        _plan(),
+        items: [
+          item('E-1', type: 'epic', ready: true, children: const Progress(0, 2)),
+          item('T-1', parent: 'E-1'),
+          item('T-2', parent: 'E-1'),
+        ],
+      );
+      api.epics['E-1'] = _epicCheck;
+      expect(tester.widget<Text>(_key('next-step-E-1')).data, 'Next: Ready and nothing runs – Implement epic');
+      await tester.tap(_key('next-epic-E-1'));
+      await tester.pumpAndSettle();
+      expect(_key('epic-dialog'), findsOneWidget);
+    });
+
     testWidgets('checks the epic, starts it after a confirmation and shows how far it is', (tester) async {
       expect(DispatchDto.fromJson(implementing.toJson()).toJson(), implementing.toJson());
       expect(EpicDto.fromJson(_epicCheck.toJson()).toJson(), _epicCheck.toJson());

@@ -102,39 +102,40 @@ final class DashboardSections {
       if (problems.isNotEmpty) ...[
         _Subheading('Problems', count: problems.length),
         for (final (digest, entry) in problems)
-          _ItemRow(
-            key: _key(digest, 'problem-${entry.item}'),
-            digest: digest,
-            id: entry.item,
-            title: entry.title,
-            labelled: labelled,
-            onOpen: onOpen,
-            icon: Icons.error_outline,
-            iconColor: (tokens) => tokens.danger,
-            next: _next(digest, entry.item),
-            // The next step quotes the first problem.
-            note: switch (_next(digest, entry.item)) {
-              null => entry.problems.join('\n'),
-              _ when entry.problems.length > 1 => entry.problems.skip(1).join('\n'),
-              _ => null,
-            },
-          ),
+          if (_next(digest, entry.item) case final next)
+            _ItemRow(
+              key: _key(digest, 'problem-${entry.item}'),
+              digest: digest,
+              id: entry.item,
+              title: entry.title,
+              labelled: labelled,
+              onOpen: onOpen,
+              icon: Icons.error_outline,
+              iconColor: (tokens) => tokens.danger,
+              next: next,
+              // A next step that quotes the first problem leaves the rest here.
+              note: next?.step.quotesProblem ?? false
+                  ? (entry.problems.length > 1 ? entry.problems.skip(1).join('\n') : null)
+                  : entry.problems.join('\n'),
+            ),
       ],
       if (held.isNotEmpty) ...[
         _Subheading('Stopped', count: held.length),
         for (final (digest, entry) in held)
-          _ItemRow(
-            key: _key(digest, 'held-${entry.item}'),
-            digest: digest,
-            id: entry.item,
-            title: entry.title,
-            labelled: labelled,
-            onOpen: onOpen,
-            icon: Icons.pause_circle_outline,
-            iconColor: (tokens) => tokens.warning,
-            next: _next(digest, entry.item),
-            note: _next(digest, entry.item) == null ? entry.reason : null,
-          ),
+          if (_next(digest, entry.item) case final next)
+            _ItemRow(
+              key: _key(digest, 'held-${entry.item}'),
+              digest: digest,
+              id: entry.item,
+              title: entry.title,
+              labelled: labelled,
+              onOpen: onOpen,
+              icon: Icons.pause_circle_outline,
+              iconColor: (tokens) => tokens.warning,
+              next: next,
+              // The held step says the reason itself.
+              note: next?.step.kind == NextStepKind.held ? null : entry.reason,
+            ),
       ],
       if (!clean) ...[
         const _Subheading('Clean-up'),

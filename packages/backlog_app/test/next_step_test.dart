@@ -71,23 +71,22 @@ void main() {
     expect(_step(item('A-1', needsHuman: true))!.text, 'Answer the agent\'s question in the discussion');
   });
 
-  test('problems say what failed and how to retry', () {
+  test('problems say what failed; in review the review step follows them', () {
     final plan = _plan(
       problems: const [
-        ProblemItemDto(
-          item: 'A-1',
-          title: 'A',
-          problems: ['merge failed: the primary clone has uncommitted changes', 'push refused'],
-        ),
+        ProblemItemDto(item: 'A-1', title: 'A', problems: ['2 tool calls were denied: Bash(git push)', 'no PR']),
       ],
     );
-    final fix = _step(item('A-1', status: 'review'), plan)!;
-    expect(fix.kind, NextStepKind.fix);
+    // The agent's problems do not hide the review: no "again" for a Merge that never ran.
+    final review = _step(item('A-1', status: 'review', review: 'ok', pr: 'https://github.com/o/r/pull/12'), plan)!;
+    expect(review.kind, NextStepKind.review);
     expect(
-      fix.text,
-      'merge failed: the primary clone has uncommitted changes (and 1 more) – fix it, then run "Merge" again',
+      review.text,
+      '2 tool calls were denied: Bash(git push) (and 1 more) · AI review ✓ – look through PR #12 and run "Merge"',
     );
-    expect(fix.actions, ['Merge']);
+    expect(review.actions, ['Merge']);
+    expect(review.pr, 'https://github.com/o/r/pull/12');
+    expect(review.quotesProblem, isTrue);
     final agent = _step(
       item('A-1', ready: true),
       _plan(
@@ -96,8 +95,10 @@ void main() {
         ],
       ),
     )!;
+    expect(agent.kind, NextStepKind.fix);
     expect(agent.text, 'push failed: gh is not logged in – fix it, then start the agent again');
     expect(agent.start, isTrue);
+    expect(agent.quotesProblem, isTrue);
   });
 
   test('held items start again, ready ones start in manual mode, blocked ones wait', () {
@@ -118,6 +119,7 @@ void main() {
       _step(item('E-1', ready: true, children: const Progress(0, 2)))!.text,
       'Ready and nothing runs – Implement epic',
     );
+    expect(_step(item('E-1', ready: true, children: const Progress(0, 2)))!.epic, isTrue);
     expect(_step(item('A-1', ready: true, claimedBy: 'w1')), isNull);
 
     final blocked = _step(item('A-1', blockedBy: ['A-0']))!;
