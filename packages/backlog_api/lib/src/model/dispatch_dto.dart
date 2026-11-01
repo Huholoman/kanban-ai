@@ -402,6 +402,7 @@ final class DispatchDto {
     }
     return const [];
   }
+
   /// Unfinished epics one agent implements (running or last run), ids.
   final List<String> epics;
 
