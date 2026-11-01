@@ -237,6 +237,7 @@ final class DispatchAssignment {
     this.newSession = false,
     this.epic = false,
     this.repair = false,
+    this.returnTo,
   });
 
   /// Fills the [config]'s prompt, command and environment for [item] in
@@ -258,8 +259,15 @@ final class DispatchAssignment {
   /// [DispatchPlan.isRepair]) it is the epic's agent too, but its prompt is
   /// [repairFrame]: take up the replies on the epic's branch (typically a
   /// rebase after a failed merge) without taking items.
+  ///
+  /// The item's own agent and the agent of an action that changes code
+  /// ([ActionDefinition.changesCode]) work on an item handed over before
+  /// (a later active status than [Workflow.activeStatus], e.g. `review`) in
+  /// the active status; [returnTo] is where it came from (also
+  /// `{handover}`).
   factory DispatchAssignment.render(
     DispatcherConfig config, {
+    required Workflow workflow,
     required PlannedItem item,
     required WorktreeDefinition worktree,
     required String path,
@@ -276,6 +284,13 @@ final class DispatchAssignment {
     repair = repair && action == null && fix == null;
     epic = (epic || repair) && action == null && fix == null;
     final branch = branchFor(item);
+    final status = item.item.status;
+    final returnTo =
+        (action == null || action.changesCode) &&
+            item.category == StatusCategory.active &&
+            status != workflow.activeStatus
+        ? status
+        : null;
     final values = {
       'id': item.id.value,
       'title': item.item.title,
@@ -283,6 +298,7 @@ final class DispatchAssignment {
       'path': path,
       'backlog': backlogRoot,
       'branch': branch,
+      'handover': returnTo ?? config.handover,
     };
     final profile = action == null ? config.agent : config.profileFor(action);
     final session = resume != null && resume.resumableBy(profile, worktree.name) ? resume : null;
@@ -330,17 +346,17 @@ final class DispatchAssignment {
             ? 'Since the last agent on this epic: $replies'
             : 'First run `backlog instructions`, `backlog show ${item.id}` and `backlog epic ${item.id}`.',
         'finish': config.pr == null
-            ? 'run `backlog set ${item.id} status=review` and stop.'
+            ? 'run `backlog set ${item.id} status=${values['handover']}` and stop.'
             : 'write the description of one pull request for the whole epic (what changed and why, the items it '
                   'implements with their ids, how you verified it) and run '
                   '`backlog pr ${item.id} --description "<description>"`: it pushes $branch and opens the pull '
                   'request (when one exists already, it only pushes). Then run '
-                  '`backlog set ${item.id} status=review` and stop.',
+                  '`backlog set ${item.id} status=${values['handover']}` and stop.',
         'publish': config.pr == null
             ? 'Never push and never open pull requests.'
             : 'Never run `git push` yourself, never push other branches and never merge: `backlog pr ${item.id}` '
                   'is the only way your work leaves this worktree. If it fails, say why with '
-                  '`backlog comment ${item.id} "…"` and still set the epic to review.',
+                  '`backlog comment ${item.id} "…"` and still set the epic to ${values['handover']}.',
       });
     } else if (action == null) {
       prompt = session != null
@@ -359,6 +375,11 @@ final class DispatchAssignment {
       };
       prompt = actionFrame.render({
         ...actionValues,
+        'state': returnTo != null
+            ? 'it shows as in progress while you work and goes back to $returnTo by itself when you end; change '
+                  'the status only when the action asks you to'
+            : 'it stays in status ${item.item.status} unless the action asks you to change it (never set it to '
+                  'in-progress)',
         'context': session == null
             ? 'Run `backlog show ${item.id}` first to see the item and its discussion.'
             : 'You continue your earlier session on this item. Since your last run: $news\n'
@@ -404,6 +425,7 @@ final class DispatchAssignment {
       newSession: session == null && replies != null && action == null && fix == null,
       epic: epic,
       repair: repair,
+      returnTo: returnTo,
     );
   }
 
@@ -471,11 +493,12 @@ final class DispatchAssignment {
 
   /// What the item's agent is told when an AI review with `auto_fix` asks
   /// for changes: fix the findings of the review (`{review}`), comment only
-  /// on findings left unfixed, publish (`{publish}`), set the status again
-  /// and stop; the talking and running rules follow.
+  /// on findings left unfixed, publish (`{publish}`), set the status it had
+  /// again (which reviews it again) and stop; the talking and running rules follow.
   static final fixFrame = TextTemplate(
     'You are the agent {worktree} on backlog item {id} ("{title}") in this git worktree, on branch {branch}. The '
-    'item is claimed for you (BACKLOG_AGENT={worktree}) while you work; it stays in status {status}.\n'
+    'item is claimed for you (BACKLOG_AGENT={worktree}) and shows as in progress while you work (it was '
+    '{status}).\n'
     '{context}\n\n'
     'An AI review of your work asks for changes (automatic fix round {round} of {rounds}). Fix its findings '
     'below in small commits whose messages contain {id}. Where a finding is wrong, do not change the code; say '
@@ -498,8 +521,9 @@ final class DispatchAssignment {
     label: 'fix prompt',
   );
 
-  /// What the agent of a prompt action is told: who and where it is, that
-  /// the item keeps its status, the item's context, the action's text
+  /// What the agent of a prompt action is told: who and where it is, what
+  /// happens to the item's status (`{state}`: it keeps it, or it shows in
+  /// progress while an action that changes code runs), the item's context, the action's text
   /// (`{task}`, for a review the built-in review task), how to finish
   /// (`{finish}`: `backlog comment`, a review `backlog review`) and how it
   /// may publish commits (`{publish}`: `backlog pr` with `dispatcher.pr`,
@@ -507,13 +531,12 @@ final class DispatchAssignment {
   static final actionFrame = TextTemplate(
     'You are the agent {worktree}, started for the action "{action}" on backlog item {id} ("{title}") in this '
     'git worktree, on branch {branch}. The item is claimed for you (BACKLOG_AGENT={worktree}) only while the '
-    'action runs; it stays in status {status} unless the action asks you to change it (never set it to '
-    'in-progress), and you take no other items.\n'
+    'action runs; {state}, and you take no other items.\n'
     '{context}\n\n'
     'The action:\n{task}\n\n'
     '{finish} If something is unclear, ask with `backlog ask {id} "<your question>"` and stop. {publish}\n'
     '${DispatcherConfig.checklistRules}\n${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}',
-    known: const [...ActionDefinition.promptPlaceholders, 'context', 'task', 'finish', 'publish'],
+    known: const [...ActionDefinition.promptPlaceholders, 'state', 'context', 'task', 'finish', 'publish'],
     label: 'action prompt',
   );
 
@@ -590,6 +613,13 @@ final class DispatchAssignment {
   /// handed over or done ([repairFrame]; [epic] is set too): it works on the
   /// epic's branch without taking items.
   final bool repair;
+
+  /// The status the item was handed over in (e.g. `review`) when its agent,
+  /// or an action's agent that changes code, works on it again: the item
+  /// shows in the active status while the agent runs and goes back here
+  /// when it ends without handing the item over itself. Null: the item keeps
+  /// its status.
+  final String? returnTo;
 
   ItemId get id => item.id;
 
@@ -863,6 +893,7 @@ final class DispatchPlan {
       assignments.add(
         DispatchAssignment.render(
           config,
+          workflow: snapshot.workflow,
           item: candidate,
           worktree: target.worktree,
           path: target.path,
@@ -1123,6 +1154,7 @@ final class DispatchPlan {
       return (
         agent: DispatchAssignment.render(
           config,
+          workflow: snapshot.workflow,
           item: planned,
           worktree: target.worktree,
           path: target.path,
@@ -1202,6 +1234,7 @@ final class DispatchPlan {
     final target = own ?? free.firstWhereOrNull((w) => !w.isNew && branches[w.name] == branch) ?? free.first;
     return DispatchAssignment.render(
       config,
+      workflow: snapshot.workflow,
       item: planned,
       worktree: target.worktree,
       path: target.path,
@@ -1293,6 +1326,7 @@ final class DispatchPlan {
     final target = own ?? home ?? free.first;
     return DispatchAssignment.render(
       config,
+      workflow: snapshot.workflow,
       item: planned,
       worktree: target.worktree,
       path: target.path,
@@ -1340,6 +1374,7 @@ final class DispatchPlan {
     final target = own ?? free.firstWhereOrNull((w) => !w.isNew && branches[w.name] == plan.branch) ?? free.first;
     return DispatchAssignment.render(
       config,
+      workflow: snapshot.workflow,
       item: planned,
       worktree: target.worktree,
       path: target.path,

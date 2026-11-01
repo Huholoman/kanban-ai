@@ -742,6 +742,7 @@ statuses: [{id: open, category: open, pickable: true}, {id: doing, category: act
       'fresh': false,
       'review': false,
       'auto_fix': 0,
+      'changes_code': false,
     });
 
     final requested = await backlog(['action', id, 'Tests'], env: {'USER': 'tobik'});
