@@ -48,5 +48,13 @@ void main() {
       expect(ItemBody.isSectionName('Plan'), isTrue);
       expect(() => ItemBody.withSection('Intro.\n\n$discussion', 'Discussion', 'x'), throwsArgumentError);
     });
+
+    test('a text with a discussion section is no description', () {
+      expect(ItemBody.isDescription('New.\n\n$discussion'), isFalse);
+      expect(ItemBody.isDescription('New.\n\n## discussion\n'), isFalse);
+      expect(ItemBody.isDescription('New.\n\n```\n## Discussion\n```\n\n### Discussion\n'), isTrue);
+      expect(() => ItemBody.withDescription('Old.\n\n$discussion', 'New.\n\n$discussion'), throwsArgumentError);
+      expect(() => ItemBody.withSection('Old.\n\n$discussion', 'Plan', 'a\n\n$discussion'), throwsArgumentError);
+    });
   });
 }
