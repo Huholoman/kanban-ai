@@ -9,6 +9,7 @@ import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
 import '../../dispatch/presentation/action_buttons.dart';
 import '../../dispatch/presentation/agent_state_badge.dart';
+import '../application/board_controller.dart';
 import '../application/column_arrangement.dart';
 import 'item_card.dart';
 
@@ -131,7 +132,8 @@ class KanbanBoard extends StatelessWidget {
     final move = onMove;
     if (move == null) return column(false);
     return DragTarget<ItemDto>(
-      onWillAcceptWithDetails: (details) => !group.items.any((i) => i.id == details.data.id),
+      onWillAcceptWithDetails: (details) =>
+          !group.items.any((i) => i.id == details.data.id) && !_isIn(details.data, group.key),
       onAcceptWithDetails: (details) => move(details.data, group.key),
       builder: (context, candidates, _) => column(candidates.isNotEmpty),
     );
@@ -155,7 +157,36 @@ class KanbanBoard extends StatelessWidget {
           )
         : null;
     if (entry.isContext) {
-      content = ParentHeader(item: item, workflow: workflow, onTap: () => onOpen(item.id), trailing: toggle);
+      final header = ParentHeader(
+        item: item,
+        workflow: workflow,
+        onTap: () => onOpen(item.id),
+        showStatus: true,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CardActionsMenu(item: item, workflow: workflow),
+            if (onMove != null) _MoveMenu(board: this, item: item),
+            ?toggle,
+          ],
+        ),
+      );
+      // Like a card, the header of a parent the view leaves out (an epic)
+      // drags into a column, which sets its field.
+      content = onMove == null || !draggable
+          ? header
+          : Draggable<ItemDto>(
+              data: item,
+              feedback: Material(
+                color: Colors.transparent,
+                child: SizedBox(
+                  width: columnWidth - 16,
+                  child: Opacity(opacity: 0.9, child: header),
+                ),
+              ),
+              childWhenDragging: Opacity(opacity: 0.3, child: header),
+              child: header,
+            );
     } else {
       final card = ItemCard(
         item: item,
@@ -183,6 +214,50 @@ class KanbanBoard extends StatelessWidget {
     }
     if (entry.depth == 0) return content;
     return _Indented(depth: entry.depth, child: content);
+  }
+
+  /// The view's field of [item] is [key] already (a dragged epic header
+  /// over the column of its own status).
+  bool _isIn(ItemDto item, String key) {
+    final field = result.groupBy;
+    return field != null && BoardController.valueOf(item, field) == key;
+  }
+}
+
+/// ⋯ "Move to …" on the header of a parent the view leaves out (an epic):
+/// the other columns; picking one sets the view's field, like a drop.
+class _MoveMenu extends StatelessWidget {
+  const _MoveMenu({required this.board, required this.item});
+
+  final KanbanBoard board;
+  final ItemDto item;
+
+  @override
+  Widget build(BuildContext context) {
+    final field = board.result.groupBy;
+    final current = field == null ? null : BoardController.valueOf(item, field);
+    final tokens = BoardTokens.of(context);
+    return SizedBox(
+      width: 24,
+      height: 20,
+      child: PopupMenuButton<String>(
+        key: ValueKey('move-menu-${item.id}'),
+        tooltip: 'Move to…',
+        padding: EdgeInsets.zero,
+        iconSize: 16,
+        icon: Icon(Icons.drive_file_move_outline, color: tokens.muted),
+        onSelected: (key) => board.onMove?.call(item, key),
+        itemBuilder: (context) => [
+          for (final group in board.result.groups)
+            if (group.key != current)
+              PopupMenuItem<String>(
+                key: ValueKey('move-${item.id}-to-${group.key}'),
+                value: group.key,
+                child: Text('Move to ${group.key.isEmpty ? '(none)' : group.key}'),
+              ),
+        ],
+      ),
+    );
   }
 }
 
@@ -434,12 +509,23 @@ class _GroupHeader extends StatelessWidget {
 /// type icon and title in bold over a thin rule, so that the children read
 /// as its part.
 class ParentHeader extends StatelessWidget {
-  const ParentHeader({super.key, required this.item, this.workflow, this.onTap, this.trailing});
+  const ParentHeader({
+    super.key,
+    required this.item,
+    this.workflow,
+    this.onTap,
+    this.trailing,
+    this.showStatus = false,
+  });
 
   final ItemDto item;
   final WorkflowDto? workflow;
   final VoidCallback? onTap;
   final Widget? trailing;
+
+  /// Shows the parent's status after its title (on the board, where it can
+  /// be moved by its header).
+  final bool showStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -478,6 +564,14 @@ class ParentHeader extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (showStatus) ...[
+                        const SizedBox(width: 6),
+                        Tag(
+                          item.status,
+                          key: ValueKey('parent-status-${item.id}'),
+                          color: ItemStyle.status(item.status, item.category, workflow, theme.colorScheme),
+                        ),
+                      ],
                     ],
                   ),
                 ),

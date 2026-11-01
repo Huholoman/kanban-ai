@@ -211,6 +211,33 @@ void main() {
     expect(story.dx, greaterThan(header.dx), reason: 'children are indented');
   });
 
+  testWidgets('an epic header shows its status and moves by drag or its Move to menu', (tester) async {
+    final api = await pumpApp(
+      tester,
+      items: [
+        item('E', type: 'epic', status: 'in-progress'),
+        item('S1', parent: 'E'),
+      ],
+    );
+    expect(find.byKey(const ValueKey('parent-status-E')), findsOneWidget);
+
+    final gesture = await tester.startGesture(tester.getCenter(find.byKey(const ValueKey('parent-E'))));
+    await tester.pump(const Duration(milliseconds: 50));
+    await gesture.moveTo(tester.getCenter(find.text('done')) + const Offset(0, 120));
+    await tester.pump(const Duration(milliseconds: 50));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(api.updates.single.$1, 'E');
+    expect(api.updates.single.$2.changes, ['status=done']);
+
+    api.updates.clear();
+    await tester.tap(find.byKey(const ValueKey('move-menu-E')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('move-E-to-todo')));
+    await tester.pumpAndSettle();
+    expect(api.updates.single.$2.changes, ['status=todo']);
+  });
+
   testWidgets('the board is filtered by labels from the filter bar', (tester) async {
     await pumpApp(
       tester,

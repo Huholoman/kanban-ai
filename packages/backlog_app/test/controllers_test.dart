@@ -98,6 +98,15 @@ void main() {
       expect(board.result!.groups.last.items.map((i) => i.id), ['T-1']);
     });
 
+    test('an item outside the view (an epic header) moves by its field; its own column is no move', () async {
+      final epic = item('E-1', type: 'epic', status: 'todo');
+      await board.move(epic, 'todo');
+      expect(api.updates, isEmpty);
+      await board.move(epic, 'done');
+      expect(api.updates.single.$1, 'E-1');
+      expect(api.updates.single.$2.changes, ['status=done']);
+    });
+
     test('a failed move is reported and the board shows the real state again', () async {
       api.failNextUpdate = const BacklogApiException(400, 'invalid_input', 'nope');
       final notices = <String>[];
