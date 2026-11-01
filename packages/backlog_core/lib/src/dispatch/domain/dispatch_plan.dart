@@ -1527,6 +1527,11 @@ abstract class AgentLauncher {
   /// Stops the agent working on [item]; false when none runs.
   Future<bool> stop(ItemId item) async => false;
 
+  /// A person says the problems of [item]'s last runs are dealt with: they
+  /// no longer show ([DispatchConditions.problems], the log's `problems`);
+  /// false when there were none.
+  Future<bool> dismissProblems(ItemId item) async => false;
+
   /// The last [lines] lines of the log of the agent running for [item], or
   /// of its last run; null when there is none.
   Future<AgentLog?> agentLog(ItemId item, {int lines = 100}) async => null;

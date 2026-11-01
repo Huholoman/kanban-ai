@@ -592,6 +592,15 @@ void main() {
       expect((again.milestone, again.what), ('v0.2', 'Implement epic (v0.2)'));
     });
 
+    test('the problems of an item\'s last runs can be dismissed', () async {
+      final api = dispatching();
+      final item = await api.createItem(const NewItemRequest(title: 'Broken', status: 'todo'));
+      launcher.withProblems.add(ItemId(item.item.id));
+      await api.dismissProblems(item.item.id);
+      expect(launcher.withProblems, isEmpty);
+      await expectLater(api.dismissProblems(item.item.id), throwsA(apiError(404, 'not_found')));
+    });
+
     test('items that are not ready cannot be started', () async {
       final api = dispatching();
       final item = await api.createItem(const NewItemRequest(title: 'Later', status: 'backlog'));
@@ -767,6 +776,12 @@ final class _FakeLauncher extends AgentLauncher {
             if (run.epic) run.item: ?run.milestone,
         },
       );
+
+  /// Items whose last run had problems; [dismissProblems] drops them.
+  final withProblems = <ItemId>{};
+
+  @override
+  Future<bool> dismissProblems(ItemId item) async => withProblems.remove(item);
 
   @override
   Future<bool> stop(ItemId item) async {
