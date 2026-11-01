@@ -52,8 +52,7 @@ final class AppearanceSettings {
     final map = draft.valueAt(['appearance', group]);
     if (map is! Map) return const {};
     return {
-      for (final MapEntry(:key, :value) in map.entries)
-        if (_color(value) case final color?) '$key': color,
+      for (final MapEntry(:key, :value) in map.entries) '$key': ?_color(value),
     };
   }
 
