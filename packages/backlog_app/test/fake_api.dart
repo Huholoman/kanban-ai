@@ -39,8 +39,10 @@ ItemDto item(
   List<String> blockedBy = const [],
   String? created,
   DateTime? createdAt,
+  num? rank,
 }) => ItemDto(
   id: id,
+  rank: rank,
   branch: branch,
   pr: pr,
   blocked: blockedBy.isNotEmpty,
@@ -84,6 +86,9 @@ final class FakeBacklogApi implements BacklogApi {
   final Map<String, ItemDto> items_;
   final updates = <(String, ItemUpdateRequest)>[];
   final claims = <(String, String, ClaimRequest)>[];
+
+  /// The orders [rank] was asked for, by moved item.
+  final ranks = <(String, List<String>)>[];
 
   /// The discussion of each item; [comment] appends (author `you` when the
   /// request names none) and answers an open question.
@@ -171,6 +176,18 @@ final class FakeBacklogApi implements BacklogApi {
       ],
       discussion: discussions[found.id] ?? const [],
     );
+  }
+
+  /// Ranks every item of the order by its position (1, 2, …), unlike the
+  /// server, which changes as few as it can.
+  @override
+  Future<ItemDetailDto> rank(String reference, RankRequest request) async {
+    ranks.add((reference, request.order));
+    for (final (i, id) in request.order.indexed) {
+      items_[id] = _with(items_[id]!, rank: () => i + 1);
+    }
+    _changes.add(BacklogChangeEvent([for (final id in request.order) 'items/$id.md']));
+    return item(reference);
   }
 
   @override
@@ -537,8 +554,10 @@ final class FakeBacklogApi implements BacklogApi {
     String? body,
     Progress? children,
     bool? needsHuman,
+    num? Function()? rank,
   }) => ItemDto(
     id: item.id,
+    rank: rank == null ? item.rank : rank(),
     title: item.title,
     type: item.type,
     status: status ?? item.status,

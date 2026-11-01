@@ -590,6 +590,47 @@ dispatcher:
     });
   });
 
+  group('ItemRank.place', () {
+    Map<String, num> place(String order, String moved) {
+      final entries = [
+        for (final entry in order.split(' '))
+          switch (entry.split(':')) {
+            [final id, final rank] => (ItemId('T-$id'), num.parse(rank)),
+            [final id] => (ItemId('T-$id'), null),
+            _ => throw ArgumentError(entry),
+          },
+      ];
+      return {
+        for (final MapEntry(:key, :value) in ItemRank.place(entries, ItemId('T-$moved')).entries)
+          key.value.substring(2): value,
+      };
+    }
+
+    test('between two ranked neighbours, at the top and at the end of the ranked ones', () {
+      expect(place('a:1024 m b:2048', 'm'), {'m': 1536});
+      expect(place('m:5000 a:1024 b:2048', 'm'), {'m': 0});
+      expect(place('a:1024 b:2048 m:10', 'm'), {'m': 3072});
+      expect(place('a:1024 m:9 u v', 'm'), {'m': 2048});
+      expect(place('a:1.5 m b:2.5', 'm'), {'m': 2});
+    });
+
+    test('nothing changes when the rank already fits its place', () {
+      expect(place('a:1024 m:1500 b:2048', 'm'), isEmpty);
+      expect(place('m:3 u', 'm'), isEmpty);
+    });
+
+    test('among unranked items, those above it get ranks too', () {
+      expect(place('a:1024 u v m w', 'm'), {'u': 2048, 'v': 3072, 'm': 4096});
+      expect(place('u m v', 'm'), {'u': 1024, 'm': 2048});
+      expect(place('m u v', 'm'), {'m': 1024});
+    });
+
+    test('without a whole number between the neighbours, the ranked ones are renumbered', () {
+      expect(place('a:1 b:2 m c:3 u', 'm'), {'a': 1024, 'b': 2048, 'm': 3072, 'c': 4096});
+      expect(place('a:1024 m b:1024', 'm'), {'m': 2048, 'b': 3072});
+    });
+  });
+
   group('ItemReference', () {
     final known = ['T-7f3a', 'T-7f9b', 'T-a2c4'].map(ItemId.new).toList();
 

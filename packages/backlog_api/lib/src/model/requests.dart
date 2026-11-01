@@ -152,6 +152,18 @@ final class NewViewRequest {
   Json toJson() => {'name': name, 'section': section, 'pinned': pinned, 'base': base, 'conditions': conditions};
 }
 
+/// The ids of a list (a board column) in the order wanted, the moved item
+/// among them (`POST /api/items/<ref>/rank`).
+final class RankRequest {
+  const RankRequest(this.order);
+
+  factory RankRequest.fromJson(Json json) => RankRequest(json.strings('order'));
+
+  final List<String> order;
+
+  Json toJson() => {'order': order};
+}
+
 /// Claim, release or completion of an item on behalf of [agent].
 final class ClaimRequest {
   const ClaimRequest({this.agent, this.status, this.force = false});

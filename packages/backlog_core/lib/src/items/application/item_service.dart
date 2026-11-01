@@ -6,6 +6,7 @@ import '../domain/discussion.dart';
 import '../domain/item.dart';
 import '../domain/item_body.dart';
 import '../domain/item_id.dart';
+import '../domain/item_rank.dart';
 import '../domain/item_repository.dart';
 import '../domain/item_time.dart';
 import 'field_change.dart';
@@ -190,6 +191,35 @@ final class ItemService {
     if (changed.isEmpty) return ChecklistUpdate(item, selected.toList(), changed: const []);
     final updated = await update(item.id.value, const [], body: Checklist.mark(item.body, changed, done: done));
     return ChecklistUpdate(updated, selected.toList(), changed: [for (final entry in changed) entry.number]);
+  }
+
+  /// Moves item [reference] to its place in [order] (references in the order
+  /// wanted, e.g. a board column after a drop, the item among them) by
+  /// giving it a `rank` between its neighbours (see [ItemRank.place]); the
+  /// neighbours get one too when they need it. Returns the items changed,
+  /// [reference] first; none when it stands there already.
+  Future<List<Item>> rank(String reference, List<String> order) async {
+    final items = (await _repository.load()).items;
+    final byId = {for (final item in items) item.id: item};
+    final moved = find(items, reference).id;
+    final ids = <ItemId>[];
+    for (final entry in order) {
+      final id = ItemReference.resolve(entry, byId.keys);
+      if (!ids.contains(id)) ids.add(id);
+    }
+    if (!ids.contains(moved)) throw InvalidInputException('The order does not contain $moved.');
+
+    final ranks = ItemRank.place([for (final id in ids) (id, byId[id]!.rank)], moved);
+    final now = _clock.now();
+    final changed = <Item>[];
+    for (final id in [moved, ...ids.where((id) => id != moved)]) {
+      if (!ranks.containsKey(id)) continue;
+      final before = byId[id]!;
+      final item = before.copyWith(rank: () => ranks[id]).touchedSince(before, now);
+      await _repository.save(item);
+      changed.add(item);
+    }
+    return changed;
   }
 
   Item find(List<Item> items, String reference) {

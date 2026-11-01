@@ -35,6 +35,11 @@ abstract interface class BacklogApi {
   /// Adds a comment to the item's discussion.
   Future<ItemDetailDto> comment(String reference, CommentRequest request);
 
+  /// Moves [reference] to its place in [RankRequest.order] (e.g. a board
+  /// column after a drop) by setting its `rank`, and its neighbours' when
+  /// they need one; returns the item.
+  Future<ItemDetailDto> rank(String reference, RankRequest request);
+
   Future<List<ViewSummaryDto>> views();
 
   /// Runs view [id]; [groupBy] regroups it for this request only ('' for

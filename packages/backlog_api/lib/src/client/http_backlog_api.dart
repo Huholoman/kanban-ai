@@ -78,6 +78,10 @@ final class HttpBacklogApi implements BacklogApi {
       ItemDetailDto.fromJson(asJson(await _send('POST', ApiPaths.itemAction(reference, 'comments'), request.toJson())));
 
   @override
+  Future<ItemDetailDto> rank(String reference, RankRequest request) async =>
+      ItemDetailDto.fromJson(asJson(await _send('POST', ApiPaths.itemAction(reference, 'rank'), request.toJson())));
+
+  @override
   Future<List<ViewSummaryDto>> views() async => _list(await _get(ApiPaths.views)).map(ViewSummaryDto.fromJson).toList();
 
   @override

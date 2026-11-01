@@ -58,6 +58,7 @@ final class ApiHandler {
           ..post('$items/<ref>/release', _release)
           ..post('$items/<ref>/done', _complete)
           ..post('$items/<ref>/comments', _comment)
+          ..post('$items/<ref>/rank', _rank)
           ..post('$items/<ref>/actions/<name>', _runAction)
           ..get('$items/<ref>/epic', _epic)
           ..get('$items/<ref>/history', _history)
@@ -148,6 +149,14 @@ final class ApiHandler {
       question: payload.question,
       note: payload.note,
     );
+    return _detailOf(backlog, item.id.value);
+  }
+
+  Future<Response> _rank(Request request, String ref) async {
+    final payload = RankRequest.fromJson(await _body(request));
+    final backlog = await _host.backlog;
+    final item = await backlog.items.get(ref);
+    await backlog.items.rank(item.id.value, payload.order);
     return _detailOf(backlog, item.id.value);
   }
 

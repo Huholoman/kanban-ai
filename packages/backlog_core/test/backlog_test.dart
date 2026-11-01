@@ -621,6 +621,27 @@ void main() {
     expect(cleared.rank, isNull);
     expect(cleared.extra, isEmpty);
   });
+
+  test('rank moves an item to its place in an order, ranking its neighbours when needed', () async {
+    final (backlog, clock) = await tempBacklog();
+    for (final title in ['A', 'B', 'C']) {
+      await backlog.items.create(NewItem(title: title));
+    }
+    final ids = [for (final item in await backlog.items.all()) item.id.value]..sort();
+    final [a, b, c] = ids;
+    clock.advance(const Duration(minutes: 5));
+
+    final first = await backlog.items.rank(c, [a, c, b]);
+    expect([for (final item in first) item.id.value], [c, a]);
+    expect({for (final item in await backlog.items.all()) item.id.value: item.rank}, {a: 1024, b: null, c: 2048});
+    expect((await backlog.items.get(c)).updated, isNot((await backlog.items.get(b)).updated));
+
+    final second = await backlog.items.rank(b, [b, a, c]);
+    expect([for (final item in second) item.id.value], [b]);
+    expect((await backlog.items.get(b)).rank, 0);
+    expect(await backlog.items.rank(b, [b, a, c]), isEmpty);
+    await expectLater(() => backlog.items.rank(b, [a, c]), throwsA(isA<InvalidInputException>()));
+  });
 }
 
 /// A storage that records which stores the backlog asked for and which items

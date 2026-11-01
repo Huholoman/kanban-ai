@@ -175,6 +175,25 @@ void main() {
     await expectLater(api.comment(id, const CommentRequest(' ')), throwsA(apiError(400, 'invalid_input')));
   });
 
+  test('rank moves an item within an order; a view sorted by rank follows it', () async {
+    final ids = [
+      for (final title in ['A', 'B', 'C']) (await api.createItem(NewItemRequest(title: title, status: 'todo'))).item.id,
+    ];
+    final moved = await api.rank(ids[2], RankRequest([ids[2], ids[0], ids[1]]));
+    expect(moved.item.rank, 1024);
+    final ranked = await api.rank(ids[1], RankRequest([ids[2], ids[1], ids[0]]));
+    expect(ranked.item.rank, 2048);
+    expect((await api.item(ids[0])).item.rank, isNull);
+    expect(
+      ViewEngine.evaluate(
+        parseViewYaml('r', 'sort: [rank]'),
+        await backlog.planning.snapshot(),
+      ).items.map((i) => i.id.value),
+      [ids[2], ids[1], ids[0]],
+    );
+    await expectLater(api.rank(ids[0], RankRequest([ids[1]])), throwsA(apiError(400, 'invalid_input')));
+  });
+
   test('views are listed and evaluated', () async {
     await backlog.items.create(const NewItem(title: 'Doing', status: 'in-progress', priority: 'p0'));
     final views = await api.views();
