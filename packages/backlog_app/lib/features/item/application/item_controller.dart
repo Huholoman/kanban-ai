@@ -38,6 +38,18 @@ class ItemController extends ChangeNotifier {
   bool busy = false;
   Object? error;
 
+  /// The History tab is shown instead of the comments.
+  bool showHistory = false;
+
+  /// The item's history (oldest first), loaded when [showHistory] and
+  /// reloaded with the detail; null until loaded.
+  List<HistoryEntryDto>? history;
+  Object? historyError;
+
+  /// Which entries [history] holds: `status`, `fields`, `comments`, `runs`;
+  /// null for all.
+  String? historyFilter;
+
   Stream<String> get notices => _notices.stream;
 
   ItemDto? get item => detail?.item;
@@ -68,6 +80,7 @@ class ItemController extends ChangeNotifier {
       workflow ??= await _api.workflow();
       final loaded = detail = await _api.item(reference);
       ancestors = await _ancestorsOf(loaded);
+      if (showHistory) await _loadHistory();
       for (final id in _previews.keys.toList()) {
         try {
           _previews[id] = await _api.item(id);
@@ -81,6 +94,37 @@ class ItemController extends ChangeNotifier {
     } finally {
       loading = false;
       notifyListeners();
+    }
+  }
+
+  /// Shows the History tab (and loads it) or the comments.
+  Future<void> setShowHistory(bool show) async {
+    if (showHistory == show) return;
+    showHistory = show;
+    notifyListeners();
+    if (show) await _refreshHistory();
+  }
+
+  /// Keeps only the history entries [only] names (see [historyFilter]).
+  Future<void> filterHistory(String? only) async {
+    if (historyFilter == only) return;
+    historyFilter = only;
+    history = null;
+    notifyListeners();
+    await _refreshHistory();
+  }
+
+  Future<void> _refreshHistory() async {
+    await _loadHistory();
+    notifyListeners();
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      history = await _api.history(_id, only: historyFilter);
+      historyError = null;
+    } catch (e) {
+      historyError = e;
     }
   }
 
@@ -133,6 +177,7 @@ class ItemController extends ChangeNotifier {
     notifyListeners();
     try {
       detail = await action();
+      if (showHistory) await _loadHistory();
       return true;
     } catch (e) {
       _notices.add('$e');

@@ -14,7 +14,7 @@ import '../application/item_body.dart';
 import '../application/item_controller.dart';
 import 'ask_text.dart';
 import 'detail_relations.dart';
-import 'discussion_section.dart';
+import 'history_section.dart';
 
 /// The scrolling part of the detail: title, state, fields, children,
 /// relations and the Markdown body, all editable.
@@ -128,7 +128,7 @@ class DetailContent extends StatelessWidget {
               const SizedBox(height: 16),
               _Body(body: item.body ?? '', onSave: controller.saveBody, enabled: !controller.busy),
               const SizedBox(height: 16),
-              DiscussionSection(controller: controller),
+              ActivitySection(controller: controller),
               const SizedBox(height: 12),
               _Times(item: item),
               for (final MapEntry(:key, :value) in item.extra.entries)
