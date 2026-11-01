@@ -4,8 +4,18 @@ import 'package:test/test.dart';
 import 'support.dart';
 
 void main() {
-  EpicPlan planOf(List<Item> items, {String epic = 'E-1', List<Claim> claims = const [], String? agent}) =>
-      EpicPlan.of(snapshotOf(items, claims: claims), ItemId(epic), agent: agent);
+  EpicPlan planOf(
+    List<Item> items, {
+    String epic = 'E-1',
+    List<Claim> claims = const [],
+    String? agent,
+    String? milestone,
+  }) => EpicPlan.of(
+    snapshotOf(items, claims: claims),
+    ItemId(epic),
+    agent: agent,
+    milestone: milestone,
+  );
 
   Claim claim(String id, String agent) {
     final at = DateTime.utc(2026, 10, 29, 11);
@@ -28,6 +38,60 @@ void main() {
       expect(plan.next!.id.value, 'T-3');
       expect(plan.members[2].after, [ItemId('T-2')]);
       expect(plan.members[3].after, [ItemId('T-1'), ItemId('T-2')]);
+    });
+
+    test('a milestone limits the run to its items and those without one', () {
+      final items = [
+        item('E-1', type: 'epic'),
+        item('T-1', parent: 'E-1', milestone: 'v0.2'),
+        item('T-2', parent: 'E-1'),
+        item('T-3', parent: 'E-1', milestone: 'v0.3'),
+        item('T-4', parent: 'E-1', milestone: 'v0.3', status: 'done'),
+      ];
+      final plan = planOf(items, milestone: 'v0.2');
+      expect(plan.milestone, 'v0.2');
+      expect(plan.verdict, EpicVerdict.ok);
+      expect(plan.members.where((m) => m.inScope).map((m) => m.id.value), ['T-1', 'T-2']);
+      expect(plan.skipped.map((m) => m.id.value), ['T-3']);
+      expect(plan.next!.id.value, 'T-1');
+      expect(plan.progress.map((p) => '${p.milestone}:${p.settled}/${p.total}'), ['v0.2:0/1', 'v0.3:1/2', 'null:0/1']);
+
+      final done = planOf([
+        for (final i in items) i.milestone == 'v0.3' ? i : i.copyWith(status: 'review'),
+      ], milestone: 'v0.2');
+      expect(done.finished, isTrue);
+      expect(done.next, isNull);
+      expect(done.problems.single, contains('Nothing left to implement in v0.2'));
+      // The whole epic is not finished: v0.3 is left.
+      expect(planOf(done.members.map((m) => m.item.item).toList()..insert(0, items.first)).finished, isFalse);
+
+      expect(planOf(items).skipped, isEmpty);
+      expect(planOf(items, milestone: 'v0.9').skipped.map((m) => m.id.value), ['T-1', 'T-3']);
+      expect(planOf(items.take(2).toList(), milestone: 'v0.9').problems.single, contains('no items in v0.9'));
+    });
+
+    test('an item in the scope after an open item outside it forbids the start', () {
+      final plan = planOf([
+        item('E-1', type: 'epic'),
+        item('T-1', parent: 'E-1', milestone: 'v0.2', dependsOn: ['T-3']),
+        item('S-1', type: 'story', parent: 'E-1', milestone: 'v0.2'),
+        item('T-2', parent: 'S-1', milestone: 'v0.3'),
+        item('T-3', parent: 'E-1', milestone: 'v0.3'),
+      ], milestone: 'v0.2');
+      expect(plan.verdict, EpicVerdict.forbidden);
+      expect(plan.problems, [
+        contains('S-1 (v0.2) has the open child T-2 (todo) of v0.3'),
+        contains('T-1 (v0.2) depends on T-3 (todo) of v0.3, outside the scope v0.2'),
+      ]);
+
+      // The other direction is fine: v0.3 waits for v0.2.
+      final reverse = planOf([
+        item('E-1', type: 'epic'),
+        item('T-1', parent: 'E-1', milestone: 'v0.3', dependsOn: ['T-2']),
+        item('T-2', parent: 'E-1', milestone: 'v0.2'),
+      ], milestone: 'v0.2');
+      expect(reverse.verdict, EpicVerdict.ok);
+      expect(reverse.next!.id.value, 'T-2');
     });
 
     test('handed-over items count as done for the items after them', () {
@@ -175,6 +239,17 @@ void main() {
       next = await backlog.claims.claimInEpic(epic.id.value, 'w1');
       expect(next.outcome, isNull);
       expect(next.plan.finished, isTrue);
+    });
+
+    test('with a milestone only items of it come up', () async {
+      final (backlog, _) = await tempBacklog();
+      final epic = await backlog.items.create(const NewItem(title: 'Epic', type: 'epic', status: 'todo'));
+      await backlog.items.create(NewItem(title: 'Later', parent: epic.id.value, status: 'todo', milestone: 'later'));
+      final now = await backlog.items.create(NewItem(title: 'Now', parent: epic.id.value, status: 'todo'));
+
+      final next = await backlog.claims.claimInEpic(epic.id.value, 'w1', milestone: 'v0.2');
+      expect(next.outcome!.item.id, now.id);
+      expect(next.plan.skipped.single.item.item.title, 'Later');
     });
   });
 }

@@ -135,6 +135,29 @@ void main() {
     expect(text.out, contains('✗ Nothing left to implement'));
   });
 
+  test('epic --milestone limits the run to the items of a milestone', () async {
+    final epic = await create('Payments', ['-t', 'epic']);
+    final now = await create('Model', ['--parent', epic, '-s', 'todo', '-m', 'v0.2']);
+    final later = await create('Reports', ['--parent', epic, '-s', 'todo', '-m', 'later']);
+
+    final check = (await backlog(['--json', 'epic', epic, '--milestone', 'v0.2'])).json! as Map;
+    expect(check['milestone'], 'v0.2');
+    expect(check['skipped'], [later]);
+    expect(check['next'], now);
+    expect((check['members'] as List).map((m) => (m as Map)['in_scope']), [true, false]);
+
+    final text = await backlog(['epic', epic, '-m', 'v0.2']);
+    expect(text.out, contains('Milestone v0.2 (and items without one): 1 item(s) of other milestones stay'));
+    expect(text.out, contains('Progress: v0.2 0/1, later 0/1'));
+
+    final env = {'BACKLOG_AGENT': 'w1'};
+    expect((await backlog(['epic', epic, '-m', 'v0.2', '--next'], env: env)).exitCode, 0);
+    expect((await backlog(['set', now, 'status=review'])).exitCode, 0);
+    final none = await backlog(['epic', epic, '-m', 'v0.2', '--next'], env: env);
+    expect(none.exitCode, ExitCode.nothingToDo);
+    expect(none.out, contains('Nothing left in $epic (v0.2): every item is handed over or done.'));
+  });
+
   test('show prints relations, claim and body', () async {
     final epic = await create('Data security', ['-t', 'epic']);
     final task = await create('Disk encryption in production', [
