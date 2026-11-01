@@ -54,6 +54,7 @@ final class Workflow {
     Duration claimLease = const Duration(hours: 4),
     Appearance appearance = Appearance.none,
     DispatcherConfig? dispatcher,
+    BacklogGit git = BacklogGit.standard,
   }) {
     _require(statuses.isNotEmpty, 'At least one status is required.');
     _requireUnique(statuses.map((s) => s.id), 'status');
@@ -103,6 +104,7 @@ final class Workflow {
       claimLease: claimLease,
       appearance: appearance,
       dispatcher: dispatcher,
+      git: git,
     );
   }
 
@@ -119,6 +121,7 @@ final class Workflow {
     required this.claimLease,
     required this.appearance,
     required this.dispatcher,
+    required this.git,
   });
 
   /// The workflow `backlog init` writes out.
@@ -160,6 +163,9 @@ final class Workflow {
   /// Who starts agents on ready work; null when `backlog.yaml` has no
   /// `dispatcher` section (the dispatcher is off).
   final DispatcherConfig? dispatcher;
+
+  /// How the server keeps the backlog's own git repository (`git`).
+  final BacklogGit git;
 
   StatusDefinition? status(String id) {
     for (final status in statuses) {
@@ -218,4 +224,33 @@ final class Workflow {
       }
     }
   }
+}
+
+/// When the server commits the changes in the backlog folder (`git.commit`).
+enum BacklogCommitMode {
+  /// When the backlog folder is a git repository of its own (its top level),
+  /// after agents' runs and a short quiet period.
+  auto,
+
+  /// Never; people commit it.
+  off;
+
+  static BacklogCommitMode parse(String value) => values.firstWhere(
+    (m) => m.name == value,
+    orElse: () => throw ArgumentError('git.commit must be ${values.map((m) => m.name).join(' or ')}, not "$value".'),
+  );
+}
+
+/// How the server keeps the backlog's own git repository (`git` in
+/// `backlog.yaml`): agents change items through the CLI from their
+/// worktrees, but never commit the backlog; the server does.
+final class BacklogGit {
+  const BacklogGit({this.commit = BacklogCommitMode.auto, this.push = false});
+
+  static const standard = BacklogGit();
+
+  final BacklogCommitMode commit;
+
+  /// Push after each commit (`git push`, to the branch's upstream).
+  final bool push;
 }

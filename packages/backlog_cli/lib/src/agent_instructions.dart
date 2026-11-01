@@ -96,4 +96,7 @@ Use `depends_on` only for hard prerequisites; use `related` for context.
 ## Before you stop
 
     backlog lint                 # must report no errors
+
+Do not commit the backlog folder: the board's server commits it by itself
+(`git.commit` in `backlog.yaml`). Its uncommitted changes are no problem.
 ''';
