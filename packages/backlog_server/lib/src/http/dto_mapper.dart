@@ -274,6 +274,11 @@ abstract final class DtoMapper {
       for (final (:item, :problems) in plan.problems)
         ProblemItemDto(item: item.id.value, title: item.item.title, problems: problems),
     ],
+    queuedReplies: [
+      for (final MapEntry(key: id, value: reason) in plan.queuedReplies.entries)
+        if (plan.snapshot[id] case final planned?)
+          HeldItemDto(item: id.value, title: planned.item.title, reason: reason),
+    ],
   );
 
   static ItemLinkDto _link(ItemId id, BacklogSnapshot snapshot) {

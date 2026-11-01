@@ -45,6 +45,9 @@ void main() {
         problems: const [
           ProblemItemDto(item: 'X-6', title: 'Six', problems: ['the agent exited with code 1']),
         ],
+        queuedReplies: const [
+          HeldItemDto(item: 'X-1', title: 'One', reason: 'the agent reads it after its current run'),
+        ],
         sessions: [
           AgentSessionDto(item: 'X-4', session: 'sess-4', worktree: 'w1', endedAt: DateTime.utc(2026), reason: 'x'),
         ],
@@ -57,6 +60,8 @@ void main() {
       expect(copy.waitingReason('X-4'), isNull);
       expect(copy.problemsOf('X-6'), ['the agent exited with code 1']);
       expect(copy.problemsOf('X-4'), isEmpty);
+      expect(copy.queuedReplyOf('X-1'), 'the agent reads it after its current run');
+      expect(copy.queuedReplyOf('X-2'), isNull);
       expect(copy.sessionFor('X-4')!.session, 'sess-4');
       expect(copy.sessionFor('X-2'), isNull);
       expect(copy.assignments.map((a) => (a.resume, a.newWorktree)), [('sess-2', false), (null, true)]);

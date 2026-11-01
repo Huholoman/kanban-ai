@@ -497,6 +497,7 @@ final class DispatchPlan {
     this.branches = const {},
     this.waitingReasons = const {},
     this.problems = const [],
+    this.queuedReplies = const {},
   });
 
   /// Whether a person (anyone but the agent) commented on unfinished,
@@ -742,6 +743,14 @@ final class DispatchPlan {
                   !conditions.held.containsKey(planned.id))
             (item: planned, problems: List<String>.unmodifiable(problems)),
       ]),
+      queuedReplies: Map.unmodifiable({
+        for (final run in conditions.runs)
+          if (snapshot[run.item] case final planned?
+              when !planned.isDone && planned.item.discussion.after(run.startedAt, except: run.worktree).isNotEmpty)
+            run.item: run.action == null
+                ? 'the agent reads it after its current run'
+                : 'the agent continues after the action "${run.action}" ends',
+      }),
     );
   }
 
@@ -771,6 +780,12 @@ final class DispatchPlan {
   /// ([DispatchConditions.problems]) and that neither run nor are [held]:
   /// they need a person.
   final List<({PlannedItem item, List<String> problems})> problems;
+
+  /// Items with something running and a person's comment written since it
+  /// started (not a note or review), → when the agent takes it up: one run
+  /// per item, so the reply waits for the run to end (a reply resumes the
+  /// agent then, [hasReplies]).
+  final Map<ItemId, String> queuedReplies;
 
   /// Worktrees the dispatcher may still create (`dispatcher.repo`), in the
   /// order it would; [WorktreeState.isNew].
@@ -1070,6 +1085,7 @@ final class DispatchPlan {
       ) &&
       _sameList(other.held.map((h) => '${h.item.id}:${h.reason}'), held.map((h) => '${h.item.id}:${h.reason}')) &&
       _sameList(other.problems.map(_problemKey), problems.map(_problemKey)) &&
+      _sameList(other.queuedReplies.keys, queuedReplies.keys) &&
       _sameList(other.worktrees.map(_worktreeKey), worktrees.map(_worktreeKey)) &&
       _sameList(other.runs.map(_runKey), runs.map(_runKey)) &&
       _sameList(other.pending.map(_pendingKey), pending.map(_pendingKey));

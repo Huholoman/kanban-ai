@@ -75,6 +75,7 @@ class _AgentPanelState extends State<AgentPanel> {
     final held = dispatch.plan.heldReason(id);
     final waiting = dispatch.plan.waitingReason(id);
     final queued = dispatch.pendingActionsFor(id);
+    final reply = dispatch.plan.queuedReplyOf(id);
     final log = _log;
     final hasLog = log?.hasLog ?? false;
     final running = run != null || (log?.running ?? false);
@@ -165,6 +166,23 @@ class _AgentPanelState extends State<AgentPanel> {
                 ),
             ],
           ),
+          if (reply != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                children: [
+                  Icon(Icons.schedule, size: 16, color: tokens.accent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'A message waits: $reply',
+                      key: const ValueKey('agent-reply-queued'),
+                      style: small?.copyWith(color: tokens.accent),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           for (final pending in queued)
             Padding(
               padding: const EdgeInsets.only(top: 6),
