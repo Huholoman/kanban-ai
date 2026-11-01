@@ -34,7 +34,12 @@ Screen workflowScreen(ConfigFileScreen file) {
         ),
         MenuEntry(
           'ID prefix',
-          detail: '${s.idPrefix}: new items get ids like ${s.idPrefix}-${'7f3a2b9c1d0e'.substring(0, s.idLength ?? 4)}',
+          detail: switch (s.idLength) {
+            // The example only for a valid length: the draft may hold any number.
+            final length? when length >= 3 && length <= 12 =>
+              '${s.idPrefix}: new items get ids like ${s.idPrefix}-${'7f3a2b9c1d0e'.substring(0, length)}',
+            _ => s.idPrefix,
+          },
           onSelect: (navigator) => _prompt(
             navigator,
             'ID prefix',

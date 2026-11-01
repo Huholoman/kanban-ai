@@ -246,6 +246,15 @@ void main() {
     expect(driver.last, contains('240 minutes'));
   });
 
+  test('a file with an invalid id length still opens the workflow page', () async {
+    config().writeAsStringSync(config().readAsStringSync().replaceFirst(RegExp(r'length: 4\b'), 'length: 16'));
+    final driver = Driver([...openWorkflow, ctrlC]);
+    final (code, err) = await run(['config'], driver);
+    expect(code, 0, reason: err);
+    expect(driver.last, contains('16 characters after the prefix'));
+    expect(driver.last, isNot(contains('new items get ids like')));
+  });
+
   test('the server settings: port and a generated token', () async {
     final server = p.join(workspace.path, 'server.yaml');
     final driver = Driver([
