@@ -4,11 +4,12 @@ import 'package:backlog_core/backlog_core.dart';
 import '../render/text_output.dart';
 import 'backlog_command.dart';
 
-/// Shared by `comment` and `ask`: `<id> <text…>`, text `-` reads stdin, the
-/// author is `--as`, `$BACKLOG_AGENT` or `$USER`.
+/// Shared by `comment` and `ask`: `<id> <text…>`, text `-` reads stdin,
+/// `--file` a file; the author is `--as`, `$BACKLOG_AGENT` or `$USER`.
 abstract class _DiscussionCommand extends BacklogCommand {
   _DiscussionCommand(super.context) {
     argParser.addOption('as', help: 'Author (default: \$BACKLOG_AGENT, else \$USER).', valueHelp: 'name');
+    addTextFileOption();
   }
 
   bool get question;
@@ -17,20 +18,19 @@ abstract class _DiscussionCommand extends BacklogCommand {
   bool get note => false;
 
   @override
-  String get invocation => 'backlog $name <id> "<text>"   (text - reads standard input)';
+  String get invocation => 'backlog $name <id> ("<text>" | --file <path>)   (text - or --file - reads standard input)';
 
   @override
   Future<int> run() async {
-    if (args.rest.length < 2) throw UsageException('Expected an item id and the text.', usage);
+    if (args.rest.isEmpty || (args.rest.length < 2 && args.option('file') == null)) {
+      throw UsageException('Expected an item id and the text (or --file).', usage);
+    }
     final author =
         args.option('as') ??
         context.environment['BACKLOG_AGENT'] ??
         context.environment['USER'] ??
         (throw UsageException('Say who you are: --as <name> or BACKLOG_AGENT.', usage));
-    final words = args.rest.skip(1).toList();
-    final text = words.length == 1 && words.single == '-'
-        ? await (context.readInput ?? (throw UsageException('No standard input to read.', usage)))()
-        : words.join(' ');
+    final text = await textOf(args.rest.skip(1).toList());
     final backlog = await openBacklog();
     final item = await backlog.items.comment(
       args.rest.first,
@@ -106,6 +106,7 @@ final class ReviewCommand extends BacklogCommand {
         help: 'The reviewed commit (default: the head of the item\'s branch here).',
         valueHelp: 'rev',
       );
+    addTextFileOption();
   }
 
   @override
@@ -118,7 +119,8 @@ final class ReviewCommand extends BacklogCommand {
 
   @override
   String get invocation =>
-      'backlog review <id> (--ok ["<summary>"] | --changes "<summary and numbered findings>")   (text - reads standard input)';
+      'backlog review <id> (--ok ["<summary>"] | --changes "<summary and numbered findings>") [--file <path>]   '
+      '(text - or --file - reads standard input)';
 
   @override
   Future<int> run() async {
@@ -130,10 +132,7 @@ final class ReviewCommand extends BacklogCommand {
         context.environment['BACKLOG_AGENT'] ??
         context.environment['USER'] ??
         (throw UsageException('Say who you are: --as <name> or BACKLOG_AGENT.', usage));
-    final words = args.rest.skip(1).toList();
-    final text = words.length == 1 && words.single == '-'
-        ? await (context.readInput ?? (throw UsageException('No standard input to read.', usage)))()
-        : words.join(' ');
+    final text = await textOf(args.rest.skip(1).toList());
     final backlog = await openBacklog();
     final outcome = await ReviewRecorder(environment: context.environment.isEmpty ? null : context.environment).record(
       backlog,

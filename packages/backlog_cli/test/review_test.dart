@@ -83,6 +83,16 @@ void main() {
 
   tearDown(() => workspace.delete(recursive: true));
 
+  test('takes the review from a file with --file', () async {
+    final id = await newItem('Export CSV', branch: 'agent/work');
+    Directory(p.join(repo, '.kanban-ai')).createSync();
+    File(p.join(repo, '.kanban-ai', 'review.md')).writeAsStringSync('One problem.\n\n1. No test.\n');
+    final reviewed = await backlog(['--json', 'review', id, '--changes', '--file', '.kanban-ai/review.md']);
+    expect(reviewed.code, 0, reason: reviewed.err);
+    final last = ((jsonDecode(reviewed.out) as Map)['discussion'] as List).last as Map;
+    expect((last['review'], last['text']), ('changes', 'One problem.\n\n1. No test.'));
+  });
+
   test('records the verdict with the head of the item\'s branch; it is no reply and no answer', () async {
     final id = await newItem('Export CSV', branch: 'agent/work');
     final head = await git(repo, ['rev-parse', 'agent/work']);
