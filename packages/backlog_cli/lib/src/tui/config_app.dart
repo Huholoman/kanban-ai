@@ -1,6 +1,7 @@
 import 'package:backlog_core/backlog_core.dart';
 import 'package:dart_tui/dart_tui.dart' show Cmd;
 
+import 'appearance_page.dart';
 import 'doctor_page.dart';
 import 'project_pages.dart';
 import 'projects_page.dart';
@@ -173,7 +174,15 @@ MenuEntry _projectEntry(String label, String root, String? name, {String? proble
               onSelect: (_) => openClaims(root),
             ),
             MenuEntry('Lint', detail: 'problems of the backlog, with fixes', onSelect: (_) => openLint(root)),
-            const MenuEntry('Appearance', detail: 'not yet: colours of the board', enabled: false),
+            MenuEntry(
+              'Appearance',
+              detail: 'colours of the web board: mode, palettes, status/priority/type/label colours',
+              enabled: screen.draft.isYaml,
+              onSelect: (navigator) {
+                navigator.push(appearanceScreen(screen));
+                return null;
+              },
+            ),
             const MenuEntry('Dispatcher', detail: 'not yet: agents, worktrees, actions, pull requests', enabled: false),
           ],
         ),

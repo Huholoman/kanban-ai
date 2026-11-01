@@ -325,6 +325,27 @@ void main() {
     expect(broken.readAsStringSync(), contains('status: backlog'));
   });
 
+  test('colours a status and sets the mode on the appearance page', () async {
+    final driver = Driver([
+      ...openProjectEntry(4), // Appearance
+      down, down, down, enter, // Status colours
+      down, down, enter, ...type('#FB8C00'), enter, // in-progress
+      key(KeyCode.escape),
+      key(KeyCode.home), enter, down, down, enter, // Mode → dark
+      end, enter, char('y'), // Review and save
+      ctrlC,
+    ]);
+    final (code, err) = await run(['config'], driver);
+    expect(code, 0, reason: err);
+    expect(driver.showed('status in-progress      #fb8c00 (not saved yet).'), isTrue);
+    expect(driver.showed('Status: in-progress'), isTrue);
+    expect(driver.showed('Mode dark (not saved yet).'), isTrue);
+    expect(driver.showed('Saved ${config().path}.'), isTrue, reason: driver.last);
+    final appearance = parseWorkflowYaml(config().readAsStringSync()).appearance;
+    expect(appearance.mode, 'dark');
+    expect(appearance.statuses, {'in-progress': '#fb8c00'});
+  });
+
   test('the global part shows the project registry', () async {
     final registry = p.join(workspace.path, 'projects.yaml');
     File(registry).writeAsStringSync('projects:\n  - id: hb\n    name: Hobby\n    path: backlog\n    pinned: true\n');
