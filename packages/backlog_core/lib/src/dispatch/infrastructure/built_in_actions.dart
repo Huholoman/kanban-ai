@@ -6,7 +6,9 @@ import '../../planning/domain/planned_item.dart';
 import '../../workflow/domain/action_definition.dart';
 import '../../workflow/domain/dispatcher_config.dart';
 import '../domain/action_run.dart';
+import '../domain/preview.dart';
 import 'merge_action.dart';
+import 'preview_action.dart';
 
 /// What a built-in action gets to work with.
 final class BuiltInActionContext {
@@ -25,7 +27,12 @@ final class BuiltInActionContext {
     this.from,
     this.stateDir,
     this.project,
+    this.server,
   }) : _log = log;
+
+  /// The server the action runs in, to restart it; null when it cannot
+  /// (outside a server, or in tests).
+  final ServerControl? server;
 
   /// Why it runs: a person asked, or the item entered the `on_enter` status.
   final ActionTrigger trigger;
@@ -119,10 +126,14 @@ final class CommandOutput {
 /// How a built-in action ended: [ok] and one line for the item's
 /// discussion and the log.
 final class BuiltInActionResult {
-  const BuiltInActionResult({required this.ok, required this.summary});
+  const BuiltInActionResult({required this.ok, required this.summary, this.then});
 
   final bool ok;
   final String summary;
+
+  /// Runs once the action's run has ended and its note is written (e.g. a
+  /// restart of the server, which would interrupt the run).
+  final Future<void> Function()? then;
 }
 
 /// An action built into kanban-ai (`run: <name>` in `dispatcher.actions`).
@@ -141,7 +152,8 @@ abstract interface class BuiltInAction {
 /// here.
 abstract final class BuiltInActions {
   static final Map<String, BuiltInAction> standard = {
-    for (final action in <BuiltInAction>[const NoopAction(), const MergeAction()]) action.name: action,
+    for (final action in <BuiltInAction>[const NoopAction(), const MergeAction(), const PreviewAction()])
+      action.name: action,
   };
 }
 

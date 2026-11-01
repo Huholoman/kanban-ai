@@ -5,6 +5,7 @@ import '../domain/action_definition.dart';
 import '../domain/appearance.dart';
 import '../domain/dispatcher_config.dart';
 import '../domain/merge_config.dart';
+import '../domain/preview_config.dart';
 import '../domain/workflow.dart';
 
 /// Parses the `backlog.yaml` format into a [Workflow].
@@ -99,6 +100,7 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
     'actions',
     'pr',
     'merge',
+    'preview',
     'allow',
     'deny',
   };
@@ -132,6 +134,7 @@ DispatcherConfig? _dispatcher(Object? node, String origin) {
       ],
       pr: pr,
       merge: _merge(yaml['merge'], pr, origin),
+      preview: _preview(yaml['preview'], origin),
       allow: yaml['allow'] == null ? const [] : _strings(yaml['allow'], 'dispatcher.allow', origin),
       deny: yaml['deny'] == null ? const [] : _strings(yaml['deny'], 'dispatcher.deny', origin),
       prompt: prompt == null
@@ -269,6 +272,27 @@ MergeConfig? _merge(Object? node, PullRequestConfig? pr, String origin) {
         : _string(yaml['remote'], 'dispatcher.merge.remote', origin),
     command: _template(yaml['command'], 'dispatcher.merge.command', MergeConfig.placeholders, origin),
     cleanup: flag('cleanup', true),
+  );
+}
+
+/// `dispatcher.preview`: worktree, check, install, server and
+/// main_server; null without it.
+PreviewConfig? _preview(Object? node, String origin) {
+  if (node == null) return null;
+  final yaml = _map(node, 'dispatcher.preview', origin);
+  const known = {'worktree', 'check', 'install', 'server', 'main_server'};
+  for (final key in yaml.keys) {
+    if (!known.contains('$key')) {
+      throw ConfigurationException('unknown key "dispatcher.preview.$key" (expected ${known.join(', ')}).');
+    }
+  }
+  String? text(String key) => yaml[key] == null ? null : _string(yaml[key], 'dispatcher.preview.$key', origin);
+  return PreviewConfig(
+    worktree: text('worktree'),
+    check: _template(yaml['check'], 'dispatcher.preview.check', PreviewConfig.placeholders, origin),
+    install: _template(yaml['install'], 'dispatcher.preview.install', PreviewConfig.placeholders, origin),
+    server: text('server'),
+    mainServer: text('main_server'),
   );
 }
 
@@ -632,4 +656,15 @@ claims:
 #     # remote: origin      # default: pr.remote, else origin
 #     # command: [./ship.sh, "{branch}"]   # strategy command; exit 0 = merged
 #     cleanup: true         # remove branch and created worktree afterwards
+#   # How the built-in action preview deploys an item locally (a button,
+#   # e.g. "Deploy locally" with statuses: [review] and run: preview): a
+#   # copy of its branch rebased onto base in the worktree next to the
+#   # primary clone, check, install, then the server restarts from server;
+#   # "Back to main" on the board restarts it with main_server.
+#   # preview:
+#   #   worktree: "{repo}-preview"
+#   #   check: [sh, -c, "mise run get && mise run check"]
+#   #   install: [mise, run, install-dev]
+#   #   server: backlog-server-dev     # default: no restart
+#   #   main_server: backlog-server    # default: the program the server runs as
 ''';

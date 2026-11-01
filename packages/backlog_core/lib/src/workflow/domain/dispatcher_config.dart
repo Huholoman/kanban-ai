@@ -3,6 +3,7 @@ import 'package:path/path.dart' as p;
 import '../../shared/errors.dart';
 import 'action_definition.dart';
 import 'merge_config.dart';
+import 'preview_config.dart';
 
 /// Whether the dispatcher starts agents by itself or waits for a person.
 enum DispatchMode {
@@ -379,6 +380,7 @@ final class DispatcherConfig {
     Map<String, AgentProfile>? profiles,
     PullRequestConfig? pr,
     MergeConfig? merge,
+    PreviewConfig? preview,
     List<String> allow = const [],
     List<String> deny = const [],
   }) {
@@ -458,6 +460,7 @@ final class DispatcherConfig {
       Map.unmodifiable(usable),
       pr,
       mergeConfig,
+      preview ?? PreviewConfig(),
       List.unmodifiable(allow),
       List.unmodifiable(deny),
     );
@@ -476,6 +479,7 @@ final class DispatcherConfig {
     this.profiles,
     this.pr,
     this.merge,
+    this.preview,
     this.allow,
     this.deny,
   );
@@ -655,6 +659,11 @@ final class DispatcherConfig {
   /// to strategy `pr` with [pr], else `local`).
   final MergeConfig merge;
 
+  /// How the built-in action `preview` deploys an item locally
+  /// (`dispatcher.preview`; defaults: worktree `{repo}-preview`, no check,
+  /// no install, no restart).
+  final PreviewConfig preview;
+
   /// The command of [agent].
   CommandTemplate get command => agent.command;
 
@@ -684,6 +693,7 @@ final class DispatcherConfig {
     profiles,
     pr,
     merge,
+    preview,
     allow,
     deny,
   );

@@ -493,7 +493,10 @@ dispatcher:
       rejects('{name: A, prompt: x, auto_fix: 2}', 'auto_fix only applies to a review');
       rejects('{name: A, review: true, auto_fix: -1}', 'auto_fix must be 0 or more rounds');
       rejects('{name: A, review: true, auto_fix: two}', 'auto_fix must be a number of rounds');
-      rejects('{name: A, run: "mise run check"}', 'unknown built-in action "mise run check" (known: noop, merge)');
+      rejects(
+        '{name: A, run: "mise run check"}',
+        'unknown built-in action "mise run check" (known: noop, merge, preview)',
+      );
       rejects('{name: A, prompt: x}, {name: A, run: noop}', 'Duplicate dispatcher action "A"');
       rejects('{name: A, prompt: x, on_enter: reviewed}', 'unknown status "reviewed"');
       rejects('{name: A, prompt: x, statuses: [todo, nope]}', 'unknown status "nope"');
