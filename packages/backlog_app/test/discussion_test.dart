@@ -4,6 +4,7 @@ import 'package:backlog_app/features/board/application/board_filter.dart';
 import 'package:backlog_app/features/board/presentation/item_card.dart';
 import 'package:backlog_app/features/dispatch/application/dispatch_controller.dart';
 import 'package:backlog_app/features/dispatch/presentation/dispatch_scope.dart';
+import 'package:backlog_app/features/item/application/drafts.dart';
 import 'package:backlog_app/features/item/application/item_body.dart';
 import 'package:backlog_app/features/item/presentation/item_page.dart';
 import 'package:backlog_app/shared/tokens.dart';
@@ -28,7 +29,7 @@ DispatchDto _plan({required String mode, bool session = true}) => DispatchDto(
   sessions: [if (session) const AgentSessionDto(item: 'Q-1', session: 'sess-q', worktree: 'w1')],
 );
 
-Future<FakeBacklogApi> _pump(WidgetTester tester, {DispatchDto? plan}) async {
+Future<FakeBacklogApi> _pump(WidgetTester tester, {DispatchDto? plan, Drafts? drafts, String reference = 'Q-1'}) async {
   tester.view.physicalSize = const Size(700, 1600);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -41,12 +42,13 @@ Future<FakeBacklogApi> _pump(WidgetTester tester, {DispatchDto? plan}) async {
   await tester.pumpWidget(
     AppScope(
       api: api,
+      drafts: drafts,
       child: MaterialApp(
         theme: BoardTokens.light.toTheme(Brightness.light),
         home: Scaffold(
           body: DispatchScope(
             controller: dispatch,
-            child: const ItemDetailView(reference: 'Q-1'),
+            child: ItemDetailView(key: ValueKey(reference), reference: reference),
           ),
         ),
       ),
@@ -125,6 +127,36 @@ void main() {
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(api.updates.last.$2.body, startsWith('Export as CSV.\n\n## Discussion\n\n### w1 ·'));
+  });
+
+  test('drafts are kept per project and item, blank text forgets them', () {
+    final store = InMemoryDraftStore();
+    final drafts = Drafts(store, 'a');
+    drafts.keepReply('Q-1', 'Half a thought');
+    expect(drafts.reply('Q-1'), 'Half a thought');
+    expect(drafts.reply('R-1'), isEmpty);
+    expect(drafts.of('b').reply('Q-1'), isEmpty, reason: 'another project');
+    expect(drafts.of(null).reply('Q-1'), isEmpty, reason: 'the single backlog');
+    drafts.keepReply('Q-1', '  \n');
+    expect(store.read('a/Q-1/reply'), isNull);
+  });
+
+  testWidgets('an unsent reply is back when the item is opened again, and gone once sent', (tester) async {
+    final drafts = Drafts(InMemoryDraftStore(), null);
+    await _pump(tester, drafts: drafts);
+    await tester.enterText(_key('reply-field'), 'CSV, because');
+    await tester.pump();
+
+    await _pump(tester, drafts: drafts, reference: 'R-1');
+    expect(tester.widget<TextField>(_key('reply-field')).controller!.text, isEmpty, reason: 'drafts are per item');
+
+    final api = await _pump(tester, drafts: drafts);
+    expect(tester.widget<TextField>(_key('reply-field')).controller!.text, 'CSV, because');
+    await tester.ensureVisible(_key('send-comment'));
+    await tester.tap(_key('send-comment'));
+    await tester.pumpAndSettle();
+    expect(api.discussions['Q-1']!.last.text, 'CSV, because');
+    expect(drafts.reply('Q-1'), isEmpty);
   });
 
   for (final mode in ['manual', 'auto']) {
