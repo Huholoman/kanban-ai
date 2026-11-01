@@ -47,6 +47,7 @@ final class DashboardSections {
     final questions = _each((d) => d.waitingForAnswer).toList();
     final approvals = _each((d) => d.toApprove).toList();
     final held = _each((d) => d.held).toList();
+    final problems = _each((d) => d.problems).toList();
     final expired = _each((d) => d.expiredClaims).toList();
     final worktrees = _each((d) => d.unavailableWorktrees).toList();
     final lint = [
@@ -55,8 +56,13 @@ final class DashboardSections {
     ];
     final clean = expired.isEmpty && worktrees.isEmpty && lint.isEmpty;
     return [
-      _Heading('Needs you', count: questions.length + approvals.length + held.length, key: const ValueKey('needs-you')),
-      if (questions.isEmpty && approvals.isEmpty && held.isEmpty && clean) const _Empty('Nothing waits for you.'),
+      _Heading(
+        'Needs you',
+        count: questions.length + approvals.length + problems.length + held.length,
+        key: const ValueKey('needs-you'),
+      ),
+      if (questions.isEmpty && approvals.isEmpty && problems.isEmpty && held.isEmpty && clean)
+        const _Empty('Nothing waits for you.'),
       if (questions.isNotEmpty) ...[
         _Subheading('Questions', count: questions.length),
         for (final (digest, item) in questions)
@@ -86,6 +92,21 @@ final class DashboardSections {
               if (item.branch case final branch?) Tag(branch, icon: Icons.alt_route),
             ],
             actions: _actions(digest, item),
+          ),
+      ],
+      if (problems.isNotEmpty) ...[
+        _Subheading('Problems', count: problems.length),
+        for (final (digest, entry) in problems)
+          _ItemRow(
+            key: _key(digest, 'problem-${entry.item}'),
+            digest: digest,
+            id: entry.item,
+            title: entry.title,
+            labelled: labelled,
+            onOpen: onOpen,
+            icon: Icons.error_outline,
+            iconColor: (tokens) => tokens.danger,
+            note: entry.problems.join('\n'),
           ),
       ],
       if (held.isNotEmpty) ...[

@@ -23,9 +23,12 @@ String sinceText(DateTime time, {DateTime? now}) {
   return '${two(local.hour)}:${two(local.minute)} ($ago)';
 }
 
-/// The dispatcher's view of one item in its detail: the agent working on it
-/// (worktree, since when, branch, its live log, *Stop*), why the dispatcher
-/// holds it back, or the log of its last run. Empty when none applies.
+/// The dispatcher's view of one item in its detail, its state at a glance:
+/// the agent working on it (worktree, since when, branch, the last line of
+/// its log, *Stop*), why the dispatcher holds it back or lets it wait, or
+/// how its last run ended — fine, or with problems that need a person —
+/// with the agent's final message; the log on demand. Empty when none
+/// applies.
 class AgentPanel extends StatefulWidget {
   const AgentPanel({super.key, required this.item});
 
@@ -74,8 +77,41 @@ class _AgentPanelState extends State<AgentPanel> {
     final queued = dispatch.pendingActionsFor(id);
     final log = _log;
     final hasLog = log?.hasLog ?? false;
-    if (run == null && held == null && waiting == null && !hasLog && queued.isEmpty) return const SizedBox.shrink();
-    final showLog = hasLog && (_showLogChoice ?? (run != null || (log?.running ?? false)));
+    final running = run != null || (log?.running ?? false);
+    final last = running ? null : log?.last;
+    final problems = running
+        ? const <String>[]
+        : (last?.problems.isNotEmpty ?? false)
+        ? last!.problems
+        : dispatch.plan.problemsOf(id);
+    if (run == null && held == null && waiting == null && !hasLog && queued.isEmpty && problems.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final showLog = hasLog && (_showLogChoice ?? running);
+    final (icon, color, text) = switch (run) {
+      final run? => (
+        Icons.smart_toy,
+        tokens.success,
+        '${_running(run)} since ${sinceText(run.startedAt)}${run.branch == null ? '' : ' · ${run.branch}'}',
+      ),
+      _ when held != null => (Icons.pause_circle_outline, tokens.warning, 'Held: $held'),
+      _ when waiting != null => (Icons.hourglass_empty, tokens.warning, 'Waiting for an agent: $waiting'),
+      _ when problems.isNotEmpty => (
+        Icons.error_outline,
+        tokens.danger,
+        'Needs you: the last run ended with ${problems.length == 1 ? 'a problem' : 'problems'}',
+      ),
+      _ when last != null => (
+        Icons.check_circle_outline,
+        tokens.success,
+        [
+          'Done · last run ended${last.endedAt == null ? '' : ' ${sinceText(last.endedAt!)}'}',
+          ?last.outcome,
+        ].join(' · '),
+      ),
+      _ => (Icons.smart_toy_outlined, tokens.muted, 'Agent · last run'),
+    };
+    final lastLine = run == null ? null : log?.lines.lastWhere((line) => line.trim().isNotEmpty, orElse: () => '');
     return Container(
       key: const ValueKey('agent-panel'),
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -90,29 +126,27 @@ class _AgentPanelState extends State<AgentPanel> {
         children: [
           Row(
             children: [
-              Icon(
-                run != null ? Icons.smart_toy : Icons.pause_circle_outline,
-                size: 18,
-                color: run != null ? tokens.success : tokens.warning,
-              ),
+              Icon(icon, size: 18, color: color),
               const SizedBox(width: 8),
               Expanded(
-                child: run != null
-                    ? Text(
-                        '${_running(run)} since ${sinceText(run.startedAt)}'
-                        '${run.branch == null ? '' : ' · ${run.branch}'}',
-                        key: const ValueKey('agent-running'),
-                        style: small?.copyWith(color: tokens.text),
-                      )
-                    : Text(
-                        held != null
-                            ? 'Held: $held'
-                            : waiting != null
-                            ? 'Waiting for an agent: $waiting'
-                            : 'Agent · last run',
-                        key: const ValueKey('agent-held'),
-                        style: small?.copyWith(color: tokens.text),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      text,
+                      key: ValueKey(run != null ? 'agent-running' : 'agent-held'),
+                      style: small?.copyWith(color: tokens.text),
+                    ),
+                    if (lastLine case final line? when line.isNotEmpty && !showLog)
+                      Text(
+                        line.trim(),
+                        key: const ValueKey('agent-last-line'),
+                        style: small?.copyWith(color: tokens.muted, fontFamily: 'monospace', fontSize: 11),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
+                  ],
+                ),
               ),
               if (hasLog)
                 LinkButton(
@@ -149,6 +183,21 @@ class _AgentPanelState extends State<AgentPanel> {
                 ],
               ),
             ),
+          if (problems.isNotEmpty)
+            Padding(
+              key: const ValueKey('agent-problems'),
+              padding: const EdgeInsets.only(left: 26, top: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final problem in problems) Text('• $problem', style: small?.copyWith(color: tokens.danger)),
+                ],
+              ),
+            ),
+          if (last?.result case final result?) ...[
+            const SizedBox(height: 8),
+            _FinalMessage(result, color: problems.isEmpty ? tokens.success : tokens.danger),
+          ],
           if (showLog && log != null) ...[const SizedBox(height: 8), AgentLogView(controller: log)],
         ],
       ),
@@ -181,5 +230,39 @@ class _AgentPanelState extends State<AgentPanel> {
       ),
     );
     if (confirmed == true) await stop(widget.item.id);
+  }
+}
+
+/// The agent's final message of its last run, selectable, with a stripe in
+/// [color] (how the run went); long messages scroll.
+class _FinalMessage extends StatelessWidget {
+  const _FinalMessage(this.text, {required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    final small = Theme.of(context).textTheme.bodySmall;
+    return Container(
+      key: const ValueKey('agent-result'),
+      constraints: const BoxConstraints(maxHeight: 240),
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        border: Border(left: BorderSide(color: color, width: 3)),
+      ),
+      padding: const EdgeInsets.fromLTRB(10, 6, 8, 6),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Last message of the agent', style: small?.copyWith(color: tokens.muted)),
+            const SizedBox(height: 2),
+            SelectableText(text, style: small?.copyWith(color: tokens.text, height: 1.4)),
+          ],
+        ),
+      ),
+    );
   }
 }

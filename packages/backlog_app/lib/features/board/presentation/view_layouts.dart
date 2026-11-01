@@ -8,11 +8,22 @@ import '../../../shared/item_style.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
 import '../../dispatch/presentation/action_buttons.dart';
+import '../../dispatch/presentation/agent_state_badge.dart';
 import '../application/column_arrangement.dart';
 import 'item_card.dart';
 
 typedef OpenItem = void Function(String id);
 typedef MoveItem = void Function(ItemDto item, String key);
+
+/// The dispatcher's controls of a card: whether the item needs a person,
+/// and its actions.
+Widget _cardMenu(ItemDto item, WorkflowDto? workflow) => Row(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    AgentStateBadge(item: item),
+    CardActionsMenu(item: item, workflow: workflow),
+  ],
+);
 
 /// Columns side by side; cards can be dragged between them when [onMove] is
 /// set. Inside a column, children are indented under their parent (see
@@ -153,7 +164,7 @@ class KanbanBoard extends StatelessWidget {
         onTap: () => onOpen(item.id),
         onLongPress: onLongPress,
         footer: toggle,
-        menu: CardActionsMenu(item: item, workflow: workflow),
+        menu: _cardMenu(item, workflow),
       );
       content = onMove == null || !draggable
           ? card
@@ -614,7 +625,7 @@ class GroupedItemList extends StatelessWidget {
                             showStatus: result.groupBy != 'status',
                             selected: item.id == selectedId,
                             onTap: () => onOpen(item.id),
-                            menu: CardActionsMenu(item: item, workflow: workflow),
+                            menu: _cardMenu(item, workflow),
                           ),
                           if (showDependencies && item.dependsOn.isNotEmpty)
                             Padding(

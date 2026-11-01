@@ -42,7 +42,11 @@ AgentRunDto _run(String item) => AgentRunDto(
   branch: 'agent/$item',
 );
 
-DispatchDto _plan({List<AgentRunDto> runs = const [], List<HeldItemDto> held = const []}) => DispatchDto(
+DispatchDto _plan({
+  List<AgentRunDto> runs = const [],
+  List<HeldItemDto> held = const [],
+  List<ProblemItemDto> problems = const [],
+}) => DispatchDto(
   configured: true,
   mode: 'manual',
   maxAgents: 2,
@@ -50,6 +54,7 @@ DispatchDto _plan({List<AgentRunDto> runs = const [], List<HeldItemDto> held = c
   capacity: 2 - runs.length,
   runs: runs,
   held: held,
+  problems: problems,
   worktrees: const [DispatchWorktreeDto(name: 'w2', path: '/w/w2', busy: false, unavailable: 'uncommitted changes')],
 );
 
@@ -93,7 +98,7 @@ void main() {
       defaultType: 'task',
     );
 
-    test('counts questions, approvals and held items as needing a person', () {
+    test('counts questions, approvals, problems and held items as needing a person', () {
       final digest = ProjectDigest(
         items: [
           item('T-1', needsHuman: true),
@@ -103,6 +108,9 @@ void main() {
         ],
         plan: _plan(
           held: const [HeldItemDto(item: 'T-5', title: 'T', reason: 'stopped')],
+          problems: const [
+            ProblemItemDto(item: 'T-6', title: 'T', problems: ['opening its pull request failed: no remote']),
+          ],
         ),
         lint: const [
           LintIssueDto(severity: 'error', code: 'x', message: 'broken'),
@@ -111,7 +119,8 @@ void main() {
       );
       expect(digest.waitingForAnswer.map((i) => i.id), ['T-1'], reason: 'finished items wait for nobody');
       expect(digest.toApprove.map((i) => i.id), ['T-2']);
-      expect(digest.needsMe, 3);
+      expect(digest.problems.map((p) => p.item), ['T-6']);
+      expect(digest.needsMe, 4);
       expect(digest.expiredClaims.map((i) => i.id), ['T-4']);
       expect((digest.lintErrors, digest.lintWarnings), (1, 1));
       expect(digest.unavailableWorktrees.map((w) => w.name), ['w2']);
