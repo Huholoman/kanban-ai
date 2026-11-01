@@ -417,7 +417,7 @@ One server hosts several backlogs (*projects*): either every project of the regi
 | `--host` | | `0.0.0.0` | addresses to bind, repeatable or comma-separated (e.g. `127.0.0.1,10.77.1.2`) |
 | `-p`, `--port` | | `8640` | |
 | `--allow` | `BACKLOG_ALLOW` | everyone | client IPs / CIDR ranges allowed; others get 403 |
-| `--token` | `BACKLOG_TOKEN` | none | require `Authorization: Bearer <t>` or `?token=` on `/api/` |
+| `--token` | `BACKLOG_TOKEN` | none | require `Authorization: Bearer <t>` or `?token=` on `/api/` and `/mcp` (§8.3) |
 | `--generate-token` | | | random 22-char token, printed at start inside the URLs |
 | `--web` | `BACKLOG_WEB` | built app next to the sources / bundled in Nix | static web app |
 | `-q` | | | no request log |
@@ -550,6 +550,26 @@ Two servers hosting the same project share `$STATE` and would both look after it
 
 **Manual start and stop** go through the API (§8.1) and the board (§9): a start re-plans first, takes the worktree of the session it continues or else the first free worktree (even one the plan proposes for a more urgent item) and launches as above; any ready item can start while fewer than `max_agents` run and a worktree is free or can be created — the proposals of other items reserve nothing. It works in `auto` mode too. Every published plan is also sent as a `dispatch` event over the project's WebSocket.
 
+### 8.3 MCP — `/mcp`
+
+The server speaks the Model Context Protocol (streamable HTTP, revisions `2025-06-18`, `2025-03-26` and `2024-11-05`) at `POST /mcp`, for clients without a shell (Claude desktop or mobile, other MCP clients); agents in worktrees keep using the CLI. It is stateless: every request carries one JSON-RPC 2.0 message, a request is answered with one `application/json` response (no session id, no server-sent events, so `GET` is 405), and notifications and responses of the client get 202. It knows `initialize` (the client's revision when supported, else the newest; capabilities `tools`; `instructions` — how to work with the tools), `ping`, `tools/list` and `tools/call`; another method is the JSON-RPC error -32601, an unknown tool -32602, a body that is not JSON 400 with -32700. The token and `--allow` apply as on `/api/` (a client that can only take a URL passes `?token=`); a request with an `Origin` header other than its own `Host` (a web page of another site in a browser) is refused with 403.
+
+One endpoint serves every project: each tool except `projects` and `instructions` takes an optional `project` (an id of `/api/projects`, default: the default project). Results are the JSON of the REST API (§8.1) as text content; what the backlog refuses (an unknown project or item, a claim held by somebody else, a missing argument, a broken `backlog.yaml`) is a result with `isError: true` and the message, as `backlog` prints it.
+
+| Tool | Arguments | Does / returns |
+|---|---|---|
+| `projects` | | the projects as `GET /api/projects` |
+| `instructions` | | the text of `initialize`'s `instructions` |
+| `ready` | `project?` | the items of `backlog ready`, most urgent first (`[item]`) |
+| `show` | `id`, `project?` | the item's detail as `GET /api/items/<id>` (a reference as in the CLI) |
+| `next` | `agent?`, `project?` | claims the most urgent ready item as `backlog next` and returns its detail; `Nothing ready.` otherwise |
+| `claim` | `id`, `agent?`, `force?`, `project?` | as `backlog claim` |
+| `release` | `id`, `agent?`, `status?`, `force?`, `project?` | as `backlog release` |
+| `done` | `id`, `agent?`, `status?`, `force?`, `project?` | as `backlog done` |
+| `comment` | `id`, `text`, `author?`, `question?`, `project?` | as `backlog comment` (`question: true` as `backlog ask`) |
+
+`agent` and `author` default to `mcp`. Tools that only read are marked `readOnlyHint`.
+
 ## 9. Web board## 9. Web board
 
 URL parameters: `?token=…`, `&as=<name>` (agent name used when claiming from the UI, default `web`), `&server=http://…` (another API server).
@@ -638,7 +658,7 @@ Dart pub workspace (`backlog_core`, `backlog_cli`, `backlog_api`, `backlog_serve
 - **backlog_core** — hexagonal modules `workflow`, `items`, `claims`, `planning`, `dispatch`, `views`, `validation`, `projects` (the registry: `ProjectRegistry`, port `ProjectRegistryStore`, `ProjectService`, YAML store); pure `domain/`, use cases in `application/`, file-system adapters in `infrastructure/`; `storage` (port `BacklogStorage`: where a backlog is kept — configuration, action requests, the stores of items, claims, views and item history, and its changes (port `ChangeSource`, `FolderChangeSource` watches a folder); `FileBacklogStorage` is the folder; every storage passes the shared contract tests `test/storage_contract.dart`); `Backlog.connect` is the composition root over a storage (`Backlog.open` over a folder); derived state lives in `BacklogSnapshot`; `DispatchPlan` (pure) turns a snapshot into assignments, `Dispatcher` re-plans on changes and hands them to the `AgentLauncher` port, implemented by `ProcessAgentLauncher` (detached processes, state under `$STATE`; also the commands and `BuiltInAction`s of actions) behind `WorktreeProvisioner` (worktrees on demand: records, `git worktree add`, cleanup); actions: `ActionDefinition` (workflow), `DispatchPlan.actionStart` (where one runs), `ActionState` (status hooks, port `ActionStateStore`) and `ActionRequests` (requests of the CLI); `settings` (editing configuration files: `ConfigDraft` — edits through `yaml_edit`, key paths, typed values, `diffHunks` — port `ConfigFile`, use case `ConfigEditor` — open, problem, save with a check for changes made meanwhile — and the file adapter with `projectConfigEditor` / `registryConfigEditor`).
 - **backlog_cli** — thin adapter; text and JSON renderers; `tui/` — the terminal UI of `backlog config` on [`dart_tui`](https://pub.dev/packages/dart_tui) (Elm-style Model–Update–View; its `Program` owns the terminal, raw mode, key decoding and rendering): the `Navigator` model is a stack of `Screen`s (file I/O runs as commands through `Navigator.task`), widgets over its components — `MenuScreen` (`ListModel`), `PromptScreen` (`TextInputModel`), `TextScreen` and the shared `ReviewScreen` (`ViewportModel`), `ConfirmScreen`; pages in `config_app.dart` and `workflow_pages.dart` (over `WorkflowSettings` of the core module `settings`).
 - **backlog_api** — DTOs, `BacklogApi` and `ProjectsApi` interfaces, `HttpBacklogApi`, `HttpProjectsApi` (pure Dart, compiles for the web).
-- **backlog_server** — shelf: `ProjectHub` (hosted projects, `/api/p/<id>` routing, `/api/projects`) with a `HostedProject` per backlog (`BacklogHost`, the `ChangeSource` of its storage → its WebSocket and dispatcher, `ApiHandler` + `DtoMapper`), `RegistryWatcher` (live registry), middleware (token, client allowlist, CORS), multi-address binding.
+- **backlog_server** — shelf: `ProjectHub` (hosted projects, `/api/p/<id>` routing, `/api/projects`) with a `HostedProject` per backlog (`BacklogHost`, the `ChangeSource` of its storage → its WebSocket and dispatcher, `ApiHandler` + `DtoMapper`), `RegistryWatcher` (live registry), `McpHandler` + `McpTools` (MCP at `/mcp` over the `ProjectHub`, §8.3), middleware (token, client allowlist, CORS), multi-address binding.
 - **backlog_app** — features `board`, `item`, `projects` (`ProjectsController` picks the open project; one session per project) and `dispatch` (`DispatchController`: the plan, Start, Stop and actions, shared by the board and the detail through `DispatchScope`), each with `application/` (ChangeNotifier controllers and pure logic: `BoardFilter`, `ColumnArrangement`, `DetailNavigation`; shared design tokens in `shared/tokens.dart`) and `presentation/`; depends only on `ProjectsApi` and `BacklogApi`.
 
 Development: `mise run check` (format check, analysis, all tests), `mise run playground` (demo backlog), `mise run serve`.

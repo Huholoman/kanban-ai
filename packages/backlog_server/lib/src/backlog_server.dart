@@ -9,6 +9,8 @@ import 'http/client_filter.dart';
 import 'http/compression.dart';
 import 'http/middleware.dart';
 import 'http/web_app.dart';
+import 'mcp/mcp_handler.dart';
+import 'mcp/mcp_tools.dart';
 import 'projects/hosted_project.dart';
 import 'projects/project_hub.dart';
 import 'projects/registry_watcher.dart';
@@ -134,10 +136,12 @@ final class BacklogServer {
     void Function(String message)? log,
   }) {
     final api = compressResponses()(projects.handler);
+    final mcp = McpHandler(McpTools(projects)).handler;
     final web = webRoot != null && Directory(webRoot).existsSync() ? webAppHandler(webRoot) : null;
 
     FutureOr<Response> route(Request request) {
       if (request.url.path.startsWith('api/')) return api(request);
+      if (request.url.path == 'mcp') return mcp(request);
       if (web != null) return web(request);
       return Response.notFound('No web app built; run `flutter build web` in packages/backlog_app.');
     }
