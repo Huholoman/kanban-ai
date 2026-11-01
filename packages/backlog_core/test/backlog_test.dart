@@ -186,6 +186,13 @@ void main() {
       expect(p.relative((await backlog.items.locate('0001'))!, from: backlog.root), 'items/T-0001-old.md');
       expect(File(p.join(backlog.root, 'items', 'T-0001-old.md')).readAsStringSync(), contains('status: todo'));
 
+      await backlog.claims.release('0003', status: 'todo', force: true);
+      expect(
+        p.relative((await backlog.items.locate('0003'))!, from: backlog.root),
+        'items/T-0003-recent.md',
+        reason: 'any change through the tool that makes it unfinished moves it back',
+      );
+
       expect(await backlog.items.restore('abcd'), isTrue);
       expect(File(p.join(backlog.root, 'items', 'T-abcd-with-attachments', 'screenshot.png')).existsSync(), isTrue);
       expect(await backlog.items.restore('abcd'), isFalse);

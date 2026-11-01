@@ -50,7 +50,12 @@ final class FileBacklogStorage implements BacklogStorage {
       ItemDefaults(type: workflow.defaultType, status: workflow.defaultStatus, priority: workflow.defaultPriority),
     );
     return BacklogStores(
-      items: FileSystemItemRepository(layout, codec, cache: cacheItems),
+      items: FileSystemItemRepository(
+        layout,
+        codec,
+        cache: cacheItems,
+        archivable: (item) => workflow.categoryOf(item.status) == StatusCategory.done,
+      ),
       claims: FileSystemClaimStore(layout, defaultLease: workflow.claimLease),
       views: YamlViewRepository(layout),
       revisions: const GitItemRevisions(),

@@ -30,8 +30,13 @@ import 'markdown_item_codec.dart';
 /// settles and parsed again only when its text differs. Writes through [save]
 /// drop the file from the cache.
 final class FileSystemItemRepository implements ItemRepository {
-  FileSystemItemRepository(this._layout, this._codec, {bool cache = false, this.settle = const Duration(seconds: 3)})
-    : _cache = cache ? {} : null;
+  FileSystemItemRepository(
+    this._layout,
+    this._codec, {
+    bool cache = false,
+    this.settle = const Duration(seconds: 3),
+    this.archivable,
+  }) : _cache = cache ? {} : null;
 
   final BacklogLayout _layout;
   final MarkdownItemCodec _codec;
@@ -44,6 +49,11 @@ final class FileSystemItemRepository implements ItemRepository {
   /// How much older than the read a file's times must be for its stamp to be
   /// trusted (see the class documentation).
   final Duration settle;
+
+  /// Whether an item may stay in the archive (it is finished); [save] moves
+  /// an archived item for which it is false back out of it, whoever changes
+  /// the item. Without it items stay where they are.
+  final bool Function(Item item)? archivable;
 
   /// Files parsed since this repository was created (for tests and
   /// diagnostics of the cache).
@@ -147,6 +157,10 @@ final class FileSystemItemRepository implements ItemRepository {
     await writeAtomically(file, content);
     _cache?.remove(file.path);
     _paths[item.id] = file.path;
+    if (p.isWithin(_layout.archiveDir, file.path) && archivable?.call(item) == false) {
+      _archived.add(item.id);
+      await _move(item.id, file.path, archived: false);
+    }
   }
 
   @override
@@ -161,6 +175,10 @@ final class FileSystemItemRepository implements ItemRepository {
     final path = _paths[id];
     if (path == null) throw NotFoundException('No item $id.');
     if (_archived.contains(id) == archived) return;
+    await _move(id, path, archived: archived);
+  }
+
+  Future<void> _move(ItemId id, String path, {required bool archived}) async {
     // An item with attachments moves with its folder.
     final entry = p.basename(path) == 'index.md' ? p.dirname(path) : path;
     final target = p.join(archived ? _layout.archiveDir : _layout.itemsDir, p.basename(entry));
