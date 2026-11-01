@@ -140,6 +140,7 @@ final class ActionDefinition {
   /// the base, change nothing, finish with `backlog review`. [extra] (the
   /// rendered [prompt]) is added as further instructions.
   static String reviewTask(Map<String, String> values, {String? extra}) {
+    const reviewFolder = DispatcherConfig.scratchFolder;
     final id = values['id']!, branch = values['branch']!, base = values['base']!;
     final pr = values['pr'] ?? '';
     return 'Review the work on backlog item $id: the changes of branch $branch against $base '
@@ -152,16 +153,18 @@ final class ActionDefinition {
         '3. documentation: user documentation and specifications updated as the project\'s rules require;\n'
         '4. security: injection, secrets, unsafe defaults, destructive operations;\n'
         '5. scope: unrelated changes, needless complexity.\n'
-        'Change nothing: no edits, no commits, no pushes, no changes to the item\'s fields or status. You approve '
-        'nothing; a person decides and merges.\n'
+        'Change nothing: no edits (except the review file below), no commits, no pushes, no changes to the item\'s '
+        'fields or status. You approve nothing; a person decides and merges.\n'
         '${extra == null || extra.trim().isEmpty ? '' : '\nAlso: ${extra.trim()}\n'}'
         '\nFinish with exactly one of\n'
         '  backlog review $id --ok "<what you checked, in one or two sentences>"\n'
-        '  backlog review $id --changes "<a one-line summary, a blank line, then the findings as a numbered list, '
-        'one per line: 1. <file:line> – what is wrong and what to do>"\n'
-        'The text may span several lines (or give - and pipe it in). Only real problems are findings; leave out '
-        'matters of taste. That review is your only comment on the item; write it in the language the people in the '
-        'item use.';
+        '  backlog review $id --changes --file $reviewFolder/review-$id.md\n'
+        'For --changes first write the review with your Write tool to $reviewFolder/review-$id.md in this worktree '
+        '(git ignores $reviewFolder/): a one-line summary, a blank line, then the findings as a numbered list, one '
+        'per line: 1. <file:line> – what is wrong and what to do. Keep every command on one line: a command with '
+        'line breaks (a long text, a here-document) is denied and the review is lost. Only real problems are '
+        'findings; leave out matters of taste. That review is your only comment on the item; write it in the '
+        'language the people in the item use.';
   }
 
   /// Whether items in [status] show the action as a button.
