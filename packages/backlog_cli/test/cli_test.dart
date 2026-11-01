@@ -219,6 +219,9 @@ void main() {
     expect(await ids(['-w', 'status!=todo', '--all']), unorderedEquals([b, c]));
     expect(await ids(['-s', 'done']), [b]);
     expect(await ids(['-w', 'title~a', '--all']), [a]);
+    expect(await ids(['-w', 'created<1h']), unorderedEquals([a, c]));
+    expect(await ids(['-w', 'created>1h']), isEmpty);
+    expect((await backlog(['list', '-w', 'created<soon'])).exitCode, ExitCode.usage);
   });
 
   test('views: list, kanban and json groups', () async {

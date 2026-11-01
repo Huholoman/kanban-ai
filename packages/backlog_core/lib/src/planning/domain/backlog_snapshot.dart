@@ -101,6 +101,7 @@ final class BacklogSnapshot {
         ],
         review: review,
         reviewedHead: head != null && (review == ReviewState.ok || review == ReviewState.changes),
+        at: now,
       );
     }
 

@@ -792,6 +792,24 @@ dispatcher:
       expect(ids(run('{created: {not: [2026-10-31]}}')), ['T-3']);
     });
 
+    test('within and older filter created/updated by age, from when the snapshot was taken', () {
+      final aged = snapshotOf([
+        item('T-1', created: '2026-10-29T11:00:00Z'),
+        item('T-2', created: '2026-10-25'),
+        item('T-3', created: '2026-09-01T08:00:00Z'),
+        item('T-4'),
+      ], now: DateTime.utc(2026, 10, 29, 12));
+      ViewResult run(String filter) => ViewEngine.evaluate(parseViewYaml('v', 'filter: $filter'), aged);
+      expect(ids(run('{created: {within: 2h}}')), ['T-1']);
+      expect(ids(run('{created: {within: 1w}}')), unorderedEquals(['T-1', 'T-2']));
+      expect(ids(run('{created: {older: 30d}}')), ['T-3']);
+      expect(ids(run('{not: {created: {within: 30d}}}')), unorderedEquals(['T-3', 'T-4']));
+      expect(() => parseViewYaml('v', 'filter: {created: {within: soon}}'), throwsA(isA<ConfigurationException>()));
+      expect(FieldAge.parseAge('90m'), const Duration(minutes: 90));
+      expect(FieldAge.parseAge('2W'), const Duration(days: 14));
+      expect(FieldAge.parseAge('7'), isNull);
+    });
+
     test('kanban groups by workflow statuses and counts hidden items', () {
       final result = ViewEngine.evaluate(
         parseViewYaml('board', 'layout: kanban\ngroup_by: status\ncolumns: [todo, in-progress]'),
