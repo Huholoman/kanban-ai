@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../../infrastructure/backlog_layout.dart';
+import '../../shared/errors.dart';
 import '../../shared/slug.dart';
 import '../domain/item.dart';
 import '../domain/item_id.dart';
@@ -10,7 +11,8 @@ import '../domain/item_repository.dart';
 import 'markdown_item_codec.dart';
 
 /// Items as `items/<id>-<slug>.md`, or `items/<id>-<slug>/index.md` when an
-/// item needs attachments next to it.
+/// item needs attachments next to it; archived items the same way in
+/// `archive/`.
 ///
 /// The id inside the front matter is the source of truth; the file name is
 /// only a convenience and is never renamed.
@@ -34,6 +36,7 @@ final class FileSystemItemRepository implements ItemRepository {
   final BacklogLayout _layout;
   final MarkdownItemCodec _codec;
   final Map<ItemId, String> _paths = {};
+  final Set<ItemId> _archived = {};
 
   /// Parsed files by path; null without caching.
   final Map<String, _CachedFile>? _cache;
@@ -47,7 +50,8 @@ final class FileSystemItemRepository implements ItemRepository {
   int get parsed => _parsed;
   int _parsed = 0;
 
-  /// Reads every item file (only the changed ones with [cache]).
+  /// Reads every item file, archived ones too (only the changed ones with
+  /// [cache]).
   ///
   /// Listing and reading are synchronous on purpose: for thousands of small
   /// files the asynchronous calls cost several times more than the reading
@@ -59,6 +63,7 @@ final class FileSystemItemRepository implements ItemRepository {
     final items = <Item>[];
     final problems = <LoadProblem>[];
     _paths.clear();
+    _archived.clear();
     final cache = _cache;
     final List<File> files;
     try {
@@ -72,7 +77,10 @@ final class FileSystemItemRepository implements ItemRepository {
       final (item, problem) = cache == null ? _uncached(file) : _cached(cache, file, readAt);
       if (item != null) {
         items.add(item);
-        _paths.putIfAbsent(item.id, () => file.path);
+        if (!_paths.containsKey(item.id)) {
+          _paths[item.id] = file.path;
+          if (p.isWithin(_layout.archiveDir, file.path)) _archived.add(item.id);
+        }
       } else if (problem != null) {
         problems.add(LoadProblem(_layout.relative(file.path), problem));
       }
@@ -81,7 +89,7 @@ final class FileSystemItemRepository implements ItemRepository {
       final present = {for (final file in files) file.path};
       cache.removeWhere((path, _) => !present.contains(path));
     }
-    return ItemCatalog(items, problems);
+    return ItemCatalog(items, problems, Set.unmodifiable(_archived));
   }
 
   (Item?, String?) _uncached(File file) {
@@ -147,8 +155,33 @@ final class FileSystemItemRepository implements ItemRepository {
     return _paths[id];
   }
 
-  List<File> _itemFiles() {
-    final dir = Directory(_layout.itemsDir);
+  @override
+  Future<void> setArchived(ItemId id, {required bool archived}) async {
+    await load();
+    final path = _paths[id];
+    if (path == null) throw NotFoundException('No item $id.');
+    if (_archived.contains(id) == archived) return;
+    // An item with attachments moves with its folder.
+    final entry = p.basename(path) == 'index.md' ? p.dirname(path) : path;
+    final target = p.join(archived ? _layout.archiveDir : _layout.itemsDir, p.basename(entry));
+    if (FileSystemEntity.typeSync(target, followLinks: false) != FileSystemEntityType.notFound) {
+      throw InvalidInputException('Cannot move $id: ${_layout.relative(target)} exists already.');
+    }
+    await Directory(p.dirname(target)).create(recursive: true);
+    if (entry == path) {
+      await File(entry).rename(target);
+    } else {
+      await Directory(entry).rename(target);
+    }
+    _cache?.remove(path);
+    _paths[id] = entry == path ? target : p.join(target, 'index.md');
+    archived ? _archived.add(id) : _archived.remove(id);
+  }
+
+  List<File> _itemFiles() => [..._filesIn(_layout.itemsDir), ..._filesIn(_layout.archiveDir)];
+
+  List<File> _filesIn(String path) {
+    final dir = Directory(path);
     if (!dir.existsSync()) return const [];
     final files = <File>[];
     for (final entity in dir.listSync(followLinks: false)) {

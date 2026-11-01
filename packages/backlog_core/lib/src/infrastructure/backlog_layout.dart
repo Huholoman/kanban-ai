@@ -13,6 +13,9 @@ final class BacklogLayout {
 
   String get configFile => p.join(root, configFileName);
   String get itemsDir => p.join(root, 'items');
+
+  /// Finished items moved out of [itemsDir] (`backlog archive`); same layout.
+  String get archiveDir => p.join(root, 'archive');
   String get viewsDir => p.join(root, 'views');
   String get docsDir => p.join(root, 'docs');
 

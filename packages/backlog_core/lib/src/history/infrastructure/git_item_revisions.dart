@@ -20,8 +20,10 @@ final class GitItemRevisions implements ItemRevisions {
 
   @override
   Future<List<ItemRevision>> of(String path, ItemId id, Item Function(String text) decode) async {
-    // `items/<id>-<slug>.md` or `items/<id>-<slug>/index.md`.
+    // `items/<id>-<slug>.md` or `items/<id>-<slug>/index.md`, or the same in
+    // `archive/`; the history spans both, as archiving moves the file.
     final folder = p.basename(path) == 'index.md' ? p.dirname(p.dirname(path)) : p.dirname(path);
+    final root = p.dirname(folder);
     try {
       final top = await Process.run('git', ['rev-parse', '--show-toplevel'], workingDirectory: folder).timeout(timeout);
       if (top.exitCode != 0) return const [];
@@ -32,8 +34,9 @@ final class GitItemRevisions implements ItemRevisions {
         '--format=%x1e%H%x1f%an%x1f%aI',
         '--name-only',
         '--',
-        for (final name in ['$id.md', '$id-*.md', '$id/index.md', '$id-*/index.md']) ':(glob)$name',
-      ], workingDirectory: folder).timeout(timeout);
+        for (final dir in ['items', 'archive'])
+          for (final name in ['$id.md', '$id-*.md', '$id/index.md', '$id-*/index.md']) ':(glob)$dir/$name',
+      ], workingDirectory: root).timeout(timeout);
       if (log.exitCode != 0) return const [];
       final commits = <({String commit, String author, DateTime at, List<String> paths})>[];
       for (final record in '${log.stdout}'.split('\x1e')) {
