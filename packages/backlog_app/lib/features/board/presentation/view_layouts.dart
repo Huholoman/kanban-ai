@@ -618,17 +618,20 @@ class _PageScrollState extends State<_PageScroll> {
   }
 
   @override
-  Widget build(BuildContext context) => Scrollbar(
+  Widget build(BuildContext context) => PageKeys(
     controller: _vertical,
-    thumbVisibility: true,
-    interactive: true,
-    child: SingleChildScrollView(
+    child: Scrollbar(
       controller: _vertical,
-      padding: const EdgeInsets.all(KanbanBoard.pagePadding),
-      child: Scrollbar(
-        controller: _horizontal,
-        interactive: true,
-        child: SingleChildScrollView(controller: _horizontal, scrollDirection: Axis.horizontal, child: widget.child),
+      thumbVisibility: true,
+      interactive: true,
+      child: SingleChildScrollView(
+        controller: _vertical,
+        padding: const EdgeInsets.all(KanbanBoard.pagePadding),
+        child: Scrollbar(
+          controller: _horizontal,
+          interactive: true,
+          child: SingleChildScrollView(controller: _horizontal, scrollDirection: Axis.horizontal, child: widget.child),
+        ),
       ),
     ),
   );
@@ -685,7 +688,7 @@ class _Indented extends StatelessWidget {
 
 /// Items one under another, with a header per group; also used for the
 /// `table` and `graph` layouts (graph adds an expandable dependency tree).
-class GroupedItemList extends StatelessWidget {
+class GroupedItemList extends StatefulWidget {
   const GroupedItemList({
     super.key,
     required this.result,
@@ -702,53 +705,76 @@ class GroupedItemList extends StatelessWidget {
   final OpenItem onOpen;
 
   @override
+  State<GroupedItemList> createState() => _GroupedItemListState();
+}
+
+class _GroupedItemListState extends State<GroupedItemList> {
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final GroupedItemList(:result, :workflow, :index, :selectedId, :onOpen) = widget;
     final grouped = result.groupBy != null;
     final showDependencies = result.layout == ViewLayoutDto.graph;
-    return ListView(
-      padding: const EdgeInsets.all(KanbanBoard.pagePadding),
-      children: [
-        for (final group in result.groups)
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 900),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (grouped) _GroupHeader(result: result, group: group, workflow: workflow),
-                  for (final item in group.items)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ItemCard(
-                            item: item,
-                            workflow: workflow,
-                            showStatus: result.groupBy != 'status',
-                            selected: item.id == selectedId,
-                            onTap: () => onOpen(item.id),
-                            menu: _cardMenu(item, workflow),
-                          ),
-                          if (showDependencies && item.dependsOn.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 16, top: 4),
-                              child: DependencyTree(ids: item.dependsOn, index: index, onOpen: onOpen, path: {item.id}),
+    return PageKeys(
+      controller: _scroll,
+      child: ListView(
+        controller: _scroll,
+        padding: const EdgeInsets.all(KanbanBoard.pagePadding),
+        children: [
+          for (final group in result.groups)
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 900),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (grouped) _GroupHeader(result: result, group: group, workflow: workflow),
+                    for (final item in group.items)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ItemCard(
+                              item: item,
+                              workflow: workflow,
+                              showStatus: result.groupBy != 'status',
+                              selected: item.id == selectedId,
+                              onTap: () => onOpen(item.id),
+                              menu: _cardMenu(item, workflow),
                             ),
-                        ],
+                            if (showDependencies && item.dependsOn.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 16, top: 4),
+                                child: DependencyTree(
+                                  ids: item.dependsOn,
+                                  index: index,
+                                  onOpen: onOpen,
+                                  path: {item.id},
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
-                  SizedBox(height: grouped ? 8 : 0),
-                ],
+                    SizedBox(height: grouped ? 8 : 0),
+                  ],
+                ),
               ),
             ),
-          ),
-        if (result.items.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(48),
-            child: Center(child: Text('Nothing here.')),
-          ),
-      ],
+          if (result.items.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(48),
+              child: Center(child: Text('Nothing here.')),
+            ),
+        ],
+      ),
     );
   }
 }
