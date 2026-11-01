@@ -465,18 +465,20 @@ dispatcher:
       expect(dispatcher.action('Merge'), same(merge));
       expect([fix.review, review.review], [false, false]);
 
-      final [builtIn, extra] = parseWorkflowYaml('''
+      final [builtIn, extra, fixer] = parseWorkflowYaml('''
 dispatcher:
   worktrees: [a]
   actions:
     - {name: AI review, review: true, on_enter: review}
     - {name: Security review, review: true, statuses: [review], agent: claude, prompt: "Focus on {branch}.", auto_fix: 2}
+    - {name: Fix comments, statuses: [review], prompt: "Fix {pr}.", changes_code: true}
 ''').dispatcher!.actions;
       expect((builtIn.kind, builtIn.review, builtIn.fresh, builtIn.prompt), (ActionKind.prompt, true, true, null));
       expect(builtIn.summary, 'AI review, agent, new session');
       expect(builtIn.autoFix, 0);
       expect((extra.review, extra.prompt!.render({'branch': 'b'}), extra.autoFix), (true, 'Focus on b.', 2));
       expect(extra.summary, 'AI review (auto-fix 2), agent claude, new session');
+      expect((fixer.changesCode, builtIn.changesCode, fixer.summary), (true, false, 'agent, changes code'));
       expect(dispatcher.action('merge'), isNull);
     });
 
@@ -493,6 +495,9 @@ dispatcher:
       rejects('{name: A, prompt: x, auto_fix: 2}', 'auto_fix only applies to a review');
       rejects('{name: A, review: true, auto_fix: -1}', 'auto_fix must be 0 or more rounds');
       rejects('{name: A, review: true, auto_fix: two}', 'auto_fix must be a number of rounds');
+      rejects('{name: A, review: true, changes_code: true}', 'changes_code only applies to prompt actions');
+      rejects('{name: A, run: noop, changes_code: true}', 'changes_code only applies to prompt actions');
+      rejects('{name: A, prompt: x, changes_code: 1}', 'changes_code must be true or false');
       rejects('{name: A, run: "mise run check"}', 'unknown built-in action "mise run check" (known: noop, merge)');
       rejects('{name: A, prompt: x}, {name: A, run: noop}', 'Duplicate dispatcher action "A"');
       rejects('{name: A, prompt: x, on_enter: reviewed}', 'unknown status "reviewed"');

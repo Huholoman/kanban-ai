@@ -159,6 +159,22 @@ void main() {
       expect(agent.prompt, contains('Never push.'));
     });
 
+    test('the item agent woken in review works on it in progress and gives it back to review', () {
+      final plan = _plan([
+        _review('T-1').copyWith(body: '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nUse JSON.\n'),
+        item('T-2'),
+      ], conditions: DispatchConditions(sessions: {ItemId('T-1'): _session('T-1', 'w2')}));
+      final reply = plan.assignments.firstWhere((a) => a.id == ItemId('T-1'));
+      expect(reply.returnTo, 'review');
+      expect(reply.prompt, contains('it shows as in progress while you work'));
+      expect(reply.prompt, contains('an item you had handed over goes back to review by itself'));
+      expect(reply.prompt, contains('`backlog set T-1 status=review` when finished (unless the comments name'));
+      final fresh = plan.assignments.firstWhere((a) => a.id == ItemId('T-2'));
+      expect(fresh.returnTo, isNull);
+      expect(fresh.prompt, contains('When the work is finished, run `backlog set T-2 status=review`.'));
+      expect(plan.actionStart('T-1', 'Fix comments').agent!.returnTo, isNull, reason: 'it changes no code');
+    });
+
     test('with dispatcher.pr a prompt action publishes its commits with backlog pr', () {
       final plan = _plan([_review('T-1', pr: '42')], workflow: _workflow(repo: 'pr: {create: tea pulls create}'));
       final prompt = plan.actionStart('T-1', 'Fix comments').agent!.prompt;

@@ -12,6 +12,7 @@ final class ActionDto {
     this.fresh = false,
     this.review = false,
     this.autoFix = 0,
+    this.changesCode = false,
   });
 
   factory ActionDto.fromJson(Json json) => ActionDto(
@@ -23,6 +24,7 @@ final class ActionDto {
     fresh: json.boolean('fresh'),
     review: json.boolean('review'),
     autoFix: json['auto_fix'] == null ? 0 : json.integer('auto_fix'),
+    changesCode: json.boolean('changes_code'),
   );
 
   final String name;
@@ -51,6 +53,10 @@ final class ActionDto {
   /// agent when it asks for changes (0: none).
   final int autoFix;
 
+  /// A prompt action whose agent changes code: the item shows in progress
+  /// while it runs.
+  final bool changesCode;
+
   bool get isPrompt => kind == 'prompt';
 
   /// Whether items in [status] show it as a button.
@@ -68,6 +74,7 @@ final class ActionDto {
     'fresh': fresh,
     'review': review,
     'auto_fix': autoFix,
+    'changes_code': changesCode,
   };
 }
 

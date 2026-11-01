@@ -33,6 +33,7 @@ final class ActionDefinition {
     bool fresh = false,
     this.review = false,
     this.autoFix = 0,
+    this.changesCode = false,
   }) : statuses = statuses == null ? null : List.unmodifiable(statuses),
        fresh = fresh || review {
     final label = 'dispatcher.actions "$name"';
@@ -53,6 +54,9 @@ final class ActionDefinition {
     }
     if (autoFix < 0) throw ConfigurationException('$label: auto_fix must be 0 or more rounds.');
     if (autoFix > 0 && !review) throw ConfigurationException('$label: auto_fix only applies to a review.');
+    if (changesCode && (kind != ActionKind.prompt || review)) {
+      throw ConfigurationException('$label: changes_code only applies to prompt actions (not to a review).');
+    }
     if (kind != ActionKind.prompt && (agent != null || fresh)) {
       throw ConfigurationException('$label: agent and fresh only apply to prompt actions.');
     }
@@ -129,6 +133,12 @@ final class ActionDefinition {
   /// (0: never, the default).
   final int autoFix;
 
+  /// A prompt action whose agent changes code (`changes_code: true`, e.g.
+  /// fixing review comments): while it runs, an item handed over before
+  /// (`review`) shows in the active status and goes back afterwards, like
+  /// for the item's own agent. Other actions leave the status alone.
+  final bool changesCode;
+
   ActionKind get kind => prompt != null || review
       ? ActionKind.prompt
       : command != null
@@ -176,7 +186,7 @@ final class ActionDefinition {
   /// One line for logs and lists: `prompt`, `run: sh -c …`, `run: merge`.
   String get summary => switch (kind) {
     ActionKind.prompt =>
-      '${review ? 'AI review${autoFix > 0 ? ' (auto-fix $autoFix)' : ''}, ' : ''}agent${agent == null ? '' : ' $agent'}${fresh ? ', new session' : ''}',
+      '${review ? 'AI review${autoFix > 0 ? ' (auto-fix $autoFix)' : ''}, ' : ''}agent${agent == null ? '' : ' $agent'}${fresh ? ', new session' : ''}${changesCode ? ', changes code' : ''}',
     ActionKind.command => 'run: $command',
     ActionKind.builtIn => 'run: $builtIn',
   };

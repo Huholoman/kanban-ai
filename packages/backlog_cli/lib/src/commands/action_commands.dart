@@ -49,6 +49,7 @@ final class ActionCommand extends BacklogCommand {
               'fresh': action.fresh,
               'review': action.review,
               'auto_fix': action.autoFix,
+              'changes_code': action.changesCode,
             },
         ]);
         return 0;

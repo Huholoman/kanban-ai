@@ -123,6 +123,10 @@ dispatcher:
     - name: Fix
       statuses: [review]
       prompt: "Fix it on {branch}"
+    - name: Fix code
+      statuses: [review]
+      prompt: "Fix the code on {branch}"
+      changes_code: true
     - name: Review
       statuses: [review]
       fresh: true
@@ -524,6 +528,7 @@ dispatcher:
 
     final forced = DispatchAssignment.render(
       backlog.workflow.dispatcher!,
+      workflow: backlog.workflow,
       item: await planned('T-0001'),
       worktree: backlog.workflow.dispatcher!.worktrees.first,
       path: path('wt-1'),
@@ -735,6 +740,51 @@ dispatcher:
       await finish('T-0001', 3);
       expect((await notes()).single.text, startsWith('The action "Fix" (agent fake in wt-1) exited with code 3 after'));
       expect((await notes()).single.note, isTrue);
+    });
+
+    test('the agent woken in review shows it in progress and gives it back unless it hands over itself', () async {
+      await reviewed();
+      clock.advance(const Duration(minutes: 1));
+      await backlog.items.comment('T-0001', author: 'tobik', text: 'Why CSV?');
+      File(path('go-T-0001')).deleteSync();
+      final reply = (await plan()).assignments.single;
+      expect(reply.returnTo, 'review');
+      await launcher.launch(reply);
+      final running = await planned('T-0001');
+      expect((running.item.status, running.claim!.agent), ('in-progress', 'wt-1'));
+      expect((await plan()).assignments, isEmpty, reason: 'an item in progress is no ready work');
+      await backlog.items.comment('T-0001', author: 'wt-1', text: 'Because the issue asks for it.');
+      await finish('T-0001', 0);
+
+      var after = await planned('T-0001');
+      expect((after.item.status, after.claim, after.item.assignee), ('review', null, 'wt-1'));
+      expect(logs.last, contains('it left in-progress; back to review, claim dropped'));
+      expect((await plan()).held, isEmpty, reason: 'given back, not held');
+
+      // Asked for changes, it fixes them and hands over itself.
+      clock.advance(const Duration(minutes: 1));
+      await backlog.items.comment('T-0001', author: 'tobik', text: 'Use JSON.');
+      File(path('go-T-0001')).deleteSync();
+      await launcher.launch((await plan()).assignments.single);
+      await backlog.items.update('T-0001', [FieldChange.parse('status=done')]);
+      await finish('T-0001', 0);
+      after = await planned('T-0001');
+      expect((after.item.status, after.claim), ('done', null));
+    });
+
+    test('an action that changes code shows the item in progress while it runs; others keep the status', () async {
+      await reviewed();
+      File(path('go-T-0001')).deleteSync();
+      final start = (await plan()).actionStart('T-0001', 'Fix code').agent!;
+      expect(start.returnTo, 'review');
+      expect(start.prompt, contains('it shows as in progress while you work and goes back to review'));
+      await launcher.launch(start);
+      expect((await planned('T-0001')).item.status, 'in-progress');
+      await finish('T-0001', 0);
+      final after = await planned('T-0001');
+      expect((after.item.status, after.claim), ('review', null));
+      expect(logs.last, contains('the item went back to review, claim dropped'));
+      expect((await plan()).actionStart('T-0001', 'Fix').agent!.returnTo, isNull);
     });
 
     test('an AI review that records no verdict is a problem with a note; one that does is not', () async {

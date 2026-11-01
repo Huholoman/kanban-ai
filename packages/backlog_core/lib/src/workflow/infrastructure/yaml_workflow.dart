@@ -308,7 +308,18 @@ Map<String, AgentProfile> _profiles(YamlMap yaml, String origin) => {
 /// One entry of `dispatcher.actions`.
 ActionDefinition _action(Object? node, String origin) {
   final yaml = _map(node, 'dispatcher.actions[]', origin);
-  const known = {'name', 'statuses', 'on_enter', 'prompt', 'run', 'agent', 'fresh', 'review', 'auto_fix'};
+  const known = {
+    'name',
+    'statuses',
+    'on_enter',
+    'prompt',
+    'run',
+    'agent',
+    'fresh',
+    'review',
+    'auto_fix',
+    'changes_code',
+  };
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
       throw ConfigurationException('unknown key "dispatcher.actions[].$key" (expected ${known.join(', ')}).');
@@ -322,6 +333,8 @@ ActionDefinition _action(Object? node, String origin) {
   if (review is! bool) throw ConfigurationException('$path.review must be true or false.');
   final autoFix = yaml['auto_fix'] ?? 0;
   if (autoFix is! int) throw ConfigurationException('$path.auto_fix must be a number of rounds.');
+  final changesCode = yaml['changes_code'] ?? false;
+  if (changesCode is! bool) throw ConfigurationException('$path.changes_code must be true or false.');
   if (review && yaml['fresh'] == false) {
     throw ConfigurationException('$path: a review always runs in a new session (fresh: false is not possible).');
   }
@@ -349,6 +362,7 @@ ActionDefinition _action(Object? node, String origin) {
     fresh: fresh,
     review: review,
     autoFix: autoFix,
+    changesCode: changesCode,
   );
 }
 
@@ -575,6 +589,7 @@ claims:
 #     - name: Address PR comments
 #       statuses: [review]
 #       prompt: "Go through the unresolved comments of PR {pr}, fix them and answer them."
+#       changes_code: true   # the item shows in-progress while it runs, then goes back
 #       # agent: claude      # profile (default: dispatcher.agent)
 #     # AI review: review: true gives the agent a built-in review task (in a
 #     # new session: read git diff {base}...{branch}, the item and the

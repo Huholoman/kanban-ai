@@ -53,6 +53,11 @@ import 'pull_request_watcher.dart';
 /// gets a heartbeat every [heartbeatEvery] (default a quarter of the lease,
 /// 1–10 minutes).
 ///
+/// **Handed over before:** an item in a later active status (`review`) that
+/// its agent (or an action's agent that changes code) works on again shows
+/// in the first active status while it runs and goes back when the agent
+/// ends without handing it over itself ([DispatchAssignment.returnTo]).
+///
 /// **When it ended:** an item still in the first active status and claimed
 /// by the worktree is released (back to the pickable status) and *held*, so
 /// that the dispatcher does not start it again by itself — unless it waits
@@ -398,12 +403,19 @@ final class ProcessAgentLauncher extends AgentLauncher {
           await backlog.items.update(id.value, [FieldChange.parse('branch=$branch')]);
         }
       }
+      // Handed over before: it shows in progress while the agent works on it again.
+      if (assignment.returnTo != null) {
+        await backlog.items.update(id.value, [FieldChange.parse('status=${backlog.workflow.activeStatus}')]);
+      }
       record = await _spawn(assignment);
     } catch (_) {
       // A start that failed changes nothing: an action's agent only took the
       // claim, the item's own agent gives the item back in its status.
       if (action != null) {
         await backlog.claims.drop(id.value, assignment.agent);
+        if (assignment.returnTo case final back?) {
+          await backlog.items.update(id.value, [FieldChange.parse('status=$back')]);
+        }
       } else {
         await backlog.claims.release(id.value, agent: assignment.agent, status: assignment.item.item.status);
       }
@@ -547,6 +559,12 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final backlog = await _backlog();
     final planned = (await backlog.planning.snapshot())[id];
     var outcome = planned == null ? 'the item is gone' : 'the item stays ${planned.item.status}';
+    // An action that changed code ends: the item goes back where it was,
+    // unless its agent moved it on.
+    if (record.returnTo case final back? when planned?.item.status == backlog.workflow.activeStatus) {
+      await backlog.items.update(id.value, [FieldChange.parse('status=$back')]);
+      outcome = 'the item went back to $back';
+    }
     if (planned != null && record.kind == RunKind.agent && planned.claim?.agent == run.worktree) {
       await backlog.claims.drop(id.value, run.worktree);
       outcome = '$outcome, claim dropped';
@@ -872,6 +890,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
       resumed: assignment.resume?.id,
       side: action?.fresh ?? false,
       trigger: action == null ? null : assignment.trigger.id,
+      returnTo: assignment.returnTo,
     );
     await _write(_recordFile(id), record.toJson());
     return record;
@@ -928,7 +947,14 @@ final class ProcessAgentLauncher extends AgentLauncher {
     if (planned == null) {
       outcome = 'the item is gone';
     } else if (planned.claim?.agent == run.worktree) {
-      if (planned.item.status == backlog.workflow.activeStatus && planned.needsHuman) {
+      if (record.returnTo case final back? when planned.item.status == backlog.workflow.activeStatus) {
+        // It worked on an item handed over before and did not hand it over
+        // again (it only answered, asked, failed or was stopped): back there.
+        await backlog.claims.drop(id.value, run.worktree);
+        await backlog.items.update(id.value, [FieldChange.parse('status=$back')]);
+        outcome = 'it left ${planned.item.status}; back to $back, claim dropped';
+        handedOver = backlog.workflow.categoryOf(back) == StatusCategory.active;
+      } else if (planned.item.status == backlog.workflow.activeStatus && planned.needsHuman) {
         // It asked a question: back to the queue, not ready until a person answers.
         await backlog.claims.release(id.value, agent: run.worktree, force: true);
         outcome = 'it asked a question; released, waits for a person to answer';
@@ -1348,6 +1374,7 @@ final class _Record {
     this.resumed,
     this.side = false,
     this.trigger,
+    this.returnTo,
   });
 
   factory _Record.fromJson(Map<String, Object?> json) => _Record(
@@ -1369,6 +1396,7 @@ final class _Record {
     resumed: json['resumed'] as String?,
     side: json['side'] == true,
     trigger: json['trigger'] as String?,
+    returnTo: json['return_to'] as String?,
   );
 
   final AgentRun run;
@@ -1390,6 +1418,10 @@ final class _Record {
   /// item's own work.
   final String? trigger;
 
+  /// The status the item goes back to when the run ends with the item still
+  /// in the active status ([DispatchAssignment.returnTo]).
+  final String? returnTo;
+
   RunKind get kind => run.kind;
 
   Map<String, Object?> toJson() => {
@@ -1405,6 +1437,7 @@ final class _Record {
     'branch': run.branch,
     'resumed': resumed,
     if (run.epic) 'epic': true,
+    'return_to': ?returnTo,
     if (run.action != null) ...{'action': run.action, 'kind': run.kind.id, 'side': side, 'trigger': trigger},
   };
 }

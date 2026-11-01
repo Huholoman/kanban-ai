@@ -481,9 +481,11 @@ final class DispatcherConfig {
   );
 
   /// What the prompt may refer to: the item id and title, the worktree name,
-  /// its absolute path, the absolute path of the backlog folder and the
-  /// branch prepared for the agent.
-  static const promptPlaceholders = ['id', 'title', 'worktree', 'path', 'backlog', 'branch'];
+  /// its absolute path, the absolute path of the backlog folder, the branch
+  /// prepared for the agent and the status it hands its work over in
+  /// (`{handover}`: the hand-over status the item had when the agent
+  /// started, else [handover]).
+  static const promptPlaceholders = ['id', 'title', 'worktree', 'path', 'backlog', 'branch', 'handover'];
 
   /// What the prompt of a resumed session may refer to: [promptPlaceholders]
   /// and `{news}`, what happened since the agent's last run (how it ended,
@@ -535,7 +537,7 @@ final class DispatcherConfig {
       'for you (BACKLOG_AGENT={worktree}); do not take other items.\n'
       '2. The worktree is on branch {branch}, prepared for this item: commit there and do not switch branches. '
       'Make small commits; every commit message contains {id}.\n'
-      '3. When the work is finished, run `backlog set {id} status=review`.\n'
+      '3. When the work is finished, run `backlog set {id} status={handover}`.\n'
       '4. Never push and never open pull requests.\n'
       '5. If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"`, leave the status as '
       'it is and stop; you will be resumed with the answer.\n'
@@ -555,13 +557,16 @@ final class DispatcherConfig {
   /// (unless `dispatcher.resume_prompt` replaces it).
   static const defaultResumePrompt =
       'You are the coding agent {worktree} again, continuing your earlier session on backlog item {id} ("{title}"). '
-      'The item is claimed for you again and the worktree is on branch {branch}.\n'
+      'The item is claimed for you again (it shows as in progress while you work) and the worktree is on branch '
+      '{branch}.\n'
       'Since your last run: {news}\n'
       'Run `backlog show {id}` to see the item as it is now. Then:\n'
       '- If the new comments only ask you something (e.g. why you did something), answer with '
-      '`backlog comment {id} "…"` and stop: change no code and leave the status as it is.\n'
+      '`backlog comment {id} "…"` and stop: change no code and no status (an item you had handed over goes back '
+      'to {handover} by itself).\n'
       '- If they answer your question or ask for changes, continue the work (no comment to acknowledge it) under the same rules as before: small commits containing {id} on {branch}, '
-      '`backlog set {id} status=review` when finished, never push.\n'
+      '`backlog set {id} status={handover}` when finished (unless the comments name another status, e.g. to merge '
+      'again after a failed merge), never push.\n'
       '- Without new comments, continue the work under the same rules.\n'
       '- If the discussion changed what the item asks for, $describeRule\n'
       '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.\n'
@@ -580,10 +585,10 @@ final class DispatcherConfig {
       'how you verified it, and that it implements backlog item {id}) with your Write tool to '
       '$scratchFolder/pr-{id}.md and run `backlog pr {id} --description-file $scratchFolder/pr-{id}.md`. It pushes '
       '{branch} and opens the pull request (when one exists already, it only pushes). Then run '
-      '`backlog set {id} status=review`.\n'
+      '`backlog set {id} status={handover}`.\n'
       '4. Never run `git push` yourself, never push other branches and never merge: `backlog pr {id}` is the only '
       'way your work leaves this worktree. If it fails, say why with `backlog comment {id} "…"` and still set the '
-      'status to review.\n'
+      'status to {handover}.\n'
       '5. If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"`, leave the status as '
       'it is and stop; you will be resumed with the answer.\n'
       '6. If a discussion in the item changes what it asks for, $describeRule\n'
@@ -592,15 +597,18 @@ final class DispatcherConfig {
   /// The resume prompt when the project opens pull requests (`dispatcher.pr`).
   static const defaultPullRequestResumePrompt =
       'You are the coding agent {worktree} again, continuing your earlier session on backlog item {id} ("{title}"). '
-      'The item is claimed for you again and the worktree is on branch {branch}.\n'
+      'The item is claimed for you again (it shows as in progress while you work) and the worktree is on branch '
+      '{branch}.\n'
       'Since your last run: {news}\n'
       'Run `backlog show {id}` to see the item as it is now. Then:\n'
       '- If the new comments only ask you something (e.g. why you did something), answer with '
-      '`backlog comment {id} "…"` and stop: change no code and leave the status as it is.\n'
+      '`backlog comment {id} "…"` and stop: change no code and no status (an item you had handed over goes back '
+      'to {handover} by itself).\n'
       '- If they answer your question or ask for changes, continue the work (no comment to acknowledge it) under the same rules as before: small commits containing {id} on {branch}; when finished, '
       '`backlog pr {id}` (it pushes {branch} and opens the pull request when there is none yet; give '
       '`--description-file $scratchFolder/pr-{id}.md` then, written with your Write tool) and '
-      '`backlog set {id} status=review`; never run `git push` yourself.\n'
+      '`backlog set {id} status={handover}` (unless the comments name another status, e.g. to merge again after a '
+      'failed merge); never run `git push` yourself.\n'
       '- Without new comments, continue the work under the same rules.\n'
       '- If the discussion changed what the item asks for, $describeRule\n'
       '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.\n'
@@ -668,6 +676,10 @@ final class DispatcherConfig {
 
   /// The profile a prompt [action] starts: its `agent`, else [agent].
   AgentProfile profileFor(ActionDefinition action) => action.agent == null ? agent : profiles[action.agent] ?? agent;
+
+  /// The status an agent hands new work over in (`{handover}` of the
+  /// prompts): `review`.
+  String get handover => 'review';
 
   /// The same configuration with [worktrees] in place of the listed ones
   /// (e.g. the listed ones plus those the dispatcher created).
