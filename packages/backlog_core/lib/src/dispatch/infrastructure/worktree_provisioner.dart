@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -28,7 +29,10 @@ import 'process_agent_launcher.dart';
 /// claim, and whose folder (next to the primary clone) does not exist. An
 /// assignment to a spare worktree first runs
 /// `git worktree add --detach <path> <base>` in the primary clone, so the new worktree has nothing
-/// uncommitted; the agent's branch is then prepared by the inner launcher.
+/// uncommitted, then the `dispatcher.setup` commands in it (output in
+/// `logs/<project>/worktree-<name>-<time>.log`); when one fails, the
+/// worktree is removed again and the start fails with the reason. The
+/// agent's branch is then prepared by the inner launcher.
 ///
 /// **Cleanup** (only with `cleanup_after_days`): a created worktree that is
 /// free, has been idle that long, has no uncommitted changes or untracked
@@ -168,9 +172,78 @@ final class WorktreeProvisioner extends AgentLauncher {
         'Cannot create worktree $name from $repo: ${'${result.stderr}'.trim().split('\n').last}',
       );
     }
+    final setup = assignment.setup;
+    if (setup.isNotEmpty) {
+      final failure = await _setUp(setup, name: name, path: path, repo: repo, base: base);
+      if (failure != null) {
+        final removed = await Process.run('git', ['worktree', 'remove', '--force', path], workingDirectory: repo);
+        _log(
+          'Dispatcher: setting up worktree $name failed: $failure; '
+          '${removed.exitCode == 0 ? 'removed it again' : 'could not remove it: ${'${removed.stderr}'.trim()}'}.',
+        );
+        throw UnavailableException('Cannot use the new worktree $name: $failure.');
+      }
+    }
     final now = _clock.now();
     await _write(_WorktreeRecord(name: name, path: path, repo: repo, createdAt: now, lastUsed: now));
     _log('Dispatcher: created worktree $name at $path (from $repo, $base).');
+  }
+
+  /// How long one setup command may run.
+  static const setupTimeout = Duration(minutes: 15);
+
+  /// Runs the [setup] commands one after another in the new worktree at
+  /// [path], their output in `logs/<project>/worktree-<name>-<time>.log`;
+  /// returns what failed (with the log), null when all succeeded.
+  Future<String?> _setUp(
+    List<CommandTemplate> setup, {
+    required String name,
+    required String path,
+    required String repo,
+    required String base,
+  }) async {
+    final now = _clock.now().toUtc();
+    final stamp = now.toIso8601String().replaceAll(RegExp(r'[-:]|\.\d+'), '');
+    final log = File(p.join(stateDir, 'logs', project, 'worktree-$name-$stamp.log'));
+    await log.parent.create(recursive: true);
+    final sink = log.openWrite();
+    try {
+      sink.writeln('# kanban-ai: setting up worktree $name ($path), ${now.toIso8601String()}');
+      for (final template in setup) {
+        final command = template.render({'worktree': name, 'path': path, 'repo': repo, 'base': base});
+        final shown = CommandTemplate.join(command);
+        sink.writeln('# command: $shown');
+        final Process process;
+        try {
+          process = await Process.start(command.first, command.skip(1).toList(), workingDirectory: path);
+        } on ProcessException catch (error) {
+          sink.writeln('# kanban-ai: cannot run it: ${error.message}');
+          return '`$shown` cannot run (${error.message}; log ${log.path})';
+        }
+        unawaited(process.stdin.close());
+        final output = [
+          process.stdout.transform(const Utf8Decoder(allowMalformed: true)).forEach(sink.write),
+          process.stderr.transform(const Utf8Decoder(allowMalformed: true)).forEach(sink.write),
+        ];
+        final code = await process.exitCode.timeout(
+          setupTimeout,
+          onTimeout: () {
+            process.kill(ProcessSignal.sigkill);
+            return -1;
+          },
+        );
+        await Future.wait(output);
+        if (code != 0) {
+          final why = code == -1 ? 'took longer than ${setupTimeout.inMinutes} min' : 'exited with code $code';
+          sink.writeln('# kanban-ai: $why');
+          return '`$shown` $why (log ${log.path})';
+        }
+      }
+      sink.writeln('# kanban-ai: worktree $name is set up');
+      return null;
+    } finally {
+      await sink.close();
+    }
   }
 
   /// Removes [record]'s worktree when nothing is lost; true when it is gone.

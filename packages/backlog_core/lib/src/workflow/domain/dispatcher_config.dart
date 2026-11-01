@@ -682,13 +682,20 @@ final class DispatcherConfig {
 }
 
 /// Worktrees the dispatcher adds by itself (`dispatcher.repo`,
-/// `worktree_name`, `max_worktrees`, `cleanup_after_days`): when no worktree
-/// is free, it runs `git worktree add` in the primary clone [repo] for the
-/// next name of [name] (`{repo}-{n}` by default: the first number from 2 on
-/// whose name and folder are unused), next to the clone.
+/// `worktree_name`, `max_worktrees`, `cleanup_after_days`, `setup`): when no
+/// worktree is free, it runs `git worktree add` in the primary clone [repo]
+/// for the next name of [name] (`{repo}-{n}` by default: the first number
+/// from 2 on whose name and folder are unused), next to the clone, then the
+/// [setup] commands in it.
 final class NewWorktrees {
-  NewWorktrees({required this.repo, String? name, required this.maxWorktrees, this.cleanupAfter})
-    : name = TextTemplate(name ?? defaultName, known: const ['repo', 'n'], label: 'dispatcher.worktree_name') {
+  NewWorktrees({
+    required this.repo,
+    String? name,
+    required this.maxWorktrees,
+    this.cleanupAfter,
+    List<CommandTemplate> setup = const [],
+  }) : name = TextTemplate(name ?? defaultName, known: const ['repo', 'n'], label: 'dispatcher.worktree_name'),
+       setup = List.unmodifiable(setup) {
     if (repo.trim().isEmpty) throw const ConfigurationException('dispatcher.repo must not be empty.');
     if (!this.name.text.contains('{n}')) {
       throw const ConfigurationException('dispatcher.worktree_name must contain {n}.');
@@ -722,6 +729,15 @@ final class NewWorktrees {
   /// when that loses nothing (clean, nothing that is not in the base
   /// branch); null keeps them.
   final Duration? cleanupAfter;
+
+  /// Commands that prepare a new worktree (`mise trust`, fetching
+  /// dependencies), run one after another in it (no shell) before any agent
+  /// starts there; when one fails, the worktree is removed again.
+  final List<CommandTemplate> setup;
+
+  /// What [setup] commands may refer to: the new worktree's name and
+  /// absolute path, the primary clone and the base branch.
+  static const setupPlaceholders = ['worktree', 'path', 'repo', 'base'];
 
   /// [repo] made absolute against the backlog folder [backlogRoot].
   String resolveRepo(String backlogRoot) => p.normalize(p.isAbsolute(repo) ? repo : p.join(backlogRoot, repo));

@@ -545,6 +545,8 @@ dispatcher:
       rejects('dispatcher: {repo: ../r, max_worktrees: 1, worktrees: [a, b]}', 'less than the 2 listed');
       rejects('dispatcher: {repo: ../r, max_worktrees: 2, cleanup_after_days: 0}', 'at least 1');
       rejects('dispatcher: {worktrees: [a], max_worktrees: 2}', 'dispatcher.max_worktrees needs dispatcher.repo');
+      rejects('dispatcher: {worktrees: [a], setup: [[mise, trust]]}', 'dispatcher.setup needs dispatcher.repo');
+      rejects('dispatcher: {repo: ../r, max_worktrees: 2, setup: ["echo {id}"]}', 'unknown placeholder "{id}"');
       rejects('dispatcher: {command: x, worktrees: []}', 'at least one worktree');
       rejects('dispatcher: {command: x, worktrees: [a, a]}', 'Duplicate dispatcher worktree "a"');
       rejects('dispatcher: {command: x, worktrees: ["a b"]}', 'Worktree name "a b"');
