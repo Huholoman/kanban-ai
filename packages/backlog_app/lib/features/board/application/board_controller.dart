@@ -31,6 +31,10 @@ class BoardController extends ChangeNotifier {
   WorkflowDto? workflow;
   List<ViewSummaryDto> views = const [];
   String? selectedViewId;
+
+  /// The project's dashboard takes the place of the current view; picking a
+  /// view or narrowing the board goes back to it.
+  bool dashboard = false;
   ViewResultDto? result;
   List<LintIssueDto> lint = const [];
 
@@ -149,6 +153,7 @@ class BoardController extends ChangeNotifier {
       );
       filter = BoardFilter.none;
       selectedViewId = created.id;
+      dashboard = false;
       onViewChosen?.call(created.id);
     } catch (e) {
       _notices.add('$e');
@@ -211,6 +216,13 @@ class BoardController extends ChangeNotifier {
 
   void setFilter(BoardFilter next) {
     filter = next;
+    dashboard = false;
+    notifyListeners();
+  }
+
+  /// Shows the dashboard instead of the current view.
+  void showDashboard() {
+    dashboard = true;
     notifyListeners();
   }
 
@@ -228,6 +240,7 @@ class BoardController extends ChangeNotifier {
 
   Future<void> selectView(String id) async {
     selectedViewId = id;
+    dashboard = false;
     onViewChosen?.call(id);
     groupByOverride = null;
     await refresh();

@@ -7,7 +7,6 @@ import '../../../../app/app_scope.dart';
 import '../../../../shared/tokens.dart';
 import '../../../../shared/ui/ui.dart';
 import '../../../dashboard/application/dashboard_controller.dart';
-import '../../../dashboard/presentation/dashboard_page.dart';
 import '../../../dispatch/presentation/dispatch_overview.dart';
 import '../../../projects/presentation/project_switcher.dart';
 import '../../application/board_controller.dart';
@@ -68,7 +67,7 @@ class ViewNavigation extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               children: [
                 if (AppScope.of(context).dashboard case final dashboard?)
-                  _DashboardRow(dashboard: dashboard, onNavigate: onNavigate),
+                  _DashboardRow(controller: controller, dashboard: dashboard, onNavigate: onNavigate),
                 for (final (name, members) in sections)
                   if (name == null) ...[
                     const SectionLabel('Views'),
@@ -116,7 +115,7 @@ class _ViewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = BoardTokens.of(context);
-    final selected = view.id == controller.selectedViewId;
+    final selected = !controller.dashboard && view.id == controller.selectedViewId;
     final count = view.count;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
@@ -156,50 +155,65 @@ class _ViewRow extends StatelessWidget {
   }
 }
 
-/// Opens the dashboard; its badge counts what waits for a person in every
-/// project.
+/// Shows the open project's dashboard in place of the board; its badge
+/// counts what waits for a person in the project.
 class _DashboardRow extends StatelessWidget {
-  const _DashboardRow({required this.dashboard, this.onNavigate});
+  const _DashboardRow({required this.controller, required this.dashboard, this.onNavigate});
 
+  final BoardController controller;
   final DashboardController dashboard;
   final VoidCallback? onNavigate;
 
   @override
   Widget build(BuildContext context) {
     final tokens = BoardTokens.of(context);
+    final selected = controller.dashboard;
+    final project = AppScope.of(context).projects?.current?.id;
     return ListenableBuilder(
       listenable: dashboard,
-      builder: (context, _) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 1),
-        child: InkWell(
-          key: const ValueKey('open-dashboard'),
-          borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
-          onTap: () {
-            final navigator = Navigator.of(context);
-            onNavigate?.call();
-            unawaited(navigator.push(MaterialPageRoute<void>(builder: (_) => DashboardPage(controller: dashboard))));
-          },
-          child: SizedBox(
-            height: 32,
-            child: Row(
-              children: [
-                const SizedBox(width: 10),
-                Icon(Icons.space_dashboard_outlined, size: 16, color: tokens.muted),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text('Dashboard', style: TextStyle(color: tokens.text)),
+      builder: (context, _) {
+        final needsMe = dashboard.needsMeIn(project);
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 1),
+          child: Material(
+            color: selected ? tokens.accentSoft : Colors.transparent,
+            borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
+            child: InkWell(
+              key: const ValueKey('open-dashboard'),
+              borderRadius: BorderRadius.circular(BoardTokens.radiusSmall),
+              onTap: () {
+                controller.showDashboard();
+                onNavigate?.call();
+              },
+              child: SizedBox(
+                height: 32,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 10),
+                    Icon(Icons.space_dashboard_outlined, size: 16, color: selected ? tokens.accent : tokens.muted),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Dashboard',
+                        style: TextStyle(
+                          color: selected ? tokens.accent : tokens.text,
+                          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                    if (needsMe > 0)
+                      Tooltip(
+                        message: '$needsMe waiting for you: questions, approvals, stopped work',
+                        child: CountBadge(needsMe, key: const ValueKey('dashboard-badge')),
+                      ),
+                    const SizedBox(width: 12),
+                  ],
                 ),
-                if (dashboard.needsMe > 0)
-                  Tooltip(
-                    message: '${dashboard.needsMe} waiting for you: questions, approvals, stopped work',
-                    child: CountBadge(dashboard.needsMe, key: const ValueKey('dashboard-badge')),
-                  ),
-                const SizedBox(width: 12),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -355,8 +369,8 @@ class _SectionDialogState extends State<_SectionDialog> {
   );
 }
 
-/// The views as a row of tabs for medium widths; the selected one is
-/// underlined in the accent colour.
+/// The views as a row of tabs for medium widths, the dashboard first; the
+/// selected one is underlined in the accent colour.
 class ViewTabs extends StatelessWidget {
   const ViewTabs({super.key, required this.controller});
 
@@ -375,37 +389,59 @@ class ViewTabs extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         children: [
+          if (AppScope.of(context).dashboard != null)
+            _Tab(
+              key: const ValueKey('tab-dashboard'),
+              label: 'Dashboard',
+              selected: controller.dashboard,
+              onTap: controller.showDashboard,
+            ),
           for (final view in controller.views)
-            InkWell(
+            _Tab(
               key: ValueKey('tab-${view.id}'),
+              label: view.name,
+              count: view.count,
+              selected: !controller.dashboard && view.id == controller.selectedViewId,
               onTap: () => unawaited(controller.selectView(view.id)),
-              child: Container(
-                alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: view.id == controller.selectedViewId ? tokens.accent : Colors.transparent,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      view.name,
-                      style: TextStyle(
-                        color: view.id == controller.selectedViewId ? tokens.accent : tokens.text,
-                        fontWeight: view.id == controller.selectedViewId ? FontWeight.w600 : FontWeight.w400,
-                      ),
-                    ),
-                    if (view.count != null) ...[const SizedBox(width: 6), CountText(view.count!)],
-                  ],
-                ),
-              ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _Tab extends StatelessWidget {
+  const _Tab({super.key, required this.label, required this.selected, required this.onTap, this.count});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final int? count;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: selected ? tokens.accent : Colors.transparent, width: 2)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? tokens.accent : tokens.text,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+            if (count != null) ...[const SizedBox(width: 6), CountText(count!)],
+          ],
+        ),
       ),
     );
   }
@@ -441,7 +477,7 @@ class PinnedBottomBar extends StatelessWidget {
                     key: ValueKey('bottom-view-${view.id}'),
                     icon: layoutIcon(view.layout),
                     label: view.name,
-                    selected: view.id == controller.selectedViewId,
+                    selected: !controller.dashboard && view.id == controller.selectedViewId,
                     onTap: () => unawaited(controller.selectView(view.id)),
                   ),
                 ),

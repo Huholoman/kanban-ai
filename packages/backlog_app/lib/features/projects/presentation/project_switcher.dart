@@ -9,7 +9,8 @@ import '../application/projects_controller.dart';
 /// The open project's name at the top of the navigation. With more than one
 /// project it opens a menu: the pinned projects (`pinned: true` in the
 /// registry), or all of them when none is pinned — the open one ticked, the
-/// ones the server cannot open greyed out with the reason — and *All
+/// others with how much waits for a person in them, the ones the server
+/// cannot open greyed out with the reason — and *All
 /// projects…*, a dialog that searches every project and pins or unpins them.
 /// With a single project (or a server without projects) it is just the name.
 class ProjectSwitcher extends StatelessWidget {
@@ -274,7 +275,20 @@ class _ProjectEntry extends StatelessWidget {
         size: 18,
         color: error == null ? (open ? tokens.accent : tokens.muted) : tokens.danger,
       ),
-      trailingIcon: open ? Icon(Icons.check, size: 16, color: tokens.accent) : null,
+      trailingIcon: switch ((open, AppScope.of(context).dashboard)) {
+        (true, _) => Icon(Icons.check, size: 16, color: tokens.accent),
+        (false, final dashboard?) => ListenableBuilder(
+          listenable: dashboard,
+          builder: (context, _) => switch (dashboard.needsMeIn(project.id)) {
+            0 => const SizedBox.shrink(),
+            final count => Tooltip(
+              message: '$count waiting for you in ${project.name}',
+              child: CountBadge(count, key: ValueKey('project-needs-${project.id}')),
+            ),
+          },
+        ),
+        _ => null,
+      },
       onPressed: open || error != null ? null : () => controller.select(project.id),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 260),
