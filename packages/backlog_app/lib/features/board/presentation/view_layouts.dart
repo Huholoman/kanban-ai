@@ -78,9 +78,9 @@ class KanbanBoard extends StatelessWidget {
     return share.clamp(minColumnWidth, maxColumnWidth);
   }
 
-  /// The whole board scrolls vertically like a page; columns grow with
-  /// their cards and reach at least the bottom of the window, so there is
-  /// always room to drop a card.
+  /// The whole board scrolls vertically like a page; every column is as
+  /// tall as the longest one and reaches at least the bottom of the window,
+  /// so there is always room to drop a card, wherever the drag goes.
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -88,21 +88,26 @@ class KanbanBoard extends StatelessWidget {
         if (paged) return _PagedBoard(board: this);
         final width = columnWidthFor(constraints.maxWidth, result.groups.length);
         return _PageScroll(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final (i, group) in result.groups.indexed) ...[
-                if (i > 0) const SizedBox(width: columnGap),
-                _column(context, group, width, max(0, constraints.maxHeight - 2 * pagePadding)),
-              ],
-            ],
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: max(0, constraints.maxHeight - 2 * pagePadding)),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (i, group) in result.groups.indexed) ...[
+                    if (i > 0) const SizedBox(width: columnGap),
+                    _column(context, group, width),
+                  ],
+                ],
+              ),
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _column(BuildContext context, ViewGroupDto group, double width, double minHeight) {
+  Widget _column(BuildContext context, ViewGroupDto group, double width) {
     final tokens = BoardTokens.of(context);
     final entries = ColumnArrangement.arrange(group.items, index, collapsed: collapsed);
 
@@ -112,20 +117,21 @@ class KanbanBoard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _GroupHeader(result: result, group: group, workflow: workflow),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            constraints: BoxConstraints(minHeight: max(0, minHeight - 30)),
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: highlighted ? tokens.accentSoft : tokens.well,
-              borderRadius: BorderRadius.circular(BoardTokens.radius),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final entry in entries)
-                  Padding(padding: const EdgeInsets.only(bottom: 8), child: _entry(context, entry, width)),
-              ],
+          Expanded(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: highlighted ? tokens.accentSoft : tokens.well,
+                borderRadius: BorderRadius.circular(BoardTokens.radius),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final entry in entries)
+                    Padding(padding: const EdgeInsets.only(bottom: 8), child: _entry(context, entry, width)),
+                ],
+              ),
             ),
           ),
         ],

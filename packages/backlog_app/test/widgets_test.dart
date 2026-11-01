@@ -328,6 +328,26 @@ void main() {
     expect(find.text('Copied T-1'), findsOneWidget);
   });
 
+  testWidgets('every column is as tall as the longest, so a card from the bottom drops next to it', (tester) async {
+    final api = await pumpApp(tester, items: [for (var i = 1; i <= 30; i++) item('T-$i')]);
+    final columns = find.descendant(of: find.byType(KanbanBoard), matching: find.byType(DragTarget<ItemDto>));
+    final heights = {for (final column in columns.evaluate()) tester.getSize(find.byWidget(column.widget)).height};
+    expect(heights, hasLength(1));
+    expect(heights.single, greaterThan(900));
+
+    final card = find.byKey(const ValueKey('card-T-30'));
+    await tester.ensureVisible(card);
+    await tester.pumpAndSettle();
+    final start = tester.getCenter(card);
+    final gesture = await tester.startGesture(start);
+    await tester.pump(const Duration(milliseconds: 50));
+    await gesture.moveTo(Offset(tester.getCenter(find.text('done')).dx, start.dy));
+    await tester.pump(const Duration(milliseconds: 50));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(api.updates.single.$2.changes, ['status=done']);
+  });
+
   testWidgets('the board scrollbar can be dragged with the mouse', (tester) async {
     await pumpApp(tester, items: [for (var i = 1; i <= 30; i++) item('T-$i')]);
     final scrollable = find.descendant(of: find.byType(KanbanBoard), matching: find.byType(Scrollable)).first;
