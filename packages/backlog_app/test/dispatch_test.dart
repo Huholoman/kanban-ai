@@ -582,6 +582,33 @@ void main() {
     expect(find.text('Fixed it, but git push was denied.'), findsOneWidget);
   });
 
+  testWidgets('a finished item needs nobody: the problems of its last run are history', (tester) async {
+    final (api, _) = await _pumpDetail(
+      tester,
+      'R-3',
+      _plan(),
+      items: [for (final it in _items()) it.id == 'R-3' ? item('R-3', status: 'done') : it],
+    );
+    api.agentLogUpdates.add(
+      const AgentLogUpdateDto(
+        item: 'R-3',
+        path: '/state/logs/R-3.log',
+        reset: true,
+        lines: ['■ done'],
+        last: AgentRunEndDto(
+          exitCode: 0,
+          outcome: 'handed over as review',
+          result: 'Fixed it, but git push was denied.',
+          problems: ['a tool call was denied: Bash(git push)'],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Needs you'), findsNothing);
+    expect(find.text('Last run ended · handed over as review · with a problem'), findsOneWidget);
+    expect(find.text('• a tool call was denied: Bash(git push)'), findsOneWidget);
+  });
+
   testWidgets('a card shows that its last run has problems, or that it is held', (tester) async {
     final api = FakeBacklogApi(_items())
       ..plan = DispatchDto(
