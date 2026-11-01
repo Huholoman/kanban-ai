@@ -52,6 +52,10 @@ final class ProjectDigest {
   /// (an agent stopped or ended without finishing, a stuck branch, …).
   List<HeldItemDto> get held => plan.held;
 
+  /// Items whose last run ended with problems (a failed exit, denied
+  /// permissions, a pull request that could not be opened, …).
+  List<ProblemItemDto> get problems => plan.problems;
+
   /// Unfinished items whose claim expired: their agent is gone.
   List<ItemDto> get expiredClaims => [
     for (final item in _open)
@@ -74,8 +78,9 @@ final class ProjectDigest {
       if (item.conflicting) item,
   ];
 
-  /// How many things wait for a person: questions, approvals and held items.
-  int get needsMe => waitingForAnswer.length + toApprove.length + held.length;
+  /// How many things wait for a person: questions, approvals, problems and
+  /// held items.
+  int get needsMe => waitingForAnswer.length + toApprove.length + problems.length + held.length;
 
   /// Everything running: agents, commands and built-ins of actions.
   List<AgentRunDto> get runs {

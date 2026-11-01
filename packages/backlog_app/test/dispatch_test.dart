@@ -6,6 +6,7 @@ import 'package:backlog_app/features/board/presentation/item_card.dart';
 import 'package:backlog_app/features/dispatch/application/agent_log_controller.dart';
 import 'package:backlog_app/features/dispatch/application/dispatch_controller.dart';
 import 'package:backlog_app/features/dispatch/presentation/action_buttons.dart';
+import 'package:backlog_app/features/dispatch/presentation/agent_state_badge.dart';
 import 'package:backlog_app/features/dispatch/presentation/dispatch_overview.dart';
 import 'package:backlog_app/features/dispatch/presentation/dispatch_scope.dart';
 import 'package:backlog_app/features/item/presentation/item_page.dart';
@@ -529,12 +530,74 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Agent · last run'), findsOneWidget);
+    expect(find.text('Done · last run ended · handed over as review'), findsOneWidget);
+    expect(_key('agent-problems'), findsNothing);
+    expect(_key('agent-result'), findsNothing, reason: 'no final message');
     expect(find.text('■ done · 3 turns'), findsNothing, reason: 'an ended run starts collapsed');
     await tester.tap(_key('agent-log-toggle'));
     await tester.pump();
     expect(find.text('■ done · 3 turns'), findsOneWidget);
     expect(find.text('Last run · exited with code 0 · handed over as review · claude --resume s-1'), findsOneWidget);
+  });
+
+  testWidgets('a run that ended with problems needs you: the box lists them with the final message', (tester) async {
+    final (api, _) = await _pumpDetail(tester, 'R-3', _plan());
+    api.agentLogUpdates.add(
+      const AgentLogUpdateDto(
+        item: 'R-3',
+        path: '/state/logs/R-3.log',
+        reset: true,
+        lines: ['■ done'],
+        last: AgentRunEndDto(
+          exitCode: 0,
+          outcome: 'handed over as review',
+          result: 'Fixed it, but git push was denied.',
+          problems: ['a tool call was denied: Bash(git push)'],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Needs you: the last run ended with a problem'), findsOneWidget);
+    expect(find.text('• a tool call was denied: Bash(git push)'), findsOneWidget);
+    expect(find.text('Fixed it, but git push was denied.'), findsOneWidget);
+  });
+
+  testWidgets('a card shows that its last run has problems, or that it is held', (tester) async {
+    final api = FakeBacklogApi(_items())
+      ..plan = DispatchDto(
+        configured: true,
+        mode: 'manual',
+        problems: const [
+          ProblemItemDto(item: 'R-2', title: 'Item R-2', problems: ['the agent exited with code 1']),
+        ],
+        held: const [HeldItemDto(item: 'R-3', title: 'Item R-3', reason: 'stopped by a person')],
+      );
+    final dispatch = DispatchController(api, refreshDelay: Duration.zero);
+    addTearDown(dispatch.dispose);
+    await dispatch.start();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BoardTokens.light.toTheme(Brightness.light),
+        home: Scaffold(
+          body: DispatchScope(
+            controller: dispatch,
+            child: Column(
+              children: [
+                for (final item in _items())
+                  ItemCard(
+                    item: item,
+                    menu: AgentStateBadge(item: item),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(_key('agent-problems-R-2'), findsOneWidget);
+    expect(_key('agent-held-R-3'), findsOneWidget);
+    expect(_key('agent-problems-R-1'), findsNothing);
+    expect(_key('agent-held-B-1'), findsNothing);
   });
 
   testWidgets('the live log stays at the end and pauses while the reader scrolls up', (tester) async {
