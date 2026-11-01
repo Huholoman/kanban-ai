@@ -375,6 +375,7 @@ class _BoardPageState extends State<BoardPage> {
               selectedId: selectedId,
               onOpen: _open,
               onMove: controller.canMove ? (item, key) => unawaited(controller.move(item, key)) : null,
+              onRank: controller.canRank ? (item, target) => unawaited(controller.rank(item, target)) : null,
               collapsed: controller.collapsed,
               onToggleCollapsed: controller.toggleCollapsed,
             ),

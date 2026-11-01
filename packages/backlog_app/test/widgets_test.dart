@@ -48,6 +48,34 @@ void main() {
     expect(api.updates.single.$2.changes, ['status=done']);
   });
 
+  testWidgets('in a view sorted by rank, a card dropped onto another of its column takes its place', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = FakeBacklogApi([item('T-1'), item('T-2'), item('T-3', parent: 'T-1'), item('T-4')])
+      ..viewSort['board'] = ['rank'];
+    await tester.pumpWidget(BacklogApp(api: api));
+    await tester.pumpAndSettle();
+
+    Future<void> drag(String from, String to) async {
+      final gesture = await tester.startGesture(tester.getCenter(find.byKey(ValueKey('card-$from'))));
+      await tester.pump(const Duration(milliseconds: 50));
+      await gesture.moveTo(tester.getCenter(find.byKey(ValueKey('card-$to'))));
+      await tester.pump(const Duration(milliseconds: 50));
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    await drag('T-4', 'T-1');
+    expect(api.ranks.map((r) => '${r.$1}: ${r.$2.join(' ')}'), ['T-4: T-4 T-1 T-2 T-3']);
+    final top = tester.getTopLeft(find.byKey(const ValueKey('card-T-4'))).dy;
+    expect(top, lessThan(tester.getTopLeft(find.byKey(const ValueKey('card-T-1'))).dy));
+
+    await drag('T-3', 'T-2');
+    expect(api.ranks, hasLength(1), reason: 'T-3 sits under its parent T-1, T-2 is no sibling');
+    expect(api.updates, isEmpty);
+  });
+
   testWidgets('tapping a card opens the detail with the rendered body', (tester) async {
     await pumpApp(tester);
     await tester.tap(find.text('Item T-2'));

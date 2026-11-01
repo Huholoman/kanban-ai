@@ -94,6 +94,7 @@ final class ViewResultDto {
     this.groupBy,
     this.fields = const [],
     this.columns,
+    this.sort = const [],
     this.hidden = 0,
     required this.groups,
     this.milestone,
@@ -106,6 +107,7 @@ final class ViewResultDto {
     groupBy: json.optionalString('group_by'),
     fields: json.strings('fields'),
     columns: json['columns'] == null ? null : json.strings('columns'),
+    sort: json.strings('sort'),
     hidden: json.integer('hidden'),
     groups: json.objects('groups').map(ViewGroupDto.fromJson).toList(),
     milestone: json.optionalString('milestone'),
@@ -121,6 +123,10 @@ final class ViewResultDto {
   /// (every value of the grouping field).
   final List<String>? columns;
 
+  /// The view's sort keys (`priority`, `-updated`, …); `rank` first means
+  /// a manual order that cards can be dragged into.
+  final List<String> sort;
+
   /// Items that matched the filter but fall outside the shown columns.
   final int hidden;
   final List<ViewGroupDto> groups;
@@ -133,17 +139,21 @@ final class ViewResultDto {
 
   /// This result with the items of its groups taken from [index] by id
   /// (for a result of `?ids=true`); ids missing from [index] are left out.
-  ViewResultDto resolve(Map<String, ItemDto> index) => ViewResultDto(
+  ViewResultDto resolve(Map<String, ItemDto> index) => withGroups([
+    for (final group in groups) ViewGroupDto(group.key, [for (final id in group.ids) ?index[id]]),
+  ]);
+
+  /// This result with [groups] instead of its own.
+  ViewResultDto withGroups(List<ViewGroupDto> groups) => ViewResultDto(
     id: id,
     name: name,
     layout: layout,
     groupBy: groupBy,
     fields: fields,
     columns: columns,
+    sort: sort,
     hidden: hidden,
-    groups: [
-      for (final group in groups) ViewGroupDto(group.key, [for (final id in group.ids) ?index[id]]),
-    ],
+    groups: groups,
   );
 
   ViewSummaryDto get summary => ViewSummaryDto(id: id, name: name, layout: layout, groupBy: groupBy);
@@ -155,6 +165,7 @@ final class ViewResultDto {
     'group_by': groupBy,
     'fields': fields,
     'columns': columns,
+    'sort': sort,
     'hidden': hidden,
     'groups': [for (final group in groups) group.toJson()],
     'milestone': milestone,

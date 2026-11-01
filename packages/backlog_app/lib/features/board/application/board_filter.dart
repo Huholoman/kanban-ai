@@ -201,22 +201,13 @@ final class BoardFilter {
   /// ones, so kanban columns do not jump around. [index] resolves parents.
   ViewResultDto apply(ViewResultDto result, [Map<String, ItemDto> index = const {}]) {
     if (isEmpty) return result;
-    return ViewResultDto(
-      id: result.id,
-      name: result.name,
-      layout: result.layout,
-      groupBy: result.groupBy,
-      fields: result.fields,
-      columns: result.columns,
-      hidden: result.hidden,
-      groups: [
-        for (final group in result.groups)
-          ViewGroupDto(group.key, [
-            for (final item in group.items)
-              if (matches(item, index)) item,
-          ]),
-      ],
-    );
+    return result.withGroups([
+      for (final group in result.groups)
+        ViewGroupDto(group.key, [
+          for (final item in group.items)
+            if (matches(item, index)) item,
+        ]),
+    ]);
   }
 
   /// How many of [items] carry each value, per facet (an item with several

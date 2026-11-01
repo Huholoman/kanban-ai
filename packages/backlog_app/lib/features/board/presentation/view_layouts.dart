@@ -15,6 +15,7 @@ import 'item_card.dart';
 
 typedef OpenItem = void Function(String id);
 typedef MoveItem = void Function(ItemDto item, String key);
+typedef RankItem = void Function(ItemDto item, ItemDto target);
 
 /// The dispatcher's controls of a card: who has the ball, and the item's
 /// actions.
@@ -30,7 +31,8 @@ Widget _cardMenu(ItemDto item, WorkflowDto? workflow) => Row(
 );
 
 /// Columns side by side; cards can be dragged between them when [onMove] is
-/// set. Inside a column, children are indented under their parent (see
+/// set, and within their column (onto a sibling, see [onRank]) when [onRank]
+/// is. Inside a column, children are indented under their parent (see
 /// [ColumnArrangement]). With [stacked] (phones) the columns become status
 /// sections one under another, without drag and drop.
 class KanbanBoard extends StatelessWidget {
@@ -42,6 +44,7 @@ class KanbanBoard extends StatelessWidget {
     this.selectedId,
     required this.onOpen,
     this.onMove,
+    this.onRank,
     this.collapsed = const {},
     this.onToggleCollapsed,
     this.paged = false,
@@ -61,6 +64,10 @@ class KanbanBoard extends StatelessWidget {
   final String? selectedId;
   final OpenItem onOpen;
   final MoveItem? onMove;
+
+  /// Drop of a card onto another card of its column with the same parent:
+  /// it takes that card's place in the manual order (`rank`).
+  final RankItem? onRank;
 
   /// Parents shown without their children.
   final Set<String> collapsed;
@@ -129,7 +136,10 @@ class KanbanBoard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (final entry in entries)
-                    Padding(padding: const EdgeInsets.only(bottom: 8), child: _entry(context, entry, width)),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _entry(context, entry, width, group: group),
+                    ),
                 ],
               ),
             ),
@@ -154,6 +164,7 @@ class KanbanBoard extends StatelessWidget {
     double columnWidth, {
     bool draggable = true,
     VoidCallback? onLongPress,
+    ViewGroupDto? group,
   }) {
     final item = entry.item;
     final Widget content;
@@ -206,7 +217,8 @@ class KanbanBoard extends StatelessWidget {
         footer: toggle,
         menu: _cardMenu(item, workflow),
       );
-      content = onMove == null || !draggable
+      final rank = onRank;
+      final draggableCard = (onMove == null && rank == null) || !draggable
           ? card
           : Draggable<ItemDto>(
               data: item,
@@ -220,6 +232,9 @@ class KanbanBoard extends StatelessWidget {
               childWhenDragging: Opacity(opacity: 0.3, child: card),
               child: card,
             );
+      content = rank == null || group == null || !draggable
+          ? draggableCard
+          : _RankTarget(item: item, group: group, onRank: rank, child: draggableCard);
     }
     if (entry.depth == 0) return content;
     return _Indented(depth: entry.depth, child: content);
@@ -230,6 +245,52 @@ class KanbanBoard extends StatelessWidget {
   bool _isIn(ItemDto item, String key) {
     final field = result.groupBy;
     return field != null && BoardController.valueOf(item, field) == key;
+  }
+}
+
+/// A card that another card of its column with the same parent can be
+/// dropped onto: a line shows where it lands — below the card when it comes
+/// from above, above it when from below.
+class _RankTarget extends StatelessWidget {
+  const _RankTarget({required this.item, required this.group, required this.onRank, required this.child});
+
+  final ItemDto item;
+  final ViewGroupDto group;
+  final RankItem onRank;
+  final Widget child;
+
+  int _indexOf(String id) => group.items.indexWhere((i) => i.id == id);
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = BoardTokens.of(context);
+    return DragTarget<ItemDto>(
+      key: ValueKey('rank-${item.id}'),
+      onWillAcceptWithDetails: (details) =>
+          details.data.id != item.id && details.data.parent == item.parent && _indexOf(details.data.id) >= 0,
+      onAcceptWithDetails: (details) => onRank(details.data, item),
+      builder: (context, candidates, _) {
+        final dragged = candidates.firstOrNull;
+        if (dragged == null) return child;
+        final below = _indexOf(dragged.id) < _indexOf(item.id);
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            child,
+            Positioned(
+              left: 0,
+              right: 0,
+              top: below ? null : -6,
+              bottom: below ? -6 : null,
+              height: 3,
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: tokens.accent, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 

@@ -65,6 +65,11 @@ class BoardController extends ChangeNotifier {
 
   bool get canMove => result?.layout == ViewLayoutDto.kanban && movableFields.contains(result?.groupBy);
 
+  /// Cards can be dragged within their column: a kanban view sorted by
+  /// `rank` first.
+  bool get canRank =>
+      result?.layout == ViewLayoutDto.kanban && result?.groupBy != null && result?.sort.firstOrNull == 'rank';
+
   int get lintErrors => lint.where((issue) => issue.isError).length;
 
   /// The milestone the board is about: the one chosen in [filter], else
@@ -366,6 +371,38 @@ class BoardController extends ChangeNotifier {
     await refresh(quiet: true);
   }
 
+  /// Drops [item] onto [target] in the same column: it takes the place of
+  /// [target] (after it when coming from above, before it from below) and
+  /// gets a `rank` there.
+  Future<void> rank(ItemDto item, ItemDto target) async {
+    final current = result;
+    if (current == null || !canRank || item.id == target.id) return;
+    final group = current.groups
+        .where((g) => g.items.any((i) => i.id == item.id) && g.items.any((i) => i.id == target.id))
+        .firstOrNull;
+    if (group == null) return;
+    final order = reordered(group.ids, item.id, target.id);
+    final byId = {for (final i in group.items) i.id: i};
+    result = current.withGroups([
+      for (final g in current.groups) g == group ? ViewGroupDto(g.key, [for (final id in order) byId[id]!]) : g,
+    ]);
+    notifyListeners();
+    try {
+      await _api.rank(item.id, RankRequest(order));
+    } catch (e) {
+      _notices.add('${item.id}: $e');
+    }
+    await refresh(quiet: true);
+  }
+
+  /// [ids] with [moved] in the place of [target]: after it when [moved] was
+  /// above it, else before it.
+  static List<String> reordered(List<String> ids, String moved, String target) {
+    final down = ids.indexOf(moved) < ids.indexOf(target);
+    final rest = [...ids]..remove(moved);
+    return rest..insert(rest.indexOf(target) + (down ? 1 : 0), moved);
+  }
+
   Future<ItemDetailDto?> create(NewItemRequest request) async {
     try {
       final created = await _api.createItem(request);
@@ -397,19 +434,10 @@ class BoardController extends ChangeNotifier {
     return ids.contains('board') ? 'board' : ids.first;
   }
 
-  static ViewResultDto _moved(ViewResultDto result, ItemDto item, String key) => ViewResultDto(
-    id: result.id,
-    name: result.name,
-    layout: result.layout,
-    groupBy: result.groupBy,
-    fields: result.fields,
-    columns: result.columns,
-    hidden: result.hidden,
-    groups: [
-      for (final group in result.groups)
-        ViewGroupDto(group.key, [if (group.key == key) item, ...group.items.where((i) => i.id != item.id)]),
-    ],
-  );
+  static ViewResultDto _moved(ViewResultDto result, ItemDto item, String key) => result.withGroups([
+    for (final group in result.groups)
+      ViewGroupDto(group.key, [if (group.key == key) item, ...group.items.where((i) => i.id != item.id)]),
+  ]);
 
   @override
   void dispose() {

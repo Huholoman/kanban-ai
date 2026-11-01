@@ -103,6 +103,32 @@ void main() {
       expect(board.canMove, isFalse);
     });
 
+    test('cards can be ranked within a column only in a kanban view sorted by rank', () async {
+      expect(board.canRank, isFalse);
+      board.dispose(); // the one from setUp; tearDown disposes the new one
+      api = FakeBacklogApi([item('T-1'), item('T-2'), item('T-3'), item('T-4', status: 'done')])
+        ..viewSort['board'] = ['rank'];
+      board = BoardController(api, refreshDelay: const Duration(milliseconds: 10));
+      await board.start();
+      expect(board.canRank, isTrue);
+      final [one, two, three] = board.result!.groups.first.items;
+
+      await board.rank(three, one);
+      expect(api.ranks.map(_ranked), ['T-3: T-3 T-1 T-2']);
+      expect(board.result!.groups.first.items.map((i) => i.id), ['T-3', 'T-1', 'T-2']);
+
+      await board.rank(one, two);
+      expect(api.ranks.map(_ranked).last, 'T-1: T-3 T-2 T-1');
+      await board.rank(one, board.result!.groups.last.items.single);
+      expect(api.ranks, hasLength(2), reason: 'not across columns');
+    });
+
+    test('reordered puts the moved id in the place of the target', () {
+      expect(BoardController.reordered(['a', 'b', 'c', 'd'], 'a', 'c'), ['b', 'c', 'a', 'd']);
+      expect(BoardController.reordered(['a', 'b', 'c', 'd'], 'd', 'b'), ['a', 'd', 'b', 'c']);
+      expect(BoardController.reordered(['a', 'b'], 'a', 'b'), ['b', 'a']);
+    });
+
     test('move sets the group field and refreshes', () async {
       await board.move(board.result!.groups.first.items.single, 'done');
       expect(api.updates.single.$1, 'T-1');
@@ -380,3 +406,5 @@ final class _GatedApi implements BacklogApi {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+String _ranked((String, List<String>) request) => '${request.$1}: ${request.$2.join(' ')}';

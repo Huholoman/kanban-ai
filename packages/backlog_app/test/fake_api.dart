@@ -265,6 +265,9 @@ final class FakeBacklogApi implements BacklogApi {
   /// Section and columns of each view, as `PATCH /api/views/<id>` sets them.
   final viewSections = <String, String>{};
   final viewColumns = <String, List<String>>{};
+
+  /// The `sort` of each view; `[rank]` sorts the board by rank, unranked last.
+  final viewSort = <String, List<String>>{};
   final pinnedViews = <String>{};
 
   @override
@@ -358,9 +361,10 @@ final class FakeBacklogApi implements BacklogApi {
       layout: ViewLayoutDto.kanban,
       groupBy: 'status',
       columns: viewColumns[id],
+      sort: viewSort[id] ?? const [],
       groups: [
         for (final status in viewColumns[id] ?? ['todo', 'in-progress', 'done'])
-          ViewGroupDto(status, all.where((i) => i.status == status).toList()),
+          ViewGroupDto(status, _sorted(id, all.where((i) => i.status == status).toList())),
       ],
     );
   }
@@ -546,6 +550,10 @@ final class FakeBacklogApi implements BacklogApi {
     );
     return controller.stream;
   }
+
+  List<ItemDto> _sorted(String view, List<ItemDto> items) => viewSort[view]?.firstOrNull != 'rank'
+      ? items
+      : (items..sort((a, b) => (a.rank ?? double.infinity).compareTo(b.rank ?? double.infinity)));
 
   static ItemDto _with(
     ItemDto item, {

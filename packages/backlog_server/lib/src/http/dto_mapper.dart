@@ -194,6 +194,7 @@ abstract final class DtoMapper {
       groupBy: definition.groupBy,
       fields: definition.fields,
       columns: definition.columns,
+      sort: [for (final key in definition.sort) '$key'],
       hidden: result.hidden,
       groups: [
         for (final group in result.groups)
