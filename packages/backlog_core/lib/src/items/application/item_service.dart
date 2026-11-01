@@ -108,8 +108,11 @@ final class ItemService {
 
   /// Applies [changes] in order, replaces the Markdown [body] when given and
   /// bumps `updated` unless a change sets it or nothing changed.
+  /// An archived item that is no longer finished moves back out of the
+  /// archive.
   Future<Item> update(String reference, Iterable<FieldChange> changes, {String? body}) async {
-    final items = (await _repository.load()).items;
+    final catalog = await _repository.load();
+    final items = catalog.items;
     final known = {for (final item in items) item.id};
     final original = find(items, reference);
 
@@ -124,8 +127,59 @@ final class ItemService {
       item = item.touchedSince(original, _clock.now());
     }
     await _repository.save(item);
+    if (catalog.archived.contains(item.id) && !_finished(item)) {
+      await _repository.setArchived(item.id, archived: false);
+    }
     return item;
   }
+
+  /// Moves finished items (status of category done) into the archive: the
+  /// ones [references] name, each of which must be finished, or else every
+  /// finished item unchanged for at least [olderThan]. Returns the items
+  /// that moved (with [dryRun] that would move), oldest first.
+  Future<List<Item>> archive({
+    List<String> references = const [],
+    Duration olderThan = const Duration(days: 30),
+    bool dryRun = false,
+  }) async {
+    final catalog = await _repository.load();
+    final List<Item> selected;
+    if (references.isEmpty) {
+      final before = _clock.now().subtract(olderThan);
+      selected = [
+        for (final item in catalog.items)
+          if (_finished(item) && !catalog.archived.contains(item.id))
+            if (item.updatedAt ?? item.createdAt case final changed? when !changed.isAfter(before)) item,
+      ];
+    } else {
+      selected = {for (final reference in references) find(catalog.items, reference)}.toList();
+      for (final item in selected) {
+        if (!_finished(item)) throw InvalidInputException('${item.id} is not finished (status ${item.status}).');
+      }
+      selected.removeWhere((item) => catalog.archived.contains(item.id));
+    }
+    selected.sort((a, b) => _changedAt(a).compareTo(_changedAt(b)));
+    if (!dryRun) {
+      for (final item in selected) {
+        await _repository.setArchived(item.id, archived: true);
+      }
+    }
+    return selected;
+  }
+
+  /// Moves an archived item back among the others; false when it was not
+  /// archived.
+  Future<bool> restore(String reference) async {
+    final catalog = await _repository.load();
+    final item = find(catalog.items, reference);
+    if (!catalog.archived.contains(item.id)) return false;
+    await _repository.setArchived(item.id, archived: false);
+    return true;
+  }
+
+  bool _finished(Item item) => _workflow.categoryOf(item.status) == StatusCategory.done;
+
+  static DateTime _changedAt(Item item) => item.updatedAt ?? item.createdAt ?? DateTime.utc(0);
 
   /// Adds a comment by [author] to the item's discussion (the `## Discussion`
   /// section of its body); a [question] makes the item wait for a person

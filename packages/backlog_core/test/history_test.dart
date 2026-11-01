@@ -136,6 +136,25 @@ void main() {
     await expectLater(backlog.history.of(item.id.value, only: 'nope'), throwsA(isA<InvalidInputException>()));
   });
 
+  test('the history of an archived item includes its versions in items/', () async {
+    final (backlog, clock) = await tempBacklog();
+    final root = backlog.layout.root;
+    await _git(root, ['init', '-q']);
+    final item = await backlog.items.create(const NewItem(title: 'Backups', status: 'todo'));
+    await _commit(root, 'tobik', clock);
+    clock.advance(const Duration(hours: 1));
+    await backlog.items.update(item.id.value, [FieldChange.parse('status=done')]);
+    await _commit(root, 'monorepo-2', clock);
+    await backlog.items.archive(references: [item.id.value]);
+    await _commit(root, 'tobik', clock);
+
+    final entries = await backlog.history.of(item.id.value);
+    expect(entries.map((e) => (e.kind, e.field, e.after, e.uncommitted)), [
+      (HistoryKind.created, null, 'todo', false),
+      (HistoryKind.field, 'status', 'done', false),
+    ]);
+  });
+
   test('outside a git repository the history is the item and its discussion', () async {
     final (backlog, _) = await tempBacklog();
     final item = await backlog.items.create(const NewItem(title: 'Backups'));
