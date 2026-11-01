@@ -15,19 +15,23 @@ class PrLink extends StatelessWidget {
     return number == null ? 'PR' : 'PR #$number';
   }
 
+  /// Opens [url] in a new tab; null for anything but http(s) links.
+  static VoidCallback? opener(String url) {
+    final uri = Uri.tryParse(url);
+    return uri == null ||
+            !const {'http', 'https'}.contains(uri.scheme) // nothing like javascript:
+        ? null
+        : () => launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final uri = Uri.tryParse(url);
     return Tooltip(
       message: url,
       child: InkWell(
         key: ValueKey('pr-$url'),
         borderRadius: BorderRadius.circular(6),
-        onTap:
-            uri == null ||
-                !const {'http', 'https'}.contains(uri.scheme) // nothing like javascript:
-            ? null
-            : () => launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank'),
+        onTap: opener(url),
         child: Tag(label(url), icon: Icons.call_merge, color: Colors.purple.shade400),
       ),
     );

@@ -396,7 +396,12 @@ void main() {
     );
     final (api, _) = await _pumpDetail(tester, 'R-3', plan);
     expect(_key('start-agent'), findsOneWidget, reason: 'proposals of other items reserve nothing');
-    expect(_key('agent-panel'), findsNothing, reason: 'it does not wait for anything');
+    expect(
+      tester.widget<Text>(_key('next-step-R-3')).data,
+      'Next: Ready and nothing runs – Start agent',
+      reason: 'it waits for nothing but you',
+    );
+    expect(_key('next-start-R-3'), findsOneWidget);
     await tester.tap(_key('start-agent'));
     await tester.pumpAndSettle();
     expect(api.started, ['R-3']);
@@ -512,6 +517,27 @@ void main() {
       expect(find.text('Your message waits: the agent continues after the action "Tests" ends.'), findsOneWidget);
     });
 
+    testWidgets('an item waiting for your review says what to do next, with the buttons', (tester) async {
+      final (api, _) = await _pumpDetail(
+        tester,
+        'V-1',
+        _plan(),
+        actions: const [
+          ActionDto(name: 'Merge', kind: 'builtin', statuses: ['review']),
+        ],
+        items: [item('V-1', status: 'review', review: 'ok', pr: 'https://github.com/o/r/pull/12')],
+      );
+      expect(_key('ball-you-V-1'), findsOneWidget);
+      expect(
+        tester.widget<Text>(_key('next-step-V-1')).data,
+        'Next: AI review ✓ – look through PR #12 and run "Merge"',
+      );
+      expect(_key('next-pr-V-1'), findsOneWidget);
+      await tester.tap(_key('next-action-V-1-Merge'));
+      await tester.pumpAndSettle();
+      expect(api.actionsRun, ['V-1 Merge']);
+    });
+
     testWidgets('a queued on_enter action shows in the Agent box', (tester) async {
       final plan = DispatchDto(
         configured: true,
@@ -589,7 +615,7 @@ void main() {
 
   testWidgets('after the run the detail keeps the Agent box with the last log and how it ended', (tester) async {
     final (api, _) = await _pumpDetail(tester, 'R-3', _plan());
-    expect(_key('agent-panel'), findsNothing, reason: 'no agent has run');
+    expect(_key('agent-log-toggle'), findsNothing, reason: 'no agent has run');
     api.agentLogUpdates.add(
       const AgentLogUpdateDto(
         item: 'R-3',

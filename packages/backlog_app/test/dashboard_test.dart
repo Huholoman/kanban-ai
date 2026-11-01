@@ -236,7 +236,7 @@ void main() {
     });
 
     testWidgets('shows questions, approvals, held and running work of every project', (tester) async {
-      await pumpApp(tester);
+      final api = await pumpApp(tester);
       await tester.tap(find.byKey(const ValueKey('open-dashboard')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('a:question-A-1')), findsOneWidget);
@@ -244,8 +244,17 @@ void main() {
       expect(find.byKey(const ValueKey('a:approve-A-2')), findsOneWidget);
       expect(find.text('AI review: 2 findings'), findsOneWidget);
       expect(find.byKey(const ValueKey('action-A-2-Merge')), findsOneWidget);
-      expect(find.text('the agent ended without finishing'), findsOneWidget);
       expect(find.byKey(const ValueKey('b:run-B-1')), findsOneWidget);
+      // Rows that wait for you say what to do next, with the buttons that do it.
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('next-step-A-2'))).data,
+        'Next: AI review has 2 findings – resolve them or answer in the discussion',
+      );
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('next-step-A-3'))).data,
+        'Next: Held: the agent ended without finishing – start the agent again when it can go on',
+      );
+      expect(find.byKey(const ValueKey('next-start-A-3')), findsOneWidget);
       // Every row says who has the ball, the same badge as on cards.
       expect(find.byKey(const ValueKey('ball-you-A-1')), findsOneWidget);
       expect(find.byKey(const ValueKey('ball-you-A-2')), findsOneWidget);
@@ -258,6 +267,11 @@ void main() {
         reason: 'same worktree name, two projects',
       );
       expect(find.text('Project b'), findsWidgets, reason: 'rows name their project');
+
+      await tester.ensureVisible(find.byKey(const ValueKey('next-start-A-3')));
+      await tester.tap(find.byKey(const ValueKey('next-start-A-3')));
+      await tester.pumpAndSettle();
+      expect(api.backlogs['a']!.started, ['A-3']);
 
       await tester.tap(find.byKey(const ValueKey('dashboard-project')));
       await tester.pumpAndSettle();
