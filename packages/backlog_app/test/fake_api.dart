@@ -34,6 +34,8 @@ ItemDto item(
   Progress children = Progress.none,
   String? claimedBy,
   String? branch,
+  String? created,
+  DateTime? createdAt,
 }) => ItemDto(
   id: id,
   branch: branch,
@@ -53,6 +55,8 @@ ItemDto item(
   review: review,
   reviewFindings: reviewFindings,
   children: children,
+  created: created,
+  createdAt: createdAt,
   body: body,
   claim: claimedBy == null
       ? null
@@ -470,6 +474,8 @@ final class FakeBacklogApi implements BacklogApi {
     needsHuman: needsHuman ?? item.needsHuman,
     review: item.review,
     reviewFindings: item.reviewFindings,
+    created: item.created,
+    createdAt: item.createdAt,
     body: body ?? item.body,
     claim: item.claim,
   );

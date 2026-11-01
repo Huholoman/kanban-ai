@@ -191,4 +191,26 @@ void main() {
       expect(fired, ['a5']);
     });
   });
+
+  group('times', () {
+    final now = DateTime(2026, 11, 1, 12);
+
+    test('relative for recent times, else the local date and time', () {
+      expect(relativeTime(now.subtract(const Duration(seconds: 20)), now: now), 'just now');
+      expect(relativeTime(now.subtract(const Duration(minutes: 5)), now: now), '5 min ago');
+      expect(relativeTime(now.subtract(const Duration(hours: 3)), now: now), '3 h ago');
+      expect(relativeTime(now.subtract(const Duration(days: 1)), now: now), 'yesterday');
+      expect(relativeTime(now.subtract(const Duration(days: 3)), now: now), '3 days ago');
+      expect(relativeTime(DateTime(2026, 10, 2, 9, 5), now: now), '2.10. 09:05');
+      expect(relativeTime(DateTime(2025, 10, 2, 9, 5), now: now), '2.10.2025 09:05');
+      expect(exactTime(DateTime(2026, 10, 31, 21, 27, 12)), '31.10.2026 21:27:12');
+    });
+
+    testWidgets('TimeText shows the exact local time in its tooltip', (tester) async {
+      final at = now.subtract(const Duration(minutes: 5));
+      await pump(tester, TimeText(at, prefix: 'created ', now: now));
+      expect(find.text('created 5 min ago'), findsOneWidget);
+      expect(tester.widget<Tooltip>(find.byType(Tooltip)).message, exactTime(at));
+    });
+  });
 }
