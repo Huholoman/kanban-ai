@@ -482,6 +482,21 @@ final class FakeBacklogApi implements BacklogApi {
     });
   }
 
+  /// Items whose problems were dismissed; the plan loses them.
+  final dismissed = <String>[];
+
+  @override
+  Future<DispatchDto> dismissProblems(String reference) async {
+    dismissed.add(reference);
+    return plan = DispatchDto.fromJson({
+      ...plan.toJson(),
+      'problems': [
+        for (final problem in plan.problems)
+          if (problem.item != reference) problem.toJson(),
+      ],
+    });
+  }
+
   @override
   Future<DispatchDto> stopAgent(String reference) async {
     stopped.add(reference);

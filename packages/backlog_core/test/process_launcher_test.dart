@@ -437,6 +437,14 @@ dispatcher:
     expect(again.problems.single.item.id, ItemId('T-0001'));
     expect(again.problems.single.problems, problems);
 
+    // A person dismisses them: they no longer show, but stay in the record.
+    expect(await launcher.dismissProblems(ItemId('T-0001')), isTrue);
+    expect((await plan()).problems, isEmpty);
+    final dismissed = (await launcher.agentLog(ItemId('T-0001')))!.last!;
+    expect(dismissed['problems'], isEmpty);
+    expect(dismissed['dismissed_problems'], problems);
+    expect(await launcher.dismissProblems(ItemId('T-0001')), isFalse);
+
     // A new run replaces them; one that went well has none.
     await backlog.items.update('T-0001', [FieldChange.parse('status=todo')]);
     clock.advance(const Duration(minutes: 1));

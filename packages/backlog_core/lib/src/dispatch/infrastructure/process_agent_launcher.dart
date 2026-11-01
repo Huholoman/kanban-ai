@@ -693,6 +693,22 @@ final class ProcessAgentLauncher extends AgentLauncher {
       ? '${duration.inMinutes} min'
       : '${duration.inHours} h ${duration.inMinutes % 60} min';
 
+  /// Moves the `problems` of `<id>.last.json` and `<id>.action.json` to
+  /// `dismissed_problems`.
+  @override
+  Future<bool> dismissProblems(ItemId item) => _serialized(() async {
+    var dismissed = false;
+    for (final file in [_lastFile(item), _actionFile(item)]) {
+      final json = await _readJson(file);
+      final problems = json?['problems'] as List<Object?>? ?? const [];
+      if (json == null || problems.isEmpty) continue;
+      await _write(file, {...json, 'problems': const <String>[], 'dismissed_problems': problems});
+      dismissed = true;
+    }
+    if (dismissed) _log('Dispatcher: the problems of $item were dismissed.');
+    return dismissed;
+  });
+
   @override
   Future<bool> stop(ItemId item) async {
     final record = await _record(item);

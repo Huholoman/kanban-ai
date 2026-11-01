@@ -773,6 +773,12 @@ void main() {
     expect(find.text('Needs you: the last run ended with a problem'), findsOneWidget);
     expect(find.text('• a tool call was denied: Bash(git push)'), findsOneWidget);
     expect(find.text('Fixed it, but git push was denied.'), findsOneWidget);
+
+    await tester.tap(_key('dismiss-problems'));
+    await tester.pumpAndSettle();
+    expect(api.dismissed, ['R-3']);
+    expect(find.textContaining('Needs you'), findsNothing);
+    expect(_key('agent-problems'), findsNothing);
   });
 
   testWidgets('a finished item needs nobody: the problems of its last run are history', (tester) async {

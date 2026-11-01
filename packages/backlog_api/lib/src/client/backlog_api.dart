@@ -84,6 +84,10 @@ abstract interface class BacklogApi {
   /// Drops the queued start of [reference] and returns the new plan.
   Future<DispatchDto> cancelQueued(String reference);
 
+  /// Says the problems of the last runs of [reference] are dealt with (they
+  /// no longer show) and returns the new plan.
+  Future<DispatchDto> dismissProblems(String reference);
+
   /// Stops the agent working on [reference] and returns the new plan.
   Future<DispatchDto> stopAgent(String reference);
 
@@ -139,6 +143,8 @@ abstract final class ApiPaths {
   static const dispatchQueue = '/api/dispatch/queue';
 
   static String queued(String reference) => '$dispatchQueue/${Uri.encodeComponent(reference)}';
+  static const dispatchProblems = '/api/dispatch/problems';
+  static String problems(String reference) => '$dispatchProblems/${Uri.encodeComponent(reference)}';
   static const events = '/api/events';
   static const health = '/api/health';
   static const projects = '/api/projects';

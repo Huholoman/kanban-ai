@@ -71,6 +71,7 @@ final class ApiHandler {
           ..post(local(ApiPaths.dispatchStop), _stopAgent)
           ..post(local(ApiPaths.dispatchEpic), _startEpic)
           ..delete('${local(ApiPaths.dispatchQueue)}/<ref>', _cancelQueued)
+          ..delete('${local(ApiPaths.dispatchProblems)}/<ref>', _dismissProblems)
           ..get('${local(ApiPaths.dispatch)}/log/<ref>', _agentLog)
           ..get('${local(ApiPaths.dispatch)}/log/<ref>/live', _agentLogLive);
     return _guard(router.call);
@@ -237,6 +238,16 @@ final class ApiHandler {
   Future<Response> _startAgent(Request request) async {
     final payload = DispatchRequest.fromJson(await _body(request));
     return _request(payload.item, StartKind.agent, fresh: payload.fresh);
+  }
+
+  Future<Response> _dismissProblems(Request request, String ref) async {
+    final launcher = _launcher() ?? (throw const NotFoundException('No dispatcher runs for this project.'));
+    final snapshot = await (await _host.backlog).planning.snapshot();
+    final id = ItemReference.resolve(Uri.decodeComponent(ref), snapshot.ids);
+    if (!await launcher.dismissProblems(id)) throw NotFoundException('The last runs of $id had no problems.');
+    final dispatcher = _dispatcher();
+    final plan = dispatcher == null ? null : await dispatcher.evaluate();
+    return _json((plan == null ? await _plan() : DtoMapper.dispatch(plan)).toJson());
   }
 
   Future<Response> _cancelQueued(Request request, String ref) async {

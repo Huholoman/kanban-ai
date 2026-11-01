@@ -59,6 +59,10 @@ class AgentPanel extends StatefulWidget {
 class _AgentPanelState extends State<AgentPanel> {
   AgentLogController? _log;
 
+  /// The end of the run whose problems were dismissed here; the log still
+  /// has them until it reports that run again.
+  AgentRunEndDto? _dismissed;
+
   /// Shown or hidden by the reader; by default shown while an agent runs.
   bool? _showLogChoice;
 
@@ -126,7 +130,7 @@ class _AgentPanelState extends State<AgentPanel> {
     final last = running || log?.item != id ? null : log?.last;
     final problems = running
         ? const <String>[]
-        : (last?.problems.isNotEmpty ?? false)
+        : (last?.problems.isNotEmpty ?? false) && !identical(last, _dismissed)
         ? last!.problems
         : dispatch.plan.problemsOf(id);
     // A finished item needs nobody: the problems of its last run are history.
@@ -335,6 +339,15 @@ class _AgentPanelState extends State<AgentPanel> {
                 children: [
                   for (final problem in problems)
                     Text('• $problem', style: small?.copyWith(color: needsYou ? tokens.danger : tokens.muted)),
+                  if (needsYou)
+                    TextButton(
+                      key: const ValueKey('dismiss-problems'),
+                      onPressed: () {
+                        setState(() => _dismissed = last);
+                        unawaited(dispatch.dismissProblems(id));
+                      },
+                      child: const Text('Dismiss'),
+                    ),
                 ],
               ),
             ),

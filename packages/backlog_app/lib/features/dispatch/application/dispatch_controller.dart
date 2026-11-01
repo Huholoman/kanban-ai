@@ -92,6 +92,12 @@ class DispatchController extends ChangeNotifier {
     return true;
   }
 
+  /// Says the problems of [item]'s last runs are dealt with.
+  Future<void> dismissProblems(String item) => _act(item, () async {
+    plan = await _api.dismissProblems(item);
+    _notices.add('Dismissed the problems of $item.');
+  });
+
   /// Drops the queued start of [item].
   Future<void> cancelQueued(String item) => _act(item, () async {
     plan = await _api.cancelQueued(item);

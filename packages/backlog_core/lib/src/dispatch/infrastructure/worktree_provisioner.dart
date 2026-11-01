@@ -341,6 +341,9 @@ final class WorktreeProvisioner extends AgentLauncher {
   Future<bool> stop(ItemId item) => _inner.stop(item);
 
   @override
+  Future<bool> dismissProblems(ItemId item) => _inner.dismissProblems(item);
+
+  @override
   Future<AgentLog?> agentLog(ItemId item, {int lines = 100}) => _inner.agentLog(item, lines: lines);
 
   @override
