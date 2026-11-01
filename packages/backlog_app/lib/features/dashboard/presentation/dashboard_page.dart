@@ -7,6 +7,7 @@ import '../../../shared/tokens.dart';
 import '../../dispatch/application/dispatch_controller.dart';
 import '../../dispatch/presentation/dispatch_scope.dart';
 import '../../item/presentation/item_page.dart';
+import '../../projects/presentation/preview_banner.dart';
 import '../application/dashboard_controller.dart';
 import '../application/project_digest.dart';
 import 'dashboard_sections.dart';
@@ -56,6 +57,7 @@ class _DashboardPageState extends State<DashboardPage> {
           appearance: scope.appearance,
           projects: scope.projects,
           dashboard: scope.dashboard,
+          preview: scope.preview,
           child: _ProjectItemPage(reference: item),
         ),
       ),
@@ -66,6 +68,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     final controller = widget.controller;
     final tokens = BoardTokens.of(context);
+    final preview = AppScope.of(context).preview;
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
@@ -91,6 +94,7 @@ class _DashboardPageState extends State<DashboardPage> {
               : LayoutBuilder(
                   builder: (context, constraints) {
                     final errors = [
+                      if (preview != null) PreviewBanner(controller: preview),
                       for (final (name, error) in controller.errors)
                         MaterialBanner(
                           content: Text('$name: $error'),

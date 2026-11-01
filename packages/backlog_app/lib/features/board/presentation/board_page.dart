@@ -10,6 +10,7 @@ import '../../../shared/ui/ui.dart';
 import '../../dispatch/application/dispatch_controller.dart';
 import '../../dispatch/presentation/dispatch_scope.dart';
 import '../../item/presentation/item_page.dart';
+import '../../projects/presentation/preview_banner.dart';
 import '../application/board_controller.dart';
 import '../application/new_item_defaults.dart';
 import 'columns_dialog.dart';
@@ -247,6 +248,7 @@ class _BoardPageState extends State<BoardPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (AppScope.of(context).preview case final preview?) PreviewBanner(controller: preview),
                         BoardHeader(
                           controller: controller,
                           filter: controller.visible == null ? null : _filterBar(controller),

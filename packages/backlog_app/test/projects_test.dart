@@ -1,6 +1,7 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/backlog_app.dart';
 import 'package:backlog_app/features/board/presentation/view_layouts.dart';
+import 'package:backlog_app/features/projects/application/preview_controller.dart';
 import 'package:backlog_app/features/projects/application/project_memory.dart';
 import 'package:backlog_app/features/projects/application/project_route.dart';
 import 'package:backlog_app/features/projects/application/projects_controller.dart';
@@ -376,5 +377,61 @@ void main() {
         expect(find.byType(Drawer), findsNothing, reason: 'the new project starts with the drawer closed');
       });
     });
+
+    testWidgets('a running preview shows a banner on the board; Back to main ends it', (tester) async {
+      final api = threeProjects()..currentPreview = preview;
+      await pumpApp(tester, projects: api, route: '/p/b');
+      expect(find.byKey(const ValueKey('preview-banner')), findsOneWidget);
+      expect(find.text('Preview of A-7 running'), findsOneWidget);
+      expect(find.text('agent/A-7 @ abcdef1'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('preview-back-to-main')));
+      await tester.pumpAndSettle();
+      expect(api.backToMainCalls, 1);
+      expect(find.byKey(const ValueKey('preview-banner')), findsNothing);
+      expect(find.textContaining('The server restarts as backlog-server'), findsOneWidget);
+    });
+  });
+
+  group('PreviewController', () {
+    test('asks the server, and nothing without projects', () async {
+      final api = threeProjects();
+      final controller = PreviewController(api, every: const Duration(hours: 1));
+      addTearDown(controller.dispose);
+      await controller.start();
+      expect(controller.current, isNull);
+      api.currentPreview = preview;
+      await controller.refresh();
+      expect(controller.current!.item, 'A-7');
+
+      final single = PreviewController(null);
+      addTearDown(single.dispose);
+      await single.start();
+      expect(await single.backToMain(), isNull);
+    });
+
+    test('a failed Back to main says why and keeps the preview', () async {
+      final api = threeProjects()..currentPreview = preview;
+      final controller = PreviewController(api, every: const Duration(hours: 1));
+      addTearDown(controller.dispose);
+      await controller.start();
+      api.currentPreview = null; // e.g. ended by another viewer
+      expect(await controller.backToMain(), isNull);
+      expect(controller.error, 'No preview runs.');
+      expect(controller.restarting, isFalse);
+      expect(controller.current, isNotNull);
+    });
   });
 }
+
+final preview = PreviewDto(
+  project: 'a',
+  item: 'A-7',
+  title: 'Seven',
+  branch: 'agent/A-7',
+  commit: 'abcdef1234567890',
+  base: 'main',
+  since: DateTime.utc(2026, 11, 1, 12),
+  server: 'backlog-server-dev',
+  mainServer: 'backlog-server',
+);
