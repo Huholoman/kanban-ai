@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 
 import 'screen.dart';
 import 'widgets.dart';
+import 'workflow_pages.dart';
 
 /// Where `backlog config` finds things: the project registry file (null
 /// without a location), `$HOME` for `~/` in it, and the backlog found from
@@ -132,11 +133,19 @@ MenuEntry _projectEntry(String label, String root, String? name, {String? proble
           name ?? ProjectRegistry.projectFolderName(root),
           editor,
           draft,
-          sections: (_) => const [
-            MenuEntry('Workflow', detail: 'not yet: statuses, priorities, types, milestones, ids', enabled: false),
-            MenuEntry('Views, claims, lint', detail: 'not yet', enabled: false),
-            MenuEntry('Appearance', detail: 'not yet: colours of the board', enabled: false),
-            MenuEntry('Dispatcher', detail: 'not yet: agents, worktrees, actions, pull requests', enabled: false),
+          sections: (screen) => [
+            MenuEntry(
+              'Workflow',
+              detail: 'statuses, priorities, types, milestones, defaults, ids, claim lease',
+              enabled: screen.draft.isYaml,
+              onSelect: (navigator) {
+                navigator.push(workflowScreen(screen));
+                return null;
+              },
+            ),
+            const MenuEntry('Views, claims, lint', detail: 'not yet', enabled: false),
+            const MenuEntry('Appearance', detail: 'not yet: colours of the board', enabled: false),
+            const MenuEntry('Dispatcher', detail: 'not yet: agents, worktrees, actions, pull requests', enabled: false),
           ],
         ),
       );

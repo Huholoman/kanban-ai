@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:backlog_cli/backlog_cli.dart';
-import 'package:backlog_core/backlog_core.dart' show BacklogLayout;
+import 'package:backlog_core/backlog_core.dart' show BacklogLayout, StatusCategory, parseWorkflowYaml;
 import 'package:dart_tui/dart_tui.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -116,7 +116,7 @@ void main() {
     final (code, err) = await run(['config'], driver);
     expect(code, 0, reason: err);
     expect(driver.showed('backlog config › Project › ${p.basename(workspace.path)}'), isTrue);
-    expect(driver.showed('not yet: statuses'), isTrue);
+    expect(driver.showed('statuses, priorities, types, milestones'), isTrue);
     expect(driver.showed('> 240'), isTrue);
     expect(driver.showed('-  lease_minutes: 240'), isTrue);
     expect(driver.showed('+  lease_minutes: 60'), isTrue);
@@ -150,6 +150,92 @@ void main() {
     expect(driver.showed('without saving 2 changed lines?'), isTrue);
     expect(driver.frames.last.first, 'backlog config › Project');
     expect(config().readAsStringSync(), before);
+  });
+
+  // Root → Project → This folder → Workflow.
+  final openWorkflow = [down, enter, enter, enter];
+
+  test('renames a status on the workflow page and saves it', () async {
+    final driver = Driver([
+      ...openWorkflow,
+      enter, // Statuses
+      down, down, enter, // in-progress
+      enter, // Rename…
+      for (var i = 0; i < 'in-progress'.length; i++) backspace,
+      ...type('doing'), enter,
+      key(KeyCode.escape), key(KeyCode.escape), // back to Workflow
+      end, enter, // Review and save
+      char('y'),
+      char('q'),
+    ]);
+    final (code, err) = await run(['config'], driver);
+    expect(code, 0, reason: err);
+    expect(
+      driver.showed('backlog config › Project › ${p.basename(workspace.path)} › Workflow › Statuses › in-progress'),
+      isTrue,
+    );
+    expect(driver.showed('backlog, todo, in-progress, review, done, cancelled'), isTrue);
+    expect(driver.showed('Renamed in-progress to doing (not saved yet).'), isTrue);
+    expect(driver.showed('+  - id: doing'), isTrue);
+    expect(driver.showed('Saved ${config().path}.'), isTrue);
+    final saved = config().readAsStringSync();
+    expect(saved, contains('  - id: doing\n'));
+    expect(saved, isNot(contains('- id: in-progress')));
+    expect(saved, contains('# Backlog configuration.'));
+  });
+
+  test('adds and moves statuses, sets a default and the claim lease', () async {
+    final driver = Driver([
+      ...openWorkflow,
+      enter, // Statuses
+      end, up, enter, // Add a status…
+      ...type('deploy'), enter,
+      down, enter, // active
+      key(KeyCode.home), down, enter, // todo
+      down, down, down, enter, // Move up
+      key(KeyCode.escape), key(KeyCode.escape), // back to Workflow
+      down, down, down, down, enter, // Defaults
+      down, enter, // Priority
+      down, enter, // p1
+      key(KeyCode.escape),
+      end, up, enter, // Claim lease
+      backspace, backspace, backspace, ...type('30'), enter,
+      end, enter, // Review and save
+      char('y'),
+      char('q'),
+    ]);
+    final (code, err) = await run(['config'], driver);
+    expect(code, 0, reason: err);
+    expect(driver.showed('Added status deploy (not saved yet).'), isTrue);
+    expect(driver.showed('Moved todo to position 1 (not saved yet).'), isTrue);
+    expect(driver.showed('Default priority: p1 (not saved yet).'), isTrue);
+    expect(driver.showed('Saved ${config().path}.'), isTrue, reason: driver.last);
+    final workflow = parseWorkflowYaml(config().readAsStringSync());
+    expect(workflow.statuses.map((s) => s.id), [
+      'todo',
+      'backlog',
+      'in-progress',
+      'review',
+      'deploy',
+      'done',
+      'cancelled',
+    ]);
+    expect(workflow.categoryOf('deploy'), StatusCategory.active);
+    expect(workflow.defaultPriority, 'p1');
+    expect(workflow.claimLease, const Duration(minutes: 30));
+  });
+
+  test('an invalid edit says why and changes nothing', () async {
+    final driver = Driver([
+      ...openWorkflow,
+      end, up, enter, // Claim lease
+      backspace, backspace, backspace, ...type('soon'), enter,
+      ctrlC,
+    ]);
+    final (code, err) = await run(['config'], driver);
+    expect(code, 0, reason: err);
+    expect(driver.last, contains('"soon" is not a whole number.'));
+    expect(driver.last, contains('240 minutes'));
   });
 
   test('the global part shows the project registry', () async {
