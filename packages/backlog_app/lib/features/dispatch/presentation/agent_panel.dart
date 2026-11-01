@@ -7,6 +7,7 @@ import '../../../app/app_scope.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
 import '../application/agent_log_controller.dart';
+import '../application/dispatch_controller.dart';
 import 'agent_log_view.dart';
 import 'dispatch_scope.dart';
 
@@ -27,12 +28,17 @@ String sinceText(DateTime time, {DateTime? now}) {
 /// the agent working on it (worktree, since when, branch, the last line of
 /// its log, *Stop*), why the dispatcher holds it back or lets it wait, or
 /// how its last run ended — fine, or with problems that need a person —
-/// with the agent's final message; the log on demand. Empty when none
-/// applies.
+/// with the agent's final message; the log on demand. An item another
+/// item's agent works on (an epic's agent going through its children) shows
+/// that agent and its log, with a link to that item ([onOpen]). Empty when
+/// none applies.
 class AgentPanel extends StatefulWidget {
-  const AgentPanel({super.key, required this.item});
+  const AgentPanel({super.key, required this.item, this.onOpen});
 
   final ItemDto item;
+
+  /// Opens another item (the one whose agent works on this one).
+  final ValueChanged<String>? onOpen;
 
   @override
   State<AgentPanel> createState() => _AgentPanelState();
@@ -47,11 +53,34 @@ class _AgentPanelState extends State<AgentPanel> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_log == null && DispatchScope.maybeOf(context)?.configured == true) {
-      _log = AgentLogController(AppScope.of(context).api, widget.item.id)
-        ..addListener(_logChanged)
-        ..start();
-    }
+    _followLog();
+  }
+
+  @override
+  void didUpdateWidget(AgentPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _followLog();
+  }
+
+  /// The agent of another item that works on this one, if any.
+  AgentRunDto? _workingOn(DispatchController dispatch) {
+    final claim = widget.item.claim;
+    return claim == null || claim.expired || widget.item.isDone
+        ? null
+        : dispatch.plan.runWorkingOn(widget.item.id, claim.agent);
+  }
+
+  /// Follows the log of the item's own agent, or of the agent of another
+  /// item that works on it ([_workingOn]).
+  void _followLog() {
+    final dispatch = DispatchScope.maybeOf(context);
+    if (dispatch == null || !dispatch.configured) return;
+    final target = _workingOn(dispatch)?.item ?? widget.item.id;
+    if (_log?.item == target) return;
+    _log?.dispose();
+    _log = AgentLogController(AppScope.of(context).api, target)
+      ..addListener(_logChanged)
+      ..start();
   }
 
   void _logChanged() {
@@ -72,24 +101,38 @@ class _AgentPanelState extends State<AgentPanel> {
     final small = Theme.of(context).textTheme.bodySmall;
     final id = widget.item.id;
     final run = dispatch.runFor(id);
+    final via = run == null ? _workingOn(dispatch) : null;
     final held = dispatch.plan.heldReason(id);
     final waiting = dispatch.plan.waitingReason(id);
     final queued = dispatch.pendingActionsFor(id);
     final reply = dispatch.plan.queuedReplyOf(id);
     final log = _log;
     final hasLog = log?.hasLog ?? false;
-    final running = run != null || (log?.running ?? false);
-    final last = running ? null : log?.last;
+    final running = run != null || via != null || (log?.running ?? false);
+    // The log of another item's agent says nothing about this item's own runs.
+    final last = running || log?.item != id ? null : log?.last;
     final problems = running
         ? const <String>[]
         : (last?.problems.isNotEmpty ?? false)
         ? last!.problems
         : dispatch.plan.problemsOf(id);
-    if (run == null && held == null && waiting == null && !hasLog && queued.isEmpty && problems.isEmpty) {
+    if (run == null &&
+        via == null &&
+        held == null &&
+        waiting == null &&
+        !hasLog &&
+        queued.isEmpty &&
+        problems.isEmpty) {
       return const SizedBox.shrink();
     }
     final showLog = hasLog && (_showLogChoice ?? running);
-    final (icon, color, text) = switch (run) {
+    final (icon, color, text) = switch (run ?? via) {
+      final run? when run == via => (
+        Icons.smart_toy,
+        tokens.success,
+        'The agent of ${run.item} works on it: ${run.agent} in ${run.worktree} since ${sinceText(run.startedAt)}'
+            '${run.branch == null ? '' : ' · ${run.branch}'}',
+      ),
       final run? => (
         Icons.smart_toy,
         tokens.success,
@@ -112,7 +155,9 @@ class _AgentPanelState extends State<AgentPanel> {
       ),
       _ => (Icons.smart_toy_outlined, tokens.muted, 'Agent · last run'),
     };
-    final lastLine = run == null ? null : log?.lines.lastWhere((line) => line.trim().isNotEmpty, orElse: () => '');
+    final lastLine = run == null && via == null
+        ? null
+        : log?.lines.lastWhere((line) => line.trim().isNotEmpty, orElse: () => '');
     return Container(
       key: const ValueKey('agent-panel'),
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -135,7 +180,7 @@ class _AgentPanelState extends State<AgentPanel> {
                   children: [
                     Text(
                       text,
-                      key: ValueKey(run != null ? 'agent-running' : 'agent-held'),
+                      key: ValueKey(run != null || via != null ? 'agent-running' : 'agent-held'),
                       style: small?.copyWith(color: tokens.text),
                     ),
                     if (lastLine case final line? when line.isNotEmpty && !showLog)
@@ -149,6 +194,12 @@ class _AgentPanelState extends State<AgentPanel> {
                   ],
                 ),
               ),
+              if (via != null && widget.onOpen != null)
+                LinkButton(
+                  key: const ValueKey('agent-open-runner'),
+                  label: 'Open ${via.item}',
+                  onPressed: () => widget.onOpen!(via.item),
+                ),
               if (hasLog)
                 LinkButton(
                   key: const ValueKey('agent-log-toggle'),

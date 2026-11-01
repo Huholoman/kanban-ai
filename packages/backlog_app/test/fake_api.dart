@@ -32,6 +32,7 @@ ItemDto item(
   String review = 'none',
   int reviewFindings = 0,
   Progress children = Progress.none,
+  String? claimedBy,
 }) => ItemDto(
   id: id,
   title: 'Item $id',
@@ -51,6 +52,16 @@ ItemDto item(
   reviewFindings: reviewFindings,
   children: children,
   body: body,
+  claim: claimedBy == null
+      ? null
+      : ClaimDto(
+          item: id,
+          agent: claimedBy,
+          claimedAt: DateTime.utc(2026, 10, 31, 12),
+          heartbeatAt: DateTime.utc(2026, 10, 31, 12),
+          expiresAt: DateTime.utc(2099),
+          expired: false,
+        ),
 );
 
 /// In-memory [BacklogApi]: a kanban `board` grouped by status and a `list`
@@ -442,6 +453,7 @@ final class FakeBacklogApi implements BacklogApi {
     review: item.review,
     reviewFindings: item.reviewFindings,
     body: body ?? item.body,
+    claim: item.claim,
   );
 }
 

@@ -180,7 +180,11 @@ final class DashboardSections {
           iconColor: (tokens) => tokens.success,
           note:
               '${run.action == null ? run.agent : 'Action "${run.action}"'} in ${run.worktree} '
-              'since ${sinceText(run.startedAt)}${run.branch == null ? '' : ' · ${run.branch}'}',
+              'since ${sinceText(run.startedAt)}${run.branch == null ? '' : ' · ${run.branch}'}'
+              '${switch (digest.workedOnBy(run)) {
+                [] => '',
+                final items => ' · on ${items.map((i) => i.id).join(', ')}',
+              }}',
           actions: [
             if (run.kind != 'builtin')
               _ActionButton(
