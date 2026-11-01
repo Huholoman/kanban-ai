@@ -406,6 +406,17 @@ void main() {
       addTearDown(dispatcher.close);
     });
 
+    test('history: changes, comments and the runs of the launcher, filtered', () async {
+      final api = dispatching();
+      final created = await api.createItem(const NewItemRequest(title: 'A', status: 'todo'));
+      await api.comment(created.item.id, const CommentRequest('Hello', author: 'tobik'));
+      final history = await api.history(created.item.id);
+      expect(history.map((e) => (e.kind, e.author)), [('run', 'w1'), ('created', null), ('comment', 'tobik')]);
+      expect(history.first.text, 'the agent exited');
+      expect((await api.history(created.item.id, only: 'comments')).single.text, 'Hello');
+      await expectLater(api.history(created.item.id, only: 'nope'), throwsA(apiError(400, 'invalid_input')));
+    });
+
     test('without a dispatcher section the plan is off', () async {
       File(p.join(dir.path, 'backlog.yaml')).writeAsStringSync('');
       host.reload();
@@ -664,6 +675,16 @@ final class _FakeLauncher extends AgentLauncher {
   Map<ItemId, AgentSession> sessions = const {};
 
   final jobs = <String>[];
+
+  @override
+  Future<List<RunRecord>> runsOf(ItemId item) async => [
+    RunRecord(
+      startedAt: DateTime.utc(2026, 10, 29, 11),
+      log: '/logs/$item.log',
+      worktree: 'w1',
+      ended: 'the agent exited',
+    ),
+  ];
 
   @override
   Future<void> runJob(ActionJob job) async {

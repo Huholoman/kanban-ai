@@ -2,6 +2,7 @@ import '../model/agent_log_update_dto.dart';
 import '../model/discussion_dto.dart';
 import '../model/dispatch_dto.dart';
 import '../model/epic_dto.dart';
+import '../model/history_dto.dart';
 import '../model/item_dto.dart';
 import '../model/misc_dto.dart';
 import '../model/project_dto.dart';
@@ -56,6 +57,11 @@ abstract interface class BacklogApi {
   /// worktree, …) is queued: the plan's [DispatchDto.queuedFor] has it.
   /// The same holds for [startEpic] and [runAction].
   Future<DispatchDto> startAgent(String reference, {bool fresh = false});
+
+  /// Who changed what and when on [reference], oldest first: changes from
+  /// the git history of its file, comments and agent runs; [only] is
+  /// `status`, `fields`, `comments` or `runs`.
+  Future<List<HistoryEntryDto>> history(String reference, {String? only});
 
   /// Whether one agent can implement the epic [reference] (any item with
   /// children) on one branch, and how far its items are.
@@ -134,6 +140,9 @@ abstract final class ApiPaths {
   static String item(String reference) => '$items/${Uri.encodeComponent(reference)}';
 
   static String itemAction(String reference, String action) => '${item(reference)}/$action';
+
+  /// The history of [reference].
+  static String history(String reference) => '${item(reference)}/history';
 
   /// The implementation of [reference] as an epic.
   static String epic(String reference) => '${item(reference)}/epic';

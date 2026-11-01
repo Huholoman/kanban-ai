@@ -60,6 +60,7 @@ final class ApiHandler {
           ..post('$items/<ref>/comments', _comment)
           ..post('$items/<ref>/actions/<name>', _runAction)
           ..get('$items/<ref>/epic', _epic)
+          ..get('$items/<ref>/history', _history)
           ..get(views, _views)
           ..post(views, _createView)
           ..get('$views/<id>', _view)
@@ -240,6 +241,16 @@ final class ApiHandler {
   /// As seen by whoever implements the epic (the holder of its claim, else
   /// the worktree of the agent running for it): its own claims are no
   /// problem and its item in progress is next.
+  Future<Response> _history(Request request, String ref) async {
+    final launcher = _launcher();
+    final entries = await (await _host.backlog).history.of(
+      ref,
+      runs: launcher?.runsOf,
+      only: request.url.queryParameters['only'],
+    );
+    return _json([for (final entry in entries) DtoMapper.historyEntry(entry).toJson()]);
+  }
+
   Future<Response> _epic(Request request, String ref) async {
     final snapshot = await (await _host.backlog).planning.snapshot();
     final epic = snapshot[ItemReference.resolve(ref, snapshot.ids)]!;
