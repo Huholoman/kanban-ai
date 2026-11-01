@@ -203,7 +203,7 @@ final class ClaimService {
       await complete(id.value, force: true);
     } else {
       final item = await _item(id.value);
-      await _items.save(item.copyWith(pr: () => null, updated: () => _today));
+      await _items.save(item.copyWith(pr: () => null).touchedSince(item, _clock.now()));
       await _claims.remove(id);
     }
     return (members: members, remaining: remaining);
