@@ -628,20 +628,103 @@ dispatcher:
         {ItemId('E-1'): _session('E-1', 'w2')},
       ]) {
         final plan = _plan(
-          [item('E-1', type: 'epic', status: 'review', body: reply), item('T-1', parent: 'E-1', status: 'review')],
+          [
+            item('E-1', type: 'epic', status: 'review', body: reply).copyWith(branch: () => 'agent/E-1'),
+            item('T-1', parent: 'E-1', status: 'review'),
+            item('T-2', parent: 'E-1'),
+          ],
           workflow: _resumingWorkflow(),
           conditions: DispatchConditions(
             sessions: sessions,
             starts: {ItemId('E-1'): (at: DateTime.utc(2026, 10, 29, 11), worktree: 'w2')},
           ),
         );
-        expect(plan.assignments, isEmpty, reason: 'with sessions $sessions');
+        expect(plan.assignments.map((a) => a.key), ['T-2@w1'], reason: 'with sessions $sessions');
         expect(plan.waitingReasons[ItemId('E-1')], DispatchPlan.epicReplyReason);
         expect(
           () => plan.assignmentFor('E-1'),
           throwsA(isA<InvalidInputException>().having((e) => e.message, 'message', contains('Implement epic'))),
         );
       }
+    });
+
+    group('a reply on an epic whose items are all handed over repairs its branch', () {
+      const human = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nRebase pls.\n';
+      const merge =
+          '## Discussion\n\n### kanban-ai · 2026-10-29 11:30:00 UTC\n\n'
+          'Merging agent/E-1 into main (local) failed: rebasing agent/E-1 onto main conflicts in SPEC.md.\n';
+      List<Item> epic(String body) => [
+        item('E-1', type: 'epic', status: 'review', body: body).copyWith(branch: () => 'agent/E-1'),
+        item('S-1', type: 'story', parent: 'E-1', status: 'review').copyWith(branch: () => 'agent/E-1'),
+        item('T-1', parent: 'S-1', status: 'review').copyWith(branch: () => 'agent/E-1'),
+        item('T-2', parent: 'E-1', status: 'done'),
+      ];
+      final start = (at: DateTime.utc(2026, 10, 29, 10), worktree: 'w2');
+
+      for (final (name, body) in [('a person', human), ('the failed merge', merge)]) {
+        test('a reply of $name starts the epic agent on its branch, without Implement epic', () {
+          final plan = _plan(
+            epic(body),
+            workflow: _resumingWorkflow(),
+            conditions: DispatchConditions(starts: {ItemId('E-1'): start}, branches: const {'w3': 'agent/E-1'}),
+          );
+          expect(plan.waitingReasons, isEmpty);
+          final repair = plan.assignments.single;
+          expect(repair.key, 'E-1@w3+reply+epic+repair', reason: 'where the epic branch is checked out');
+          expect(repair.epic, isTrue);
+          expect(repair.branch, 'agent/E-1');
+          expect(plan.isReply(repair), isTrue, reason: 'starts in manual mode too');
+          expect(repair.prompt, contains(body.contains('Rebase pls.') ? 'Rebase pls.' : 'conflicts in SPEC.md'));
+          expect(repair.prompt, contains('never run `backlog epic E-1 --next`'));
+          expect(repair.prompt, contains('`git rebase main`'));
+          expect(repair.prompt, contains('`git rebase --continue`'));
+          expect(repair.prompt, contains('`backlog ask E-1'));
+          expect(repair.prompt, isNot(contains('implementing the epic')));
+          // By hand too.
+          expect(plan.assignmentFor('E-1').key, 'E-1@w3+reply+epic+repair');
+        });
+      }
+
+      test('it continues the last session of the epic in its worktree', () {
+        final plan = _plan(
+          epic(merge),
+          workflow: _resumingWorkflow(),
+          conditions: DispatchConditions(
+            sessions: {ItemId('E-1'): _session('E-1', 'w2')},
+            starts: {ItemId('E-1'): start},
+            epics: {ItemId('E-1')},
+          ),
+        );
+        final repair = plan.assignments.single;
+        expect(repair.key, 'E-1@w2+resume+epic+repair');
+        expect(repair.prompt, contains('You continue your earlier session on this epic.'));
+        expect(repair.prompt, contains('conflicts in SPEC.md'));
+      });
+
+      test('with pull requests it publishes with backlog pr --force', () {
+        final workflow = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [w1]
+  pr:
+    create: [gh, pr, create, --body-file, "-"]
+  agent: bot
+  agents:
+    bot:
+      command: bot -p {prompt}
+''');
+        final plan = _plan(
+          epic(merge),
+          workflow: workflow,
+          conditions: DispatchConditions(starts: {ItemId('E-1'): start}),
+        );
+        expect(plan.assignments.single.prompt, contains('`backlog pr E-1 --force`'));
+      });
+
+      test('without a reply there is nothing to start', () {
+        final plan = _plan(epic(''), workflow: _resumingWorkflow());
+        expect(plan.assignments, isEmpty);
+        expect(() => plan.assignmentFor('E-1'), throwsA(isA<InvalidInputException>()));
+      });
     });
 
     test('sameDecisionAs compares assignments, waiting items and busy worktrees', () {
@@ -771,6 +854,26 @@ dispatcher:
       expect(launcher.launched, ['T-0001@w2+reply']);
       await dispatcher.evaluate();
       expect(launcher.launched, hasLength(1), reason: 'claimed: launched once');
+      expect(errors, isEmpty);
+    });
+
+    test('manual mode wakes the agent of an epic whose merge failed', () async {
+      final dispatcher = await start('manual', resuming: true);
+      launcher.claims = false;
+      await backlog.items.create(NewItem(title: 'E', type: 'epic', status: 'review'));
+      await backlog.items.create(NewItem(title: 'T', status: 'review', parent: 'T-0001'));
+      await backlog.items.update('T-0001', [FieldChange.parse('branch=agent/T-0001')]);
+      launcher.given = DispatchConditions(
+        starts: {ItemId('T-0001'): (at: clock.now(), worktree: 'w2')},
+        epics: {ItemId('T-0001')},
+      );
+      await dispatcher.evaluate();
+      expect(launcher.launched, isEmpty);
+
+      clock.advance(const Duration(minutes: 1));
+      await backlog.items.comment('T-0001', author: 'kanban-ai', text: 'Merging agent/T-0001 failed: conflicts.');
+      await dispatcher.evaluate();
+      expect(launcher.launched, ['T-0001@w1+reply+epic+repair']);
       expect(errors, isEmpty);
     });
 

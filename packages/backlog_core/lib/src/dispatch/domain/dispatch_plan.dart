@@ -236,6 +236,7 @@ final class DispatchAssignment {
     this.fix,
     this.newSession = false,
     this.epic = false,
+    this.repair = false,
   });
 
   /// Fills the [config]'s prompt, command and environment for [item] in
@@ -252,7 +253,11 @@ final class DispatchAssignment {
   ///
   /// With [epic] the item's own agent implements all items under it, one
   /// after another, on the item's branch; its prompt is [epicFrame] (also
-  /// when it continues a session or takes up replies).
+  /// when it continues a session or takes up replies). With [repair] (an
+  /// epic whose items are all handed over or done, see
+  /// [DispatchPlan.isRepair]) it is the epic's agent too, but its prompt is
+  /// [repairFrame]: take up the replies on the epic's branch (typically a
+  /// rebase after a failed merge) without taking items.
   factory DispatchAssignment.render(
     DispatcherConfig config, {
     required PlannedItem item,
@@ -266,8 +271,10 @@ final class DispatchAssignment {
     ReviewFix? fix,
     String? replies,
     bool epic = false,
+    bool repair = false,
   }) {
-    epic = epic && action == null && fix == null;
+    repair = repair && action == null && fix == null;
+    epic = (epic || repair) && action == null && fix == null;
     final branch = branchFor(item);
     final values = {
       'id': item.id.value,
@@ -297,6 +304,20 @@ final class DispatchAssignment {
         'reviewer': fix.review.author,
         'reviewed': fix.review.commit == null ? 'no commit named' : 'of commit ${fix.review.commit}',
         'review': fix.review.text,
+      });
+    } else if (repair) {
+      prompt = repairFrame.render({
+        ...values,
+        'base': config.base,
+        'context': session != null
+            ? 'You continue your earlier session on this epic. Since your last run: $news\n'
+                  'Run `backlog show ${item.id}` to see it as it is now.'
+            : 'Since the last agent on this epic: ${replies ?? 'no new comments.'}\n'
+                  'Run `backlog show ${item.id}` and `backlog epic ${item.id}` first.',
+        'publish': config.pr == null
+            ? 'Never push and never open pull requests.'
+            : 'Publish the branch with `backlog pr ${item.id} --force` (it pushes $branch and keeps the pull '
+                  'request); never run `git push` and never merge.',
       });
     } else if (epic) {
       prompt = epicFrame.render({
@@ -382,8 +403,41 @@ final class DispatchAssignment {
       fix: fix,
       newSession: session == null && replies != null && action == null && fix == null,
       epic: epic,
+      repair: repair,
     );
   }
+
+  /// What the agent of an epic is told when people reply on it after all of
+  /// its items are handed over or done ([repair]): take up the comments on
+  /// {branch} without taking items — typically, after a failed merge, rebase
+  /// on {base}, resolve the conflicts, check and publish (`{publish}`),
+  /// leaving the statuses as they are; ask on the epic when a conflict is
+  /// beyond it or not clear-cut.
+  static final repairFrame = TextTemplate(
+    'You are the coding agent {worktree} on the epic {id} ("{title}") in this git worktree, on its branch {branch} '
+    '(commit there and do not switch branches). Every item of the epic is implemented already (handed over or '
+    'done): take no items (never run `backlog epic {id} --next`) and change no status of the epic or its items. '
+    'The epic is claimed for you (BACKLOG_AGENT={worktree}).\n'
+    '{context}\n\n'
+    'Do what the new comments ask for, on {branch}. If they only ask you something, answer with '
+    '`backlog comment {id} "…"` and stop. Typically a merge of the epic failed (conflicts, checks) and its comment '
+    'lists the steps; follow them. In short:\n'
+    '1. Bring {branch} up to date: `git rebase {base}` (after `git fetch` when the base is remote, as the comment '
+    'says).\n'
+    '2. Resolve the conflicts git reports, keeping what both sides meant; `git add <file>` for each resolved file, '
+    'then `git rebase --continue`; repeat until the rebase is done (never `--skip`).\n'
+    '3. Run the project\'s checks (as the comment or the project\'s instructions say) and commit what they need, with '
+    'the id of the item the change belongs to (else {id}) in the message.\n'
+    '4. {publish}\n'
+    '5. Leave every status as it is and stop; a person deploys the epic again.\n'
+    'If you cannot resolve a conflict, or how to resolve it is not clear-cut (both sides changed the same thing in '
+    'different ways, a decision is needed), run `git rebase --abort` so that {branch} stays as it was, ask with '
+    '`backlog ask {id} "<which files conflict and what has to be decided>"` and stop; you will be resumed with the '
+    'answer.\n'
+    '${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}',
+    known: const [...DispatcherConfig.promptPlaceholders, 'base', 'context', 'publish'],
+    label: 'epic repair prompt',
+  );
 
   /// What the agent implementing an epic is told: work through the items
   /// with `backlog epic {id} --next`, one after another on {branch}, each
@@ -532,6 +586,11 @@ final class DispatchAssignment {
   /// item even with open children and the items under it on its branch.
   final bool epic;
 
+  /// The epic's agent takes up replies on an epic whose items are all
+  /// handed over or done ([repairFrame]; [epic] is set too): it works on the
+  /// epic's branch without taking items.
+  final bool repair;
+
   ItemId get id => item.id;
 
   /// The name the claim is taken under.
@@ -540,7 +599,7 @@ final class DispatchAssignment {
   /// `<id>@<worktree>` (with `+resume` when continuing a session); equal
   /// keys mean the same decision.
   String get key =>
-      '$id@${worktree.name}${resume == null ? '' : '+resume'}${newSession ? '+reply' : ''}${epic ? '+epic' : ''}'
+      '$id@${worktree.name}${resume == null ? '' : '+resume'}${newSession ? '+reply' : ''}${epic ? '+epic' : ''}${repair ? '+repair' : ''}'
       '${action == null ? '' : ':${action!.name}'}'
       '${fix == null ? '' : '+fix'}';
 }
@@ -713,9 +772,14 @@ final class DispatchPlan {
         if (planned.ancestors.any(epics.contains)) planned.id,
     };
     // An item with open children that no agent implements as an epic cannot
-    // start for replies: only Implement epic takes them up.
+    // start for replies: only Implement epic takes them up — unless all of
+    // its items are handed over or done, then its agent repairs the branch.
     bool epicToStart(PlannedItem planned) =>
-        !planned.isDone && planned.openChildCount > 0 && !epics.contains(planned.id) && !members.contains(planned.id);
+        !planned.isDone &&
+        planned.openChildCount > 0 &&
+        !epics.contains(planned.id) &&
+        !members.contains(planned.id) &&
+        !isRepair(snapshot, planned);
     final reasons = <ItemId, String>{};
     final left = <PlannedItem>[];
     // A person wrote to an agent: first, even when held (unless its branch is
@@ -816,6 +880,7 @@ final class DispatchPlan {
                 )
               : null,
           epic: epics.contains(candidate.id),
+          repair: replied.contains(candidate) && isRepair(snapshot, candidate),
         ),
       );
     }
@@ -869,6 +934,18 @@ final class DispatchPlan {
       queue: List.unmodifiable(conditions.queue),
     );
   }
+
+  /// Whether a reply on [planned] goes to its epic's agent in repair mode
+  /// ([DispatchAssignment.repair]): it is unfinished, has children and a
+  /// `branch` (its work was done on one branch, by an epic run), and all
+  /// items under it are handed over or done ([EpicPlan.finished]), so there
+  /// is nothing left to implement — only its branch to fix (e.g. a rebase
+  /// after a failed merge) or questions to answer.
+  static bool isRepair(BacklogSnapshot snapshot, PlannedItem planned) =>
+      !planned.isDone &&
+      planned.openChildCount > 0 &&
+      (planned.item.branch?.trim().isNotEmpty ?? false) &&
+      EpicPlan.of(snapshot, planned.id).finished;
 
   /// Why a reply on an item with open children that no agent implements as
   /// an epic waits ([waitingReasons]).
@@ -1171,7 +1248,8 @@ final class DispatchPlan {
         '${planned.id} belongs to the epic $epic, which one agent implements on its branch; start $epic instead.',
       );
     }
-    if (!planned.isDone && planned.openChildCount > 0 && !epics.contains(planned.id)) {
+    final repair = isRepair(snapshot, planned);
+    if (!planned.isDone && planned.openChildCount > 0 && !epics.contains(planned.id) && !repair) {
       throw InvalidInputException(
         '${planned.id} has ${planned.openChildCount} open child item(s): implement it as an epic '
         '(Implement epic), which also takes up the replies on it.',
@@ -1179,6 +1257,12 @@ final class DispatchPlan {
     }
     final replied = !fresh && hasReplies(planned, sessions[planned.id], config);
     final news = fresh ? null : _newSessionNews(planned);
+    if (repair && !replied && news == null) {
+      throw InvalidInputException(
+        '${planned.id} has nothing left to implement: every item under it is handed over or done. '
+        'Reply on it to have its agent fix its branch, or deploy it.',
+      );
+    }
     // An epic one agent implements goes on as an epic.
     if (epics.contains(planned.id) && !planned.isReady && !replied && news == null) {
       return epicStart(reference, fresh: fresh);
@@ -1217,6 +1301,7 @@ final class DispatchPlan {
       create: target.isNew,
       replies: own == null ? news : null,
       epic: epics.contains(planned.id),
+      repair: repair,
     );
   }
 
