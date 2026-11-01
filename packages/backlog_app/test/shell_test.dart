@@ -1,5 +1,6 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/backlog_app.dart';
+import 'package:backlog_app/features/board/presentation/board_page.dart';
 import 'package:backlog_app/features/board/presentation/view_layouts.dart';
 import 'package:backlog_app/features/item/presentation/item_page.dart';
 import 'package:flutter/material.dart';
@@ -98,7 +99,11 @@ void main() {
       expect(find.byType(ItemDetailView), findsOneWidget);
       expect(find.byType(KanbanBoard), findsOneWidget);
       expect(find.byKey(const ValueKey('detail-sheet')), findsNothing);
-      expect(tester.getSize(find.byType(ItemDetailView)).width, 480);
+      final window = tester.view.physicalSize.width / tester.view.devicePixelRatio;
+      expect(tester.getSize(find.byType(ItemDetailView)).width, BoardPage.detailPanelWidthFor(window));
+      expect(BoardPage.detailPanelWidthFor(1200), 520);
+      expect(BoardPage.detailPanelWidthFor(1600), 608);
+      expect(BoardPage.detailPanelWidthFor(3000), 860);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();

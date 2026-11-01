@@ -42,8 +42,12 @@ class BoardPage extends StatefulWidget {
   /// use a full page.
   static const detailSheetWidth = 840.0;
 
-  /// From this width the navigation and the detail panel are wider.
+  /// From this width the navigation is wider.
   static const veryWideWidth = 2000.0;
+
+  /// Width of the detail panel in a window [windowWidth] wide: 38 % of it,
+  /// at least 520 and at most 860 px.
+  static double detailPanelWidthFor(double windowWidth) => (windowWidth * 0.38).clamp(520.0, 860.0);
 
   @override
   State<BoardPage> createState() => _BoardPageState();
@@ -260,7 +264,7 @@ class _BoardPageState extends State<BoardPage> {
                   if (panel && openId != null) ...[
                     const VerticalDivider(width: 1),
                     SizedBox(
-                      width: veryWide ? 520 : 480,
+                      width: BoardPage.detailPanelWidthFor(width),
                       child: _detail(openId, onClose: _closeDetail, onScope: controller.scopeToEpic),
                     ),
                   ],
