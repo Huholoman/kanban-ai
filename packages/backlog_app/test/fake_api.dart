@@ -384,9 +384,11 @@ final class FakeBacklogApi implements BacklogApi {
     return plan = afterAction ?? plan;
   }
 
-  /// What [epic] answers per item (404 without one); [startEpic] records its
-  /// calls and answers with [afterStart].
+  /// What [epic] answers per item (404 without one), per item and milestone
+  /// in [scopedEpics] (`<id>@<milestone>`) when there; [startEpic] records
+  /// its calls (`<id>` or `<id>@<milestone>`) and answers with [afterStart].
   final epics = <String, EpicDto>{};
+  final scopedEpics = <String, EpicDto>{};
   final startedEpics = <String>[];
 
   /// Histories by item id, [history] answers from them; the requested
@@ -420,13 +422,15 @@ final class FakeBacklogApi implements BacklogApi {
   }
 
   @override
-  Future<EpicDto> epic(String reference) async =>
-      epics[reference] ?? (throw BacklogApiException(404, 'not_found', 'No item $reference.'));
+  Future<EpicDto> epic(String reference, {String? milestone}) async =>
+      (milestone == null ? null : scopedEpics['$reference@$milestone']) ??
+      epics[reference] ??
+      (throw BacklogApiException(404, 'not_found', 'No item $reference.'));
 
   @override
-  Future<DispatchDto> startEpic(String reference, {bool fresh = false}) async {
+  Future<DispatchDto> startEpic(String reference, {bool fresh = false, String? milestone}) async {
     if (failStart case final error?) throw error;
-    startedEpics.add(reference);
+    startedEpics.add(milestone == null ? reference : '$reference@$milestone');
     return plan = afterStart ?? plan;
   }
 
