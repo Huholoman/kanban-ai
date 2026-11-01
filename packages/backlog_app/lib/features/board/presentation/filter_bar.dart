@@ -106,6 +106,19 @@ class _FilterBarState extends State<FilterBar> {
             selected: filter.flags,
             onToggle: (flag) => widget.onChanged(filter.toggleFlag(flag)),
           ),
+          SegmentedChoice<ItemAge>(
+            segments: [
+              for (final age in ItemAge.values)
+                ChoiceSegment(
+                  value: age,
+                  label: age.title,
+                  tooltip: 'Changed in the last ${age.title}',
+                  key: ValueKey('filter-age-${age.name}'),
+                ),
+            ],
+            selected: {?filter.age},
+            onToggle: (age) => widget.onChanged(filter.toggleAge(age)),
+          ),
           for (final facet in FilterFacet.values)
             if (filter.valuesFor(facet).isNotEmpty)
               RemovableChip(
@@ -374,7 +387,7 @@ class _FiltersPanelState extends State<_FiltersPanel> {
                     label: 'Clear all',
                     onPressed: filter.selected.values.every((values) => values.isEmpty)
                         ? null
-                        : () => widget.onChanged(BoardFilter(text: filter.text, flags: filter.flags)),
+                        : () => widget.onChanged(BoardFilter(text: filter.text, flags: filter.flags, age: filter.age)),
                   ),
                 ],
               ),
