@@ -45,6 +45,7 @@ export 'src/settings/application/config_editor.dart';
 export 'src/settings/domain/config_draft.dart';
 export 'src/settings/domain/config_file.dart';
 export 'src/settings/domain/text_diff.dart';
+export 'src/settings/domain/workflow_settings.dart';
 export 'src/settings/infrastructure/file_config.dart';
 export 'src/shared/clock.dart';
 export 'src/shared/errors.dart';

@@ -69,6 +69,11 @@ final class ConfigDraft {
           editor.appendToList(path.sublist(0, depth - 1), _nest(rest, value));
           break;
         }
+      } else if (parent is YamlMap && !parent.containsKey(key) && depth > 1 && path[depth - 2] is int) {
+        // yaml_edit cannot add a key to a mapping in a block list; the whole
+        // entry is written again instead.
+        editor.update(path.sublist(0, depth - 1), {..._plain(parent) as Map<String, Object?>, key: _nest(rest, value)});
+        break;
       } else if (parent is! YamlMap || !parent.containsKey(key)) {
         editor.update(path.sublist(0, depth), _nest(rest, value));
         break;
@@ -78,6 +83,24 @@ final class ConfigDraft {
         editor.update(path.sublist(0, depth), _nest(rest, value));
         break;
       }
+    }
+    _text = editor.toString();
+  }
+
+  /// Inserts [value] into the list at [path] before position [index]
+  /// (`length` appends). Throws [InvalidInputException] when [path] is not
+  /// a list or [index] is out of range.
+  void insert(ConfigPath path, int index, Object? value) {
+    final editor = _editor();
+    final list = _nodeAt(editor, path);
+    if (list is! YamlList) throw InvalidInputException('${formatConfigPath(path)} is not a list.');
+    if (index < 0 || index > list.length) {
+      throw InvalidInputException('${formatConfigPath([...path, index])}: no such list position.');
+    }
+    if (index == list.length) {
+      editor.appendToList(path, value);
+    } else {
+      editor.insertIntoList(path, index, value);
     }
     _text = editor.toString();
   }
