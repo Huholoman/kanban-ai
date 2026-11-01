@@ -8,6 +8,8 @@ import 'claims/application/claim_service.dart';
 import 'claims/infrastructure/file_system_claim_store.dart';
 import 'dispatch/domain/action_run.dart';
 import 'dispatch/infrastructure/action_files.dart';
+import 'history/application/history_service.dart';
+import 'history/infrastructure/git_item_revisions.dart';
 import 'infrastructure/backlog_layout.dart';
 import 'items/application/item_service.dart';
 import 'items/domain/item_id.dart';
@@ -40,6 +42,7 @@ final class Backlog {
     required this.workflow,
     required this.revision,
     required this.items,
+    required this.history,
     required this.planning,
     required this.claims,
     required this.views,
@@ -61,13 +64,10 @@ final class Backlog {
     final loaded = await configuration.load();
     final workflow = loaded.workflow;
 
-    final itemRepository = FileSystemItemRepository(
-      layout,
-      MarkdownItemCodec(
-        ItemDefaults(type: workflow.defaultType, status: workflow.defaultStatus, priority: workflow.defaultPriority),
-      ),
-      cache: cacheItems,
+    final codec = MarkdownItemCodec(
+      ItemDefaults(type: workflow.defaultType, status: workflow.defaultStatus, priority: workflow.defaultPriority),
     );
+    final itemRepository = FileSystemItemRepository(layout, codec, cache: cacheItems);
     final claimStore = FileSystemClaimStore(layout, defaultLease: workflow.claimLease);
     final viewRepository = YamlViewRepository(layout);
     final dispatcher = workflow.dispatcher;
@@ -83,17 +83,19 @@ final class Backlog {
       ]),
     );
 
+    final items = ItemService(
+      repository: itemRepository,
+      workflow: workflow,
+      ids: ids ?? RandomIdGenerator(prefix: workflow.idPrefix, length: workflow.idLength),
+      clock: clock,
+    );
     return Backlog._(
       layout: layout,
       configuration: configuration,
       workflow: workflow,
       revision: loaded.revision,
-      items: ItemService(
-        repository: itemRepository,
-        workflow: workflow,
-        ids: ids ?? RandomIdGenerator(prefix: workflow.idPrefix, length: workflow.idLength),
-        clock: clock,
-      ),
+      items: items,
+      history: HistoryService(items: items, revisions: const GitItemRevisions(), decode: codec.decode, clock: clock),
       planning: planning,
       claims: ClaimService(
         items: itemRepository,
@@ -225,6 +227,10 @@ final class Backlog {
   Future<bool> get isStale async => await configuration.revision() != revision;
 
   final ItemService items;
+
+  /// Histories of items (who changed what when), from the backlog's git
+  /// repository and the discussions.
+  final HistoryService history;
   final PlanningService planning;
   final ClaimService claims;
   final ViewService views;
