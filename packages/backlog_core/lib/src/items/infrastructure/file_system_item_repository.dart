@@ -7,6 +7,7 @@ import '../../shared/slug.dart';
 import '../domain/item.dart';
 import '../domain/item_id.dart';
 import '../domain/item_repository.dart';
+import 'item_cache_file.dart';
 import 'markdown_item_codec.dart';
 
 /// Items as `items/<id>-<slug>.md`, or `items/<id>-<slug>/index.md` when an
@@ -27,9 +28,19 @@ import 'markdown_item_codec.dart';
 /// stamp. Such a recently changed file is read again on every load until it
 /// settles and parsed again only when its text differs. Writes through [save]
 /// drop the file from the cache.
+///
+/// With a [persistent] cache file the files whose stamp was trusted are also
+/// kept there: the first [load] starts from it, and a load that changed what
+/// is trusted writes it again. It works with or without [cache] (the CLI
+/// without, so that each process starts from the file).
 final class FileSystemItemRepository implements ItemRepository {
-  FileSystemItemRepository(this._layout, this._codec, {bool cache = false, this.settle = const Duration(seconds: 3)})
-    : _cache = cache ? {} : null;
+  FileSystemItemRepository(
+    this._layout,
+    this._codec, {
+    bool cache = false,
+    this.persistent,
+    this.settle = const Duration(seconds: 3),
+  }) : _cache = cache || persistent != null ? {} : null;
 
   final BacklogLayout _layout;
   final MarkdownItemCodec _codec;
@@ -37,6 +48,13 @@ final class FileSystemItemRepository implements ItemRepository {
 
   /// Parsed files by path; null without caching.
   final Map<String, _CachedFile>? _cache;
+
+  /// Where trusted files are kept between processes; null when not.
+  final ItemCacheFile? persistent;
+  bool _seeded = false;
+
+  /// Whether the trusted files of [_cache] differ from those in [persistent].
+  bool _dirty = false;
 
   /// How much older than the read a file's times must be for its stamp to be
   /// trusted (see the class documentation).
@@ -60,6 +78,13 @@ final class FileSystemItemRepository implements ItemRepository {
     final problems = <LoadProblem>[];
     _paths.clear();
     final cache = _cache;
+    final persistent = this.persistent;
+    if (cache != null && persistent != null && !_seeded) {
+      _seeded = true;
+      for (final MapEntry(:key, :value) in persistent.read().entries) {
+        cache[key] = _CachedFile.stored(value);
+      }
+    }
     final List<File> files;
     try {
       files = _itemFiles();
@@ -79,7 +104,18 @@ final class FileSystemItemRepository implements ItemRepository {
     }
     if (cache != null && cache.length > files.length) {
       final present = {for (final file in files) file.path};
-      cache.removeWhere((path, _) => !present.contains(path));
+      cache.removeWhere((path, cached) {
+        final gone = !present.contains(path);
+        if (gone && cached.trusted) _dirty = true;
+        return gone;
+      });
+    }
+    if (cache != null && persistent != null && _dirty) {
+      _dirty = false;
+      persistent.write({
+        for (final MapEntry(:key, :value) in cache.entries)
+          if (value.trusted) key: value.entry,
+      });
     }
     return ItemCatalog(items, problems);
   }
@@ -104,11 +140,13 @@ final class FileSystemItemRepository implements ItemRepository {
       if (cached != null && cached.trusted && cached.sameStamp(stat)) return cached.result;
       text = file.readAsStringSync();
     } on FileSystemException catch (e) {
-      cache.remove(file.path);
+      if (cache.remove(file.path)?.trusted ?? false) _dirty = true;
       return (null, e.message);
     }
     final result = cached != null && cached.text == text ? cached.result : _parse(text);
-    cache[file.path] = _CachedFile(stat, text, result, trusted: _settled(stat, readAt));
+    final read = _CachedFile(stat, text, result, trusted: _settled(stat, readAt));
+    if (read.trusted || (cached?.trusted ?? false)) _dirty = true;
+    cache[file.path] = read;
     return result;
   }
 
@@ -177,11 +215,25 @@ final class _CachedFile {
       changed = stat.changed,
       size = stat.size;
 
+  /// From the persistent cache: trusted when it was written, without text.
+  _CachedFile.stored(ItemCacheEntry entry)
+    : modified = entry.modified,
+      changed = entry.changed,
+      size = entry.size,
+      text = null,
+      result = (entry.item, entry.problem),
+      trusted = true;
+
   final DateTime modified;
   final DateTime changed;
   final int size;
-  final String text;
+
+  /// The text read; null for an entry of the persistent cache.
+  final String? text;
   final (Item?, String?) result;
+
+  ItemCacheEntry get entry =>
+      ItemCacheEntry(modified: modified, changed: changed, size: size, item: result.$1, problem: result.$2);
 
   /// The times were settled when the file was read, so any later write
   /// changes the stamp.

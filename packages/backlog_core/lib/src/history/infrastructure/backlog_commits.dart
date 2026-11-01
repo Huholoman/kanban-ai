@@ -35,7 +35,12 @@ final class BacklogCommits {
   final String root;
   final Duration timeout;
 
-  static const _ignored = [':(exclude).locks', ':(exclude,glob)**/*.tmp', ':(exclude,glob)**/*.stale'];
+  static const _ignored = [
+    ':(exclude).locks',
+    ':(exclude).cache',
+    ':(exclude,glob)**/*.tmp',
+    ':(exclude,glob)**/*.stale',
+  ];
 
   /// Whether the folder is the top level of a git repository.
   Future<bool> ownsRepository() async {

@@ -285,6 +285,7 @@ backlog/
   views/   board.yaml, ready.yaml, hot.yaml, blocked.yaml, dependencies.yaml, …
   docs/    design documents that items link to (docs: [moderation])
   .locks/  claim locks (gitignored)
+  .cache/  optional cache of parsed items (cache.items; ignores itself in git, safe to delete)
 ```
 
 ### Item
@@ -353,6 +354,8 @@ Derived properties are computed, never stored: `blocked`, `conflicting` (waits f
 - priorities `p0`–`p3`
 - types, milestones, defaults and the claim lease
 - commented examples of `appearance` and `dispatcher` (with actions)
+
+**Big backlogs:** `cache: {items: true}` keeps the parsed items in `.cache/` between runs, so the CLI parses only the files that changed since (5 000 items: `backlog list` 1.8 → 1.2 s). The files stay the source of truth: every run compares each file's modification time, ctime and size with the cache, and anything doubtful rebuilds it; deleting `.cache/` is always safe.
 
 **Presets:** `backlog init --preset <name>` starts from another kanban: `minimal` (a personal to-do list: todo / in-progress / done, no milestones, no dispatcher), `default` (the file above), `agents` (set up like kanban-ai itself: a review status, versions as milestones plus `later`, a manual dispatcher that creates its own worktrees next to the repository — `--repo`, default the parent folder — and a guide for the repository's `CLAUDE.md` / `AGENTS.md`, printed or appended with `--agents-file CLAUDE.md`) and `agents-review` (plus an AI review on entering review and a local *Merge* button). Own presets are folders in `~/.config/kanban-ai/presets/<name>/` (`backlog.yaml`, optional `views/`, `AGENTS.md`, `preset.yaml` with a description) with the placeholders `${prefix}`, `${project}`, `${repo}`, `${repo_name}`; `--preset ./folder` takes one from anywhere, `--from <backlog>` copies the configuration and views of an existing backlog without its items. `backlog init --list-presets` lists them.
 

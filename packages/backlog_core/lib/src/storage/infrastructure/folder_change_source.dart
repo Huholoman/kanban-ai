@@ -42,7 +42,7 @@ final class FolderChangeSource implements ChangeSource {
   /// Whether a change of [relativePath] matters to clients.
   static bool isRelevant(String relativePath) {
     final parts = p.split(relativePath);
-    if (parts.any((part) => part == '.git')) return false;
+    if (parts.any((part) => part == '.git') || parts.first == '.cache') return false;
     final name = parts.last;
     return !name.endsWith('.tmp') && !name.endsWith('.stale') && !name.endsWith('~') && !name.startsWith('.#');
   }

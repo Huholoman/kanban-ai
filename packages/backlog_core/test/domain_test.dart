@@ -81,6 +81,15 @@ appearance:
       expect(() => parseWorkflowYaml('appearance: {mode: dim}'), throwsA(isA<ConfigurationException>()));
     });
 
+    test('cache.items turns the persistent item cache on', () {
+      expect(parseWorkflowYaml('id: {prefix: X}').persistentItemCache, isFalse);
+      expect(parseWorkflowYaml('cache: {items: true}').persistentItemCache, isTrue);
+      expect(parseWorkflowYaml('cache: {items: false}').persistentItemCache, isFalse);
+      for (final wrong in ['cache: {items: yes please}', 'cache: {views: true}', 'cache: true']) {
+        expect(() => parseWorkflowYaml(wrong), throwsA(isA<ConfigurationException>()), reason: wrong);
+      }
+    });
+
     test('the init template parses, including its commented appearance and dispatcher', () {
       final template = workflowTemplate(idPrefix: 'X');
       expect(parseWorkflowYaml(template).appearance.mode, 'system');
