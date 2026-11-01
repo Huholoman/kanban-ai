@@ -206,6 +206,34 @@ void main() {
       expect(exactTime(DateTime(2026, 10, 31, 21, 27, 12)), '31.10.2026 21:27:12');
     });
 
+    testWidgets('TimeText keeps counting with the shared ticker; no timer once nothing shows a time', (tester) async {
+      var current = now;
+      final ticker = TimeTicker(clock: () => current);
+      final previous = TimeTicker.instance;
+      TimeTicker.instance = ticker;
+      addTearDown(() => TimeTicker.instance = previous);
+      await pump(
+        tester,
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TimeText(now, prefix: 'a '),
+            TimeText(now.subtract(const Duration(hours: 2)), prefix: 'b '),
+          ],
+        ),
+      );
+      expect(find.text('a just now'), findsOneWidget);
+      expect(ticker.ticking, isTrue);
+
+      current = now.add(const Duration(minutes: 5));
+      await tester.pump(const Duration(minutes: 1));
+      expect(find.text('a 5 min ago'), findsOneWidget);
+      expect(find.text('b 2 h ago'), findsOneWidget);
+
+      await pump(tester, const SizedBox());
+      expect(ticker.ticking, isFalse);
+    });
+
     testWidgets('TimeText shows the exact local time in its tooltip', (tester) async {
       final at = now.subtract(const Duration(minutes: 5));
       await pump(tester, TimeText(at, prefix: 'created ', now: now));
