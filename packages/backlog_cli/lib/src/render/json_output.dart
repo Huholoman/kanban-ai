@@ -52,6 +52,20 @@ abstract final class JsonOutput {
   /// (older files) or none.
   static String? _instant(String? value) => ItemTime.hasTime(value) ? ItemTime.parse(value)!.toIso8601String() : null;
 
+  static Map<String, Object?> historyEntry(HistoryEntry entry) => {
+    'kind': entry.kind.name,
+    'at': entry.at.toUtc().toIso8601String(),
+    'author': entry.author,
+    'field': entry.field,
+    'before': entry.before,
+    'after': entry.after,
+    'text': entry.text,
+    'tag': entry.tag,
+    'commit': entry.commit,
+    'uncommitted': entry.uncommitted,
+    'log': entry.log,
+  };
+
   static Map<String, Object?> checklistEntry(ChecklistEntry entry) => {
     'number': entry.number,
     'text': entry.text,

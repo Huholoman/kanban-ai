@@ -156,4 +156,31 @@ abstract final class TextOutput {
     issue.message,
     if (issue.location != null) '(${issue.location})',
   ].join(' ');
+
+  /// One line per history entry, oldest first: local time, who, what.
+  static List<String> history(List<HistoryEntry> entries) {
+    if (entries.isEmpty) return const ['(nothing)'];
+    final authors = entries.map((e) => (e.author ?? '-').length).reduce((a, b) => a > b ? a : b);
+    return [
+      for (final entry in entries)
+        '${time(entry.at)}  ${(entry.author ?? '-').padRight(authors)}  ${historyText(entry)}'
+            '${entry.uncommitted && entry.kind != HistoryKind.comment && entry.kind != HistoryKind.run ? '  (uncommitted)' : ''}',
+    ];
+  }
+
+  /// What a history entry says, on one line.
+  static String historyText(HistoryEntry entry) {
+    String short(String text) {
+      final first = text.trim().split('\n').first;
+      return first.length > 100 ? '${first.substring(0, 99)}…' : first;
+    }
+
+    return switch (entry.kind) {
+      HistoryKind.created => 'created${entry.after == null ? '' : ' (${entry.after})'}',
+      HistoryKind.field => '${entry.field}: ${entry.before ?? '-'} → ${entry.after ?? '-'}',
+      HistoryKind.body => 'description edited',
+      HistoryKind.comment => '${entry.tag ?? 'comment'}: ${short(entry.text ?? '')}',
+      HistoryKind.run => '${entry.tag == null ? 'agent' : 'action ${entry.tag}'}: ${short(entry.text ?? '')}',
+    };
+  }
 }

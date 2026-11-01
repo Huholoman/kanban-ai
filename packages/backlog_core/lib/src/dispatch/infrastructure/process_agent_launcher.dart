@@ -7,6 +7,7 @@ import 'package:collection/collection.dart';
 import 'package:path/path.dart' as p;
 
 import '../../backlog.dart';
+import '../../history/domain/item_history.dart';
 import '../../items/application/field_change.dart';
 import '../../items/domain/discussion.dart';
 import '../../items/domain/item.dart';
@@ -609,6 +610,63 @@ final class ProcessAgentLauncher extends AgentLauncher {
       last: last,
     );
   }
+
+  /// From the logs `logs/<project>/<id>-<time>.log`: the first line names
+  /// the agent or action and the worktree, the last `# kanban-ai:` line how
+  /// it ended (none while it runs).
+  @override
+  Future<List<RunRecord>> runsOf(ItemId item) async {
+    final folder = Directory(logsDir);
+    if (!await folder.exists()) return const [];
+    final name = RegExp('^${RegExp.escape(item.value)}-(\\d{8}T\\d{6}Z)\\.log\$');
+    final runs = <RunRecord>[];
+    await for (final entity in folder.list(followLinks: false)) {
+      if (entity is! File) continue;
+      final match = name.firstMatch(p.basename(entity.path));
+      final started = match == null ? null : _parseStamp(match.group(1)!);
+      if (started == null) continue;
+      final (head, tail) = await _headAndTail(entity);
+      const prefix = '# kanban-ai: ';
+      final first = head.split('\n').first;
+      final header = first.startsWith(prefix) ? first.substring(prefix.length) : null;
+      final ended = tail
+          .split('\n')
+          .lastWhereOrNull((line) => line.startsWith('${prefix}the ') && line != first)
+          ?.substring(prefix.length);
+      final action = header == null ? null : RegExp(r'^action "([^"]+)"').firstMatch(header)?.group(1);
+      runs.add(
+        RunRecord(
+          startedAt: started,
+          log: entity.path,
+          action: action,
+          agent: header == null || action != null ? null : header.split(' ').first,
+          worktree: header == null ? null : RegExp(r' in (\S+) \(').firstMatch(header)?.group(1),
+          started: header,
+          ended: ended,
+        ),
+      );
+    }
+    return runs..sort((a, b) => a.startedAt.compareTo(b.startedAt));
+  }
+
+  /// The first and the last few kilobytes of [file] (logs can be long).
+  static Future<(String, String)> _headAndTail(File file, {int size = 4096}) async {
+    final handle = await file.open();
+    try {
+      final length = await handle.length();
+      final head = await handle.read(size < length ? size : length);
+      await handle.setPosition(length > size ? length - size : 0);
+      final tail = await handle.read(size);
+      return (utf8.decode(head, allowMalformed: true), utf8.decode(tail, allowMalformed: true));
+    } finally {
+      await handle.close();
+    }
+  }
+
+  static DateTime? _parseStamp(String stamp) => DateTime.tryParse(
+    '${stamp.substring(0, 4)}-${stamp.substring(4, 6)}-${stamp.substring(6, 8)}'
+    'T${stamp.substring(9, 11)}:${stamp.substring(11, 13)}:${stamp.substring(13, 15)}Z',
+  );
 
   @override
   Future<AgentLogSource?> agentLogSource(ItemId item) async {

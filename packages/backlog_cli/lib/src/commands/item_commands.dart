@@ -4,6 +4,8 @@ import 'package:args/command_runner.dart';
 import 'package:backlog_core/backlog_core.dart';
 import 'package:path/path.dart' as p;
 
+import '../render/json_output.dart';
+import '../render/text_output.dart';
 import '../where.dart';
 import 'backlog_command.dart';
 
@@ -289,6 +291,63 @@ final class ShowCommand extends BacklogCommand {
     final id = ItemReference.resolve(singleArgument('item id'), snapshot.ids);
     await emitItem(backlog, id, detail: true, snapshot: snapshot);
     return 0;
+  }
+}
+
+final class HistoryCommand extends BacklogCommand {
+  HistoryCommand(super.context) {
+    argParser.addOption(
+      'only',
+      help: 'Only some entries.',
+      allowed: ItemHistory.filters,
+      allowedHelp: {
+        'status': 'creation and status changes',
+        'fields': 'changes of fields and the description',
+        'comments': 'the discussion',
+        'runs': 'agents and actions the dispatcher ran',
+      },
+    );
+  }
+
+  @override
+  String get name => 'history';
+
+  @override
+  String get description =>
+      'Show who changed what and when: changes from the git history of the item file (and the uncommitted one), '
+      'comments, and the agent and action runs of the dispatcher.';
+
+  @override
+  String get invocation => 'backlog history <id> [--only status|fields|comments|runs]';
+
+  @override
+  Future<int> run() async {
+    final backlog = await openBacklog();
+    final entries = await backlog.history.of(singleArgument('item id'), runs: _runs, only: args.option('only'));
+    json ? emitJson([for (final entry in entries) JsonOutput.historyEntry(entry)]) : lines(TextOutput.history(entries));
+    return 0;
+  }
+
+  /// The runs from the logs of the dispatcher, found by this backlog's id in
+  /// the project registry; none when it is not registered.
+  Future<List<RunRecord>> _runs(ItemId id) async {
+    final service = projectService();
+    if (service == null) return const [];
+    final ProjectRegistry registry;
+    try {
+      registry = await service.registry();
+    } on BacklogException {
+      return const [];
+    }
+    final root = p.canonicalize(backlogRoot);
+    final entry = registry.entries.where((entry) => p.canonicalize(entry.path) == root).firstOrNull;
+    if (entry == null) return const [];
+    final launcher = ProcessAgentLauncher(
+      project: entry.id,
+      backlog: openBacklog,
+      stateDir: ProcessAgentLauncher.defaultStateDir(context.environment),
+    );
+    return launcher.runsOf(id);
   }
 }
 

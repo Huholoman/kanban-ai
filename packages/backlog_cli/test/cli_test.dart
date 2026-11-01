@@ -322,6 +322,37 @@ void main() {
     expect((await backlog(['check'])).exitCode, ExitCode.usage);
   });
 
+  test('history: text and JSON, filters, runs from the logs of a registered project', () async {
+    final env = {
+      'HOME': p.join(workspace.path, 'home'),
+      'XDG_CONFIG_HOME': p.join(workspace.path, 'config'),
+      'KANBAN_AI_STATE_DIR': p.join(workspace.path, 'state'),
+    };
+    final id = await create('Payments', ['-s', 'todo']);
+    expect((await backlog(['ask', id, 'CSV or JSON?', '--as', 'm2'])).exitCode, 0);
+    final added = await backlog(['--json', 'projects', 'add'], env: env);
+    expect(added.exitCode, 0, reason: '$added');
+    final project = (added.json! as Map)['id'] as String;
+    final logs = await Directory(p.join(workspace.path, 'state', 'logs', project)).create(recursive: true);
+    File(p.join(logs.path, '$id-20261029T130000Z.log')).writeAsStringSync(
+      '# kanban-ai: claude for $id in wt-1 (/w), branch agent/$id, started 2026-10-29T13:00:00.000Z\n'
+      '# kanban-ai: the agent exited with code 0; $id stays todo\n',
+    );
+
+    final text = await backlog(['history', id], env: env);
+    expect(text.exitCode, 0, reason: '$text');
+    expect(text.out, contains('created (todo)'));
+    expect(text.out, contains('m2'));
+    expect(text.out, contains('question: CSV or JSON?'));
+    expect(text.out, contains('wt-1  agent: claude for $id'));
+
+    final json = (await backlog(['--json', 'history', id, '--only', 'runs'], env: env)).json! as List;
+    expect(json.single, containsPair('kind', 'run'));
+    expect(json.single, containsPair('at', '2026-10-29T13:00:00.000Z'));
+    expect((await backlog(['--json', 'history', id, '--only', 'comments'])).json, [containsPair('author', 'm2')]);
+    expect((await backlog(['history', id, '--only', 'nope'])).exitCode, ExitCode.usage);
+  });
+
   test('projects: add the backlog found here or a given one, list, pin, remove', () async {
     final env = {'HOME': p.join(workspace.path, 'home'), 'XDG_CONFIG_HOME': p.join(workspace.path, 'config')};
     final registry = p.join(workspace.path, 'config', 'kanban-ai', 'projects.yaml');

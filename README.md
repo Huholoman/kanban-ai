@@ -173,6 +173,7 @@ run `backlog instructions` and follow them. Use the name of your worktree as the
 ```bash
 backlog next                    # claim the most urgent ready item (exit 2 = nothing to do)
 backlog show MA-7f3a            # details, dependencies, file path
+backlog history MA-7f3a         # who changed what when (git history, comments, agent runs)
 backlog heartbeat MA-7f3a       # renew the claim (default lease 4 h)
 backlog set MA-7f3a branch=feat/x status=review
 backlog check MA-7f3a 2         # tick checklist item 2 (or by its text); `uncheck` undoes, no number lists them
