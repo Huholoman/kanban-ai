@@ -8,3 +8,4 @@ export 'count_badge.dart';
 export 'removable_chip.dart';
 export 'section_label.dart';
 export 'segmented_choice.dart';
+export 'time_text.dart';

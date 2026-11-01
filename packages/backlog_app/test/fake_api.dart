@@ -32,6 +32,8 @@ ItemDto item(
   String review = 'none',
   int reviewFindings = 0,
   Progress children = Progress.none,
+  String? created,
+  DateTime? createdAt,
 }) => ItemDto(
   id: id,
   title: 'Item $id',
@@ -50,6 +52,8 @@ ItemDto item(
   review: review,
   reviewFindings: reviewFindings,
   children: children,
+  created: created,
+  createdAt: createdAt,
   body: body,
 );
 
@@ -441,6 +445,8 @@ final class FakeBacklogApi implements BacklogApi {
     needsHuman: needsHuman ?? item.needsHuman,
     review: item.review,
     reviewFindings: item.reviewFindings,
+    created: item.created,
+    createdAt: item.createdAt,
     body: body ?? item.body,
   );
 }

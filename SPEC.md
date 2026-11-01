@@ -237,7 +237,7 @@ Rules:
   1. lib/export.dart:40 – the header row is missing.
   2. No test for an empty backlog.
   ```
-- **Times:** `created` (set when the tool creates the item) and `updated` (set on every change made through the tool that changes something) are UTC instants to the second, `2026-10-29T14:05:31Z`. Older files with only a day (`2026-10-29`) are still read (as midnight UTC) and keep their value until the tool changes that key; a hand-written time with an offset or without a zone (taken as UTC) works too. Sorting by them (the default order, `sort: created`) is chronological. The CLI text output shows them in the system's time zone (`show`), JSON as written plus `created_at`/`updated_at` (ISO 8601 in UTC, null for a day only).
+- **Times:** `created` (set when the tool creates the item) and `updated` (set on every change made through the tool that changes something) are UTC instants to the second, `2026-10-29T14:05:31Z`. Older files with only a day (`2026-10-29`) are still read (as midnight UTC) and keep their value until the tool changes that key; a hand-written time with an offset or without a zone (taken as UTC) works too. Sorting by them (the default order, `sort: created`) is chronological. The CLI text output shows them in the system's time zone (`show`), JSON as written plus `created_at`/`updated_at` (ISO 8601 in UTC, null for a day only); the board shows them, like the times of comments, in the browser's zone, relative to now for recent ones (`5 min ago`, `yesterday`, up to a week) with the exact time in a tooltip.
 
 ### 3.1 Derived state (computed, never stored)
 
