@@ -10,7 +10,9 @@ import 'app/project_memory_store.dart';
 /// Query parameters: `token` (if the server needs one), `as` (agent name for
 /// claims) and `server` (another API address, e.g. during `flutter run`).
 /// The open project is the route after `#`: `/#/p/<id>`.
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final drafts = await draftStore();
   final query = Uri.base.queryParameters;
   final server = query['server'] ?? const String.fromEnvironment('BACKLOG_SERVER');
   final base = server.isNotEmpty ? Uri.parse(server) : Uri.base.replace(path: '/', query: '', fragment: '');
@@ -22,7 +24,7 @@ void main() {
       // A server without projects serves its one backlog on the old paths.
       api: HttpBacklogApi(base, token: token),
       memory: projectMemoryStore(),
-      drafts: draftStore(),
+      drafts: drafts,
       config: AppConfig(agent: agent == null || agent.isEmpty ? null : agent),
     ),
   );
