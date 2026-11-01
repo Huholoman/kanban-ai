@@ -376,6 +376,36 @@ final class FakeBacklogApi implements BacklogApi {
   final epics = <String, EpicDto>{};
   final startedEpics = <String>[];
 
+  /// Histories by item id, [history] answers from them; the requested
+  /// filters are recorded in [historyRequests].
+  final histories = <String, List<HistoryEntryDto>>{};
+  final historyRequests = <String?>[];
+
+  @override
+  Future<List<HistoryEntryDto>> history(String reference, {String? only}) async {
+    historyRequests.add(only);
+    final entries = histories[reference] ?? const [];
+    return switch (only) {
+      null => entries,
+      'status' => [
+        for (final e in entries)
+          if (e.kind == 'created' || e.field == 'status') e,
+      ],
+      'fields' => [
+        for (final e in entries)
+          if (e.kind != 'comment' && e.kind != 'run') e,
+      ],
+      'comments' => [
+        for (final e in entries)
+          if (e.kind == 'comment') e,
+      ],
+      _ => [
+        for (final e in entries)
+          if (e.kind == 'run') e,
+      ],
+    };
+  }
+
   @override
   Future<EpicDto> epic(String reference) async =>
       epics[reference] ?? (throw BacklogApiException(404, 'not_found', 'No item $reference.'));

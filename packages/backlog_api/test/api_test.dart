@@ -124,6 +124,20 @@ void main() {
       expect(copy.updatedAt, DateTime.utc(2026, 10, 31, 20, 27, 12));
     });
 
+    test('history entry', () {
+      final entry = HistoryEntryDto(
+        kind: 'field',
+        at: DateTime.utc(2026, 10, 31, 20, 27, 12),
+        author: 'tobik',
+        field: 'status',
+        before: 'todo',
+        after: 'review',
+        commit: 'abc',
+        uncommitted: true,
+      );
+      expect(roundTrip(entry.toJson(), HistoryEntryDto.fromJson).toJson(), entry.toJson());
+    });
+
     test('detail, view and workflow', () {
       final detail = ItemDetailDto(
         item: item,
