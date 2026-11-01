@@ -309,11 +309,13 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
           '2. resolve the conflicts git reports, `git add <file>` for each resolved file, then '
           '`git rebase --continue` (repeat until the rebase is done; never `git rebase --abort` or `--skip`)\n'
           '3. run the project\'s checks and commit what it needs\n'
-          '4. leave T-0001 in review: do not change its status\n\n',
+          '4. `backlog set T-0001 status=deploy` to merge it again — unless a person has to decide something (how '
+          'to resolve a conflict, a check you cannot fix): then leave it in review and ask with '
+          '`backlog ask T-0001 "…"`',
         ),
         reason: 'no fetch and no pull request without a remote strategy and pr',
       );
-      expect(comment.text, contains('Then move it to deploy again to merge it.'));
+      expect(comment.text, isNot(contains('Then move it')), reason: 'the agent moves it itself');
       expect(await git(path('wt-1'), ['rev-parse', 'HEAD']), tip, reason: 'the branch is as before');
       expect(await git(path('wt-1'), ['status', '--porcelain']), isEmpty, reason: 'no rebase left behind');
       expect(await git(path('repo'), ['rev-parse', 'main']), main);
@@ -357,6 +359,14 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       expect((await current()).status, 'review');
     });
 
+    test('a hook whose item came from in-progress (an agent fixed it) sends it back to review', () async {
+      await item(file: 'README.md', text: 'x\n');
+      await commit(path('repo'), 'README.md', 'y\n', 'Conflicting change');
+      final result = await merge(from: 'in-progress');
+      expect(result.summary, endsWith('T-0001 went back to review'));
+      expect((await current()).status, 'review');
+    });
+
     test('a button (not the hook) leaves a failed item where it is', () async {
       await item(file: 'README.md', text: 'x\n');
       await commit(path('repo'), 'README.md', 'y\n', 'Conflicting change');
@@ -364,7 +374,8 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       final result = await merge(trigger: ActionTrigger.request, from: null);
       expect((result.ok, result.summary.contains('went back')), (false, false));
       expect((await current()).status, 'review');
-      expect((await comments()).single.text, contains('run the action "Merge" again'));
+      expect((await comments()).single.text, contains('leave T-0001 in its status: do not change its status\n\n'));
+      expect((await comments()).single.text, contains('Then run the action "Merge" again to merge it.'));
     });
 
     test(

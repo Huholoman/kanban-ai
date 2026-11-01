@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:collection/collection.dart';
 import 'package:path/path.dart' as p;
 
 import '../../items/application/field_change.dart';
@@ -285,9 +286,10 @@ final class MergeAction implements BuiltInAction {
   // ---------------------------------------------------------------- failure
 
   /// Moves the item back to the status it came from when it entered the
-  /// action's `on_enter` status (a hook) if that is an active one, else to
-  /// the closest active status before the hook's; a button leaves it where
-  /// it is. Returns the new status.
+  /// action's `on_enter` status (a hook) if that is an active one after the
+  /// first (from the first, `in-progress`, an agent just fixed it), else to
+  /// the closest such status before the hook's (the first active one when
+  /// there is none); a button leaves it where it is. Returns the new status.
   Future<String?> _sendBack(BuiltInActionContext context) async {
     final hook = context.action.onEnter;
     if (context.trigger != ActionTrigger.onEnter || hook == null) return null;
@@ -298,16 +300,16 @@ final class MergeAction implements BuiltInAction {
     var target = context.from;
     // The dispatcher may have seen the item last before it got there (e.g.
     // in todo, when its agent set review just before a person moved it on).
-    if (target == null || target == hook || workflow.categoryOf(target) != StatusCategory.active) {
+    if (target == null ||
+        target == hook ||
+        target == workflow.activeStatus ||
+        workflow.categoryOf(target) != StatusCategory.active) {
       final statuses = workflow.statuses.map((s) => s.id).toList();
-      final index = statuses.indexOf(hook);
-      target = null;
-      for (var i = index - 1; i >= 0; i--) {
-        if (workflow.categoryOf(statuses[i]) == StatusCategory.active) {
-          target = statuses[i];
-          break;
-        }
-      }
+      final before = [
+        for (var i = statuses.indexOf(hook) - 1; i >= 0; i--)
+          if (workflow.categoryOf(statuses[i]) == StatusCategory.active) statuses[i],
+      ];
+      target = before.firstWhereOrNull((s) => s != workflow.activeStatus) ?? before.firstOrNull;
     }
     if (target == null) return null;
     await context.backlog.items.update(id, [FieldChange('status', ChangeOp.set, target)]);
@@ -329,9 +331,8 @@ final class MergeAction implements BuiltInAction {
       final fence = details.contains('```') ? '~~~~' : '```';
       text.write('\n\n${fence}text\n$details\n$fence');
     }
-    final again = context.trigger != ActionTrigger.onEnter || context.action.onEnter == null
-        ? 'run the action "${context.action.name}" again'
-        : 'move it to ${context.action.onEnter} again';
+    final hook = context.trigger == ActionTrigger.onEnter ? context.action.onEnter : null;
+    final again = hook == null ? 'run the action "${context.action.name}" again' : 'move it to $hook again';
     final upstream = strategy == MergeStrategy.local ? base : '${config.merge.remote}/$base';
     final check = config.merge.check == null
         ? 'run the project\'s checks'
@@ -345,12 +346,19 @@ final class MergeAction implements BuiltInAction {
           '(repeat until the rebase is done; never `git rebase --abort` or `--skip`)',
       '$check and commit what it needs',
       if (config.pr != null) 'publish the branch with `backlog pr $id --force` (never `git push`)',
-      'leave $id in ${back ?? 'its status'}: do not change its status',
+      if (hook == null)
+        'leave $id in ${back ?? 'its status'}: do not change its status'
+      else
+        '`backlog set $id status=$hook` to merge it again — unless a person has to decide something (how to '
+            'resolve a conflict, a check you cannot fix): then leave it in ${back ?? 'its status'} and ask with '
+            '`backlog ask $id "…"`',
     ];
     final numbered = [for (final (i, step) in steps.indexed) '${i + 1}. $step'].join('\n');
     switch (failure.kind) {
       case _FailureKind.conflict || _FailureKind.refused || _FailureKind.check:
-        text.write('\n\nTo fix it, in the worktree of $branch:\n\n$numbered\n\nThen $again to merge it.');
+        text.write(
+          '\n\nTo fix it, in the worktree of $branch:\n\n$numbered${hook == null ? '\n\nThen $again to merge it.' : ''}',
+        );
       case _FailureKind.setup:
         text.write('\n\nNothing was merged; fix this and $again.');
       case _FailureKind.epic:
