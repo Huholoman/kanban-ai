@@ -66,6 +66,8 @@ export 'src/settings/infrastructure/doctor_checks.dart';
 export 'src/settings/infrastructure/file_config.dart';
 export 'src/shared/clock.dart';
 export 'src/shared/errors.dart';
+export 'src/storage/domain/backlog_storage.dart';
+export 'src/storage/infrastructure/file_backlog_storage.dart';
 export 'src/validation/application/lint_fixes.dart';
 export 'src/validation/application/linter.dart';
 export 'src/validation/domain/lint_issue.dart';

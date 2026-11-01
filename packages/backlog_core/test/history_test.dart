@@ -110,7 +110,7 @@ void main() {
 
   test('HistoryService reads the committed versions of the file, across a rename', () async {
     final (backlog, clock) = await tempBacklog();
-    final root = backlog.layout.root;
+    final root = backlog.root;
     await _git(root, ['init', '-q']);
     final item = await backlog.items.create(const NewItem(title: 'Backups', status: 'todo'));
     await _commit(root, 'tobik', clock);

@@ -5,16 +5,11 @@ import 'package:yaml/yaml.dart';
 import 'package:yaml_edit/yaml_edit.dart';
 
 import 'claims/application/claim_service.dart';
-import 'claims/infrastructure/file_system_claim_store.dart';
 import 'dispatch/domain/action_run.dart';
-import 'dispatch/infrastructure/action_files.dart';
 import 'history/application/history_service.dart';
-import 'history/infrastructure/git_item_revisions.dart';
 import 'infrastructure/backlog_layout.dart';
 import 'items/application/item_service.dart';
 import 'items/domain/item_id.dart';
-import 'items/infrastructure/file_system_item_repository.dart';
-import 'items/infrastructure/markdown_item_codec.dart';
 import 'planning/application/planning_service.dart';
 import 'planning/infrastructure/git_branch_changes.dart';
 import 'planning/infrastructure/git_branch_heads.dart';
@@ -22,6 +17,8 @@ import 'presets/domain/init_preset.dart';
 import 'presets/infrastructure/built_in_presets.dart';
 import 'shared/clock.dart';
 import 'shared/errors.dart';
+import 'storage/domain/backlog_storage.dart';
+import 'storage/infrastructure/file_backlog_storage.dart';
 import 'validation/application/lint_fixes.dart';
 import 'validation/application/linter.dart';
 import 'views/application/view_service.dart';
@@ -29,16 +26,16 @@ import 'views/infrastructure/yaml_views.dart';
 import 'workflow/domain/dispatcher_config.dart';
 import 'workflow/domain/workflow.dart';
 import 'workflow/domain/workflow_source.dart';
-import 'workflow/infrastructure/file_workflow_source.dart';
 import 'workflow/infrastructure/yaml_workflow.dart';
 
-/// Composition root: one backlog folder wired to its file-system adapters.
+/// Composition root: one backlog wired to the adapters of its
+/// [BacklogStorage].
 ///
 /// Adapters (CLI, server, app) talk to the services exposed here and never
 /// touch files themselves.
 final class Backlog {
   Backlog._({
-    required this.layout,
+    required this.storage,
     required this.configuration,
     required this.workflow,
     required this.revision,
@@ -50,36 +47,38 @@ final class Backlog {
     required this.linter,
   });
 
-  /// Opens the backlog at [root]. With [cacheItems] (long-running processes
-  /// such as the server) parsed item files are kept in memory and only
-  /// changed files are read again (see [FileSystemItemRepository]); claims
+  /// Opens the backlog folder at [root] ([FileBacklogStorage]). With
+  /// [cacheItems] (long-running processes such as the server) parsed item
+  /// files are kept in memory and only changed files are read again; claims
   /// are always read fresh.
   static Future<Backlog> open(
     String root, {
     Clock clock = const SystemClock(),
     IdGenerator? ids,
     bool cacheItems = false,
-  }) async {
-    final layout = BacklogLayout(root);
-    final configuration = FileWorkflowSource(layout);
+  }) => connect(
+    FileBacklogStorage(root, cacheItems: cacheItems),
+    clock: clock,
+    ids: ids,
+  );
+
+  /// Opens the backlog kept in [storage]: reads its configuration and wires
+  /// the services to the stores of that workflow.
+  static Future<Backlog> connect(BacklogStorage storage, {Clock clock = const SystemClock(), IdGenerator? ids}) async {
+    final configuration = storage.configuration;
     final loaded = await configuration.load();
     final workflow = loaded.workflow;
-
-    final codec = MarkdownItemCodec(
-      ItemDefaults(type: workflow.defaultType, status: workflow.defaultStatus, priority: workflow.defaultPriority),
-    );
-    final itemRepository = FileSystemItemRepository(layout, codec, cache: cacheItems);
-    final claimStore = FileSystemClaimStore(layout, defaultLease: workflow.claimLease);
-    final viewRepository = YamlViewRepository(layout);
+    final stores = storage.stores(workflow);
+    final root = storage.root;
     final dispatcher = workflow.dispatcher;
     final repositories = [
-      ?dispatcher?.newWorktrees?.resolveRepo(layout.root),
-      for (final worktree in dispatcher?.worktrees ?? const <WorktreeDefinition>[]) worktree.resolvePath(layout.root),
-      layout.root,
+      ?dispatcher?.newWorktrees?.resolveRepo(root),
+      for (final worktree in dispatcher?.worktrees ?? const <WorktreeDefinition>[]) worktree.resolvePath(root),
+      root,
     ];
     final planning = PlanningService(
-      items: itemRepository,
-      claims: claimStore,
+      items: stores.items,
+      claims: stores.claims,
       workflow: workflow,
       clock: clock,
       branches: GitBranchHeads(repositories),
@@ -87,34 +86,34 @@ final class Backlog {
     );
 
     final items = ItemService(
-      repository: itemRepository,
+      repository: stores.items,
       workflow: workflow,
       ids: ids ?? RandomIdGenerator(prefix: workflow.idPrefix, length: workflow.idLength),
       clock: clock,
     );
     return Backlog._(
-      layout: layout,
+      storage: storage,
       configuration: configuration,
       workflow: workflow,
       revision: loaded.revision,
       items: items,
-      history: HistoryService(items: items, revisions: const GitItemRevisions(), decode: codec.decode, clock: clock),
+      history: HistoryService(items: items, revisions: stores.revisions, decode: stores.decode, clock: clock),
       planning: planning,
       claims: ClaimService(
-        items: itemRepository,
-        claims: claimStore,
+        items: stores.items,
+        claims: stores.claims,
         planning: planning,
         workflow: workflow,
         clock: clock,
       ),
-      views: ViewService(views: viewRepository, planning: planning),
+      views: ViewService(views: stores.views, planning: planning),
       linter: Linter(
-        items: itemRepository,
-        claims: claimStore,
-        views: viewRepository,
+        items: stores.items,
+        claims: stores.claims,
+        views: stores.views,
         workflow: workflow,
         clock: clock,
-        root: layout.root,
+        root: root,
         directoryExists: (path) => Directory(path).exists(),
         programExists: programOnPath,
       ),
@@ -214,7 +213,8 @@ final class Backlog {
   /// See [BacklogLayout.locate].
   static String? locate(String start) => BacklogLayout.locate(start);
 
-  final BacklogLayout layout;
+  /// Where the backlog is kept.
+  final BacklogStorage storage;
 
   /// Where [workflow] comes from; edits made through it apply to backlogs
   /// opened afterwards.
@@ -239,11 +239,12 @@ final class Backlog {
   final ViewService views;
   final Linter linter;
 
-  String get root => layout.root;
+  /// The folder the backlog belongs to (see [BacklogStorage.root]).
+  String get root => storage.root;
 
   /// Requests to run actions, for a server's dispatcher to pick up
   /// (`backlog action`).
-  ActionRequests get actionRequests => FileActionRequests(layout);
+  ActionRequests get actionRequests => storage.actionRequests;
 
   /// The fixes `backlog config` offers for lint issues.
   LintFixer get lintFixer => LintFixer(items: items, claims: claims, workflow: workflow);

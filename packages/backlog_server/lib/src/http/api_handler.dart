@@ -305,7 +305,7 @@ final class ApiHandler {
     final snapshot = await backlog.planning.snapshot();
     final planned = snapshot[ItemReference.resolve(ref, snapshot.ids)]!;
     final location = await backlog.items.locationOf(planned.id);
-    final path = location == null ? null : backlog.layout.relative(location);
+    final path = location == null ? null : backlog.storage.displayLocation(location);
     return _json(
       DtoMapper.detail(planned, snapshot, path: path, reviewing: _reviewing).toJson(),
       status: status,

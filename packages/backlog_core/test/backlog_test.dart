@@ -33,6 +33,32 @@ void main() {
     });
   });
 
+  group('storage', () {
+    test('connect wires every service to the stores of the given storage', () async {
+      final (opened, _) = await tempBacklog();
+      final storage = _RecordingStorage(FileBacklogStorage(opened.root));
+      final backlog = await Backlog.connect(storage, ids: SequentialIds());
+
+      expect(backlog.root, opened.root);
+      expect(storage.workflows.single.idPrefix, 'T');
+      final created = await backlog.items.create(const NewItem(title: 'Through the port'));
+      expect(storage.saved, [created.id]);
+      expect(backlog.storage.displayLocation((await backlog.items.locate(created.id.value))!), startsWith('items/'));
+      await backlog.actionRequests.add(
+        ActionRequest(item: created.id.value, action: 'check', by: 'me', at: DateTime.utc(2026)),
+      );
+      expect((await FileBacklogStorage(opened.root).actionRequests.take()).single.action, 'check');
+    });
+
+    test('every connect gets fresh stores', () async {
+      final (opened, _) = await tempBacklog();
+      final storage = _RecordingStorage(FileBacklogStorage(opened.root));
+      await Backlog.connect(storage);
+      await Backlog.connect(storage);
+      expect(storage.workflows, hasLength(2));
+    });
+  });
+
   group('items', () {
     test('create writes a readable file named after id and title', () async {
       final (backlog, _) = await tempBacklog();
@@ -581,4 +607,58 @@ void main() {
     expect(cleared.pr, isNull);
     expect(cleared.extra, isEmpty);
   });
+}
+
+/// A storage that records which stores the backlog asked for and which items
+/// it saved, delegating to [_inner].
+final class _RecordingStorage implements BacklogStorage {
+  _RecordingStorage(this._inner);
+
+  final BacklogStorage _inner;
+  final workflows = <Workflow>[];
+  final saved = <ItemId>[];
+
+  @override
+  String get root => _inner.root;
+
+  @override
+  WorkflowSource get configuration => _inner.configuration;
+
+  @override
+  ActionRequests get actionRequests => _inner.actionRequests;
+
+  @override
+  BacklogStores stores(Workflow workflow) {
+    workflows.add(workflow);
+    final inner = _inner.stores(workflow);
+    return BacklogStores(
+      items: _RecordingItems(inner.items, saved),
+      claims: inner.claims,
+      views: inner.views,
+      revisions: inner.revisions,
+      decode: inner.decode,
+    );
+  }
+
+  @override
+  String displayLocation(String location) => _inner.displayLocation(location);
+}
+
+final class _RecordingItems implements ItemRepository {
+  _RecordingItems(this._inner, this._saved);
+
+  final ItemRepository _inner;
+  final List<ItemId> _saved;
+
+  @override
+  Future<ItemCatalog> load() => _inner.load();
+
+  @override
+  Future<void> save(Item item) async {
+    _saved.add(item.id);
+    await _inner.save(item);
+  }
+
+  @override
+  Future<String?> locationOf(ItemId id) => _inner.locationOf(id);
 }

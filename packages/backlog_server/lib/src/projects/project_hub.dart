@@ -67,7 +67,7 @@ final class ProjectHub {
     final next = <HostedProject>[];
     for (final entry in registry.entries) {
       final existing = current[entry.id];
-      if (existing != null && existing.host.root == BacklogHost(entry.path).root) {
+      if (existing != null && existing.entry.path == entry.path) {
         existing.entry = entry;
         current.remove(entry.id);
         next.add(existing);

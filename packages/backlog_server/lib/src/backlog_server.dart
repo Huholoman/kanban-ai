@@ -35,6 +35,8 @@ final class BacklogServer {
   /// would start. With [stateDir] the dispatchers remember status hooks
   /// (`on_enter` actions) there across restarts. [preview] answers
   /// `/api/preview` (the local preview of the built-in action `preview`).
+  /// [storage] decides where the backlog of a project folder is kept
+  /// (default: [ProjectRuntime.folderStorage]).
   static Future<BacklogServer> start({
     String? root,
     String? projectsFile,
@@ -51,6 +53,7 @@ final class BacklogServer {
     Duration dispatchDebounce = const Duration(milliseconds: 500),
     String? stateDir,
     LocalPreview? preview,
+    StorageFactory storage = ProjectRuntime.folderStorage,
   }) async {
     if ((root == null) == (projectsFile == null)) {
       throw ArgumentError('Give either root or projectsFile.');
@@ -63,6 +66,7 @@ final class BacklogServer {
       log: log,
       prefixLogs: projectsFile != null,
       stateDir: stateDir,
+      storage: storage,
     );
     final store = projectsFile == null ? null : YamlProjectRegistryStore(projectsFile, home: home);
     final hub = ProjectHub(
@@ -74,7 +78,7 @@ final class BacklogServer {
     try {
       if (root != null) {
         final entry = ProjectEntry.at(BacklogLayout(root).root);
-        await Backlog.open(entry.path, clock: clock); // fail fast on a missing or broken backlog
+        await Backlog.connect(storage(entry.path), clock: clock); // fail fast on a missing or broken backlog
         await hub.sync(ProjectRegistry([entry]));
       } else if (store != null) {
         await hub.sync(await store.load());

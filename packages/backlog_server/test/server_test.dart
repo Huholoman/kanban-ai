@@ -87,6 +87,24 @@ void main() {
       expect(response.body, contains('not allowed'));
     });
 
+    test('opens the backlog in the storage it is given', () async {
+      final asked = <String>[];
+      final server = await BacklogServer.start(
+        root: dir.path,
+        addresses: [InternetAddress.loopbackIPv4],
+        port: 0,
+        storage: (path) {
+          asked.add(path);
+          return FileBacklogStorage(path);
+        },
+      );
+      addTearDown(server.close);
+      final response = await http.get(server.uri.replace(path: ApiPaths.items));
+      expect(response.statusCode, 200);
+      expect(asked, everyElement(p.normalize(p.absolute(dir.path))));
+      expect(asked, hasLength(2)); // the check at the start and the hosted project
+    });
+
     test('serves allowed clients', () async {
       final server = await BacklogServer.start(
         root: dir.path,

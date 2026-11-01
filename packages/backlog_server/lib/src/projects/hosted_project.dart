@@ -14,6 +14,9 @@ import '../http/api_handler.dart';
 /// server log (prefixed with the project when several are served).
 typedef LauncherFactory = AgentLauncher Function(String projectId, BacklogHost host, void Function(String message) log);
 
+/// Where the backlog of the project folder [path] is kept.
+typedef StorageFactory = BacklogStorage Function(String path);
+
 /// How live projects are run; shared by every project of a server.
 final class ProjectRuntime {
   const ProjectRuntime({
@@ -24,7 +27,11 @@ final class ProjectRuntime {
     this.log,
     this.prefixLogs = false,
     this.stateDir,
+    this.storage = folderStorage,
   });
+
+  /// The folder itself, caching parsed item files ([FileBacklogStorage]).
+  static BacklogStorage folderStorage(String path) => FileBacklogStorage(path, cacheItems: true);
 
   final Clock clock;
 
@@ -43,6 +50,9 @@ final class ProjectRuntime {
   /// Where dispatchers keep what they know about status hooks across
   /// restarts (`actions/<project>/state.json`); null keeps it in memory.
   final String? stateDir;
+
+  /// Where the backlog of each project is kept.
+  final StorageFactory storage;
 }
 
 /// One backlog of the server: its [BacklogHost], the watcher that feeds change
@@ -55,7 +65,7 @@ final class HostedProject {
   /// A project that watches its folder and runs a dispatcher.
   HostedProject.live(this.entry, ProjectRuntime runtime)
     : _runtime = runtime,
-      host = BacklogHost(entry.path, clock: runtime.clock);
+      host = BacklogHost(runtime.storage(entry.path), clock: runtime.clock);
 
   /// A project fed by [events] instead of a watcher; its [dispatcher] (and
   /// [launcher]) are run by the caller, if any.
@@ -136,7 +146,7 @@ final class HostedProject {
       onError: (error, _) => say('Dispatcher: $error'),
       log: say,
       actions: runtime.stateDir == null ? null : FileActionStateStore(stateDir: runtime.stateDir!, project: id),
-      requests: FileActionRequests(BacklogLayout(host.root)),
+      requests: host.storage.actionRequests,
       note: (item, text) async => (await host.backlog).items.comment(
         item.value,
         author: ProcessAgentLauncher.noteAuthor,

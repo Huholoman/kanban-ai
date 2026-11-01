@@ -34,7 +34,7 @@ void main() {
     token: token,
     client: inMemory(
       BacklogServer.buildHandler(
-        projects: ProjectHub.single(BacklogHost(dir.path, clock: clock)),
+        projects: ProjectHub.single(BacklogHost.folder(dir.path, clock: clock)),
         token: serverToken,
       ),
     ),
@@ -302,7 +302,7 @@ void main() {
     await expectLater(() => client(serverToken: 'secret').items(), throwsA(apiError(401, 'unauthorized')));
     expect(await client(token: 'secret', serverToken: 'secret').items(), isEmpty);
     final health = await inMemory(
-      BacklogServer.buildHandler(projects: ProjectHub.single(BacklogHost(dir.path)), token: 'secret'),
+      BacklogServer.buildHandler(projects: ProjectHub.single(BacklogHost.folder(dir.path)), token: 'secret'),
     ).get(Uri.parse('http://backlog.test/api/health'));
     expect(health.statusCode, 200);
   });
@@ -354,7 +354,7 @@ void main() {
     });
 
     test('a changed backlog.yaml drops the cache (new defaults apply to the files)', () async {
-      final host = BacklogHost(dir.path, clock: clock);
+      final host = BacklogHost.folder(dir.path, clock: clock);
       final cached = ApiHandler(host).handler;
       Future<String> priority() async {
         final response = await cached(shelf.Request('GET', Uri.parse('http://backlog.test/items')));
@@ -371,7 +371,7 @@ void main() {
   });
 
   test('a changed workflow applies after reload', () async {
-    final host = BacklogHost(dir.path, clock: clock);
+    final host = BacklogHost.folder(dir.path, clock: clock);
     expect((await host.backlog).workflow.priorities, hasLength(4));
     final config = File(p.join(dir.path, 'backlog.yaml'));
     config.writeAsStringSync(config.readAsStringSync().replaceFirst('[p0, p1, p2, p3]', '[p0, p1, p2]'));
@@ -398,7 +398,7 @@ void main() {
       config.writeAsStringSync(
         '${config.readAsStringSync()}\ndispatcher:\n  worktrees: [w1, w2]\n  max_agents: 1\n  command: agent {id}\n',
       );
-      host = BacklogHost(dir.path, clock: clock);
+      host = BacklogHost.folder(dir.path, clock: clock);
       launcher = _FakeLauncher(host);
       dispatcher = Dispatcher(
         snapshot: () async => (await host.backlog).planning.snapshot(),
