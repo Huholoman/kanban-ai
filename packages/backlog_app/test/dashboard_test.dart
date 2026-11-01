@@ -246,6 +246,11 @@ void main() {
       expect(find.byKey(const ValueKey('action-A-2-Merge')), findsOneWidget);
       expect(find.text('the agent ended without finishing'), findsOneWidget);
       expect(find.byKey(const ValueKey('b:run-B-1')), findsOneWidget);
+      // Every row says who has the ball, the same badge as on cards.
+      expect(find.byKey(const ValueKey('ball-you-A-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('ball-you-A-2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('ball-agent-B-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('ball-queue-B-2')), findsOneWidget);
       expect(find.byKey(const ValueKey('a:unavailable-w2')), findsOneWidget);
       expect(
         find.byKey(const ValueKey('b:unavailable-w2')),

@@ -8,7 +8,7 @@ import '../../../shared/item_style.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
 import '../../dispatch/presentation/action_buttons.dart';
-import '../../dispatch/presentation/agent_state_badge.dart';
+import '../../dispatch/presentation/ball_badge.dart';
 import '../application/board_controller.dart';
 import '../application/column_arrangement.dart';
 import 'item_card.dart';
@@ -16,12 +16,15 @@ import 'item_card.dart';
 typedef OpenItem = void Function(String id);
 typedef MoveItem = void Function(ItemDto item, String key);
 
-/// The dispatcher's controls of a card: whether the item needs a person,
-/// and its actions.
+/// The dispatcher's controls of a card: who has the ball, and the item's
+/// actions.
 Widget _cardMenu(ItemDto item, WorkflowDto? workflow) => Row(
   mainAxisSize: MainAxisSize.min,
   children: [
-    AgentStateBadge(item: item),
+    ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 110),
+      child: Padding(padding: const EdgeInsets.only(right: 4), child: BallBadge.of(item, workflow)),
+    ),
     CardActionsMenu(item: item, workflow: workflow),
   ],
 );
