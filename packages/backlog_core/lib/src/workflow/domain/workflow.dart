@@ -85,7 +85,7 @@ final class Workflow {
     _require(priorities.contains(priority), 'Default priority "$priority" is not defined.');
     _require(types.contains(type), 'Default type "$type" is not defined.');
     for (final action in dispatcher?.actions ?? const <ActionDefinition>[]) {
-      for (final listed in [?action.onEnter, ...?action.statuses]) {
+      for (final listed in [?action.onEnter, ?action.then, ...?action.statuses]) {
         _require(statuses.any((s) => s.id == listed), 'dispatcher.actions "${action.name}": unknown status "$listed".');
       }
     }

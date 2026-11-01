@@ -6,6 +6,7 @@ import '../../items/domain/discussion.dart';
 import '../../items/domain/item_id.dart';
 import '../../planning/domain/backlog_snapshot.dart';
 import '../../planning/domain/epic_plan.dart';
+import '../../planning/domain/planned_item.dart';
 import '../../planning/domain/review_state.dart';
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
@@ -42,6 +43,7 @@ final class Dispatcher {
     ActionStateStore? actions,
     ActionRequests? requests,
     Future<void> Function(ItemId item, String text)? note,
+    Future<void> Function(ItemId item, String status)? move,
     void Function(String message)? log,
   }) : _snapshot = snapshot,
        _launcher = launcher,
@@ -51,6 +53,7 @@ final class Dispatcher {
        _actions = actions ?? MemoryActionStateStore(),
        _requests = requests,
        _note = note,
+       _move = move,
        _log = log ?? ((_) {});
 
   final String backlogRoot;
@@ -67,6 +70,10 @@ final class Dispatcher {
   /// Adds a note to an item's discussion (why a requested action could not
   /// start); null leaves it to the log.
   final Future<void> Function(ItemId item, String text)? _note;
+
+  /// Sets an item's status (an AI review with `then` moves the item on);
+  /// null leaves it where it is.
+  final Future<void> Function(ItemId item, String status)? _move;
   final void Function(String message) _log;
   final _plans = StreamController<DispatchPlan?>.broadcast(sync: true); // before any launch it causes
   final _launched = <String>{};
@@ -451,6 +458,7 @@ final class Dispatcher {
           'the latest review already looked at the head of its branch.',
         );
         await forget(pending);
+        await _handOver(planned, action, 'the latest review saw its branch already');
         continue;
       }
       try {
@@ -526,7 +534,9 @@ final class Dispatcher {
   /// worktree), unless `auto_fix` rounds ran already — then the loop is
   /// exhausted and a person decides. After a fix: new commits on the
   /// branch (the review is `stale`) queue the review again; none end the
-  /// loop.
+  /// loop. A review with [ActionDefinition.then] moves the item on whenever
+  /// its loop ends in the review's status (also without `auto_fix`); a fix
+  /// that sent the item elsewhere (to a person) ends the loop.
   Future<DispatchPlan?> _runLoops(DispatchPlan plan) async {
     final state = await _actions.load();
     if (state.loops.isEmpty) return null;
@@ -538,7 +548,7 @@ final class Dispatcher {
     for (final MapEntry(key: id, value: loop) in state.loops.entries) {
       final planned = current.snapshot[id];
       final action = current.config.action(loop.action);
-      if (planned == null || planned.isDone || action == null || !action.review || action.autoFix == 0) {
+      if (planned == null || planned.isDone || action == null || !_loops(action)) {
         loops.remove(id);
         changed = true;
         continue;
@@ -548,7 +558,11 @@ final class Dispatcher {
       final rounds = action.autoFix;
       if (loop.phase == ReviewLoopPhase.fixing) {
         changed = true;
-        if (planned.review == ReviewState.stale) {
+        if (action.then != null && planned.item.status != action.onEnter) {
+          // The agent sent it on itself (a finding for a person).
+          loops.remove(id);
+          _log('Dispatcher: the review loop of $id ends: its agent left it ${planned.item.status}.');
+        } else if (planned.review == ReviewState.stale) {
           queued.add(PendingAction(item: id, action: action.name, status: planned.item.status, since: now.toUtc()));
           loops[id] = loop.to(ReviewLoopPhase.reviewing, now);
           _log('Dispatcher: $id has new commits after the fix; queued the action "${action.name}" again.');
@@ -559,6 +573,7 @@ final class Dispatcher {
             'The agent ended the fix round ${loop.round} of the AI review without new commits; '
             'the automatic fixes stop here.',
           );
+          await _handOver(planned, action, 'the fix brought no new commits');
         }
         continue;
       }
@@ -571,10 +586,15 @@ final class Dispatcher {
       if (review == null || review.at.isBefore(since) || review.review == ReviewVerdict.ok) {
         loops.remove(id);
         changed = true;
-        _log(
-          'Dispatcher: the review loop of $id ends: '
-          '${review == null || review.at.isBefore(since) ? 'the review gave no verdict' : 'the review is ok'}.',
-        );
+        final why = review == null || review.at.isBefore(since) ? 'the review gave no verdict' : 'the review is ok';
+        _log('Dispatcher: the review loop of $id ends: $why.');
+        await _handOver(planned, action, why);
+        continue;
+      }
+      if (rounds == 0) {
+        loops.remove(id);
+        changed = true;
+        await _handOver(planned, action, 'the review asks for changes');
         continue;
       }
       if (loop.round >= rounds) {
@@ -585,11 +605,18 @@ final class Dispatcher {
           'The AI review still asks for changes after $rounds automatic fix round${rounds == 1 ? '' : 's'} '
           '(auto_fix: $rounds); a person decides now.',
         );
+        await _handOver(planned, action, 'no automatic fix round is left');
         continue;
       }
       final DispatchAssignment assignment;
       try {
-        assignment = current.fixStart(id, review: review, round: loop.round + 1, rounds: rounds);
+        assignment = current.fixStart(
+          id,
+          review: review,
+          round: loop.round + 1,
+          rounds: rounds,
+          then: planned.item.status == action.onEnter ? action.then : null,
+        );
         await _launcher.launch(assignment);
       } on UnavailableException {
         continue; // waits for a free worktree
@@ -633,7 +660,7 @@ final class Dispatcher {
   /// with `auto_fix` starts for it: a loop in progress keeps its rounds, a
   /// new one (or after an exhausted one) starts from zero.
   Future<void> _reviewStarted(ItemId item, ActionDefinition action) async {
-    if (!action.review || action.autoFix == 0) return;
+    if (!_loops(action)) return;
     final state = await _actions.load();
     final existing = state.loops[item];
     final round = existing == null || existing.phase == ReviewLoopPhase.exhausted ? 0 : existing.round;
@@ -649,6 +676,24 @@ final class Dispatcher {
         ),
       }),
     );
+  }
+
+  /// Whether runs of [action] are followed by a loop ([_runLoops]): an AI
+  /// review with `auto_fix` or `then`.
+  static bool _loops(ActionDefinition action) => action.review && (action.autoFix > 0 || action.then != null);
+
+  /// The review [action] of [planned] is over ([why]): an item still in the
+  /// review's own status goes on to [ActionDefinition.then], where a person
+  /// looks at it.
+  Future<void> _handOver(PlannedItem planned, ActionDefinition action, String why) async {
+    final then = action.then;
+    if (then == null || planned.item.status != action.onEnter) return;
+    _log('Dispatcher: ${planned.id} goes on from ${action.onEnter} to $then ($why).');
+    try {
+      await _move?.call(planned.id, then);
+    } on BacklogException catch (error) {
+      _log('Dispatcher: could not move ${planned.id} to $then: ${error.message}');
+    }
   }
 
   /// A note on [item] by the dispatcher, and the same in the log.

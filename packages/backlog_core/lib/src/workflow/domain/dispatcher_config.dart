@@ -678,8 +678,14 @@ final class DispatcherConfig {
   AgentProfile profileFor(ActionDefinition action) => action.agent == null ? agent : profiles[action.agent] ?? agent;
 
   /// The status an agent hands new work over in (`{handover}` of the
-  /// prompts): `review`.
-  String get handover => 'review';
+  /// prompts): the `on_enter` status of an AI review that has a status of
+  /// its own ([ActionDefinition.then], e.g. `ai-review`), else `review`.
+  String get handover {
+    for (final action in actions) {
+      if (action.review && action.then != null) return action.onEnter!;
+    }
+    return 'review';
+  }
 
   /// The same configuration with [worktrees] in place of the listed ones
   /// (e.g. the listed ones plus those the dispatcher created).

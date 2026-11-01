@@ -533,10 +533,24 @@ void _reviewLoopTests() {
       await dispatcher.evaluate();
     }
 
-    Future<void> setUpLoop({int autoFix = 2, String mode = 'manual', String status = 'in-progress'}) async {
+    Future<void> setUpLoop({
+      int autoFix = 2,
+      String mode = 'manual',
+      String status = 'in-progress',
+      bool aiReview = false,
+    }) async {
       (backlog, clock) = await tempBacklog(
         config:
             '''
+${aiReview ? '''
+statuses:
+  - {id: todo, category: open, pickable: true}
+  - {id: in-progress, category: active}
+  - {id: ai-review, category: active}
+  - {id: review, category: active}
+  - {id: done, category: done}
+defaults: {status: todo}
+''' : ''}
 dispatcher:
   mode: $mode
   worktrees: [w1, w2]
@@ -544,7 +558,7 @@ dispatcher:
   agents:
     bot: {command: "bot -p {prompt}", output: claude-stream-json, resume: "--resume {session}"}
   actions:
-    - {name: AI review, review: true, on_enter: review${autoFix == 0 ? '' : ', auto_fix: $autoFix'}}
+    - {name: AI review, review: true, ${aiReview ? 'on_enter: ai-review, then: review' : 'on_enter: review'}${autoFix == 0 ? '' : ', auto_fix: $autoFix'}}
 ''',
       );
       // The backlog folder is the code repository here: branch heads for stale reviews.
@@ -562,6 +576,7 @@ dispatcher:
         onError: (error, _) => fail('$error'),
         actions: FileActionStateStore(stateDir: '${backlog.root}/.state', project: 'demo'),
         note: (item, text) async => notes.add(text),
+        move: (item, status) async => backlog.items.update(item.value, [FieldChange.parse('status=$status')]),
       );
       addTearDown(dispatcher.close);
       await backlog.items.create(NewItem(title: 'A', status: status));
@@ -597,7 +612,8 @@ dispatcher:
       expect(prompt, contains('An AI review of your work asks for changes (automatic fix round 1 of 2)'));
       expect(prompt, contains('1. Off by one.\n2. No test.'));
       expect(prompt, contains('The review by w2 (of commit ${first.substring(0, 12)})'));
-      expect(prompt, contains('run `backlog set T-0001 status=review` and stop'));
+      expect(prompt, contains('run `backlog set T-0001 status=review` (that reviews it again) and stop. If'));
+      expect(prompt, isNot(contains('a person looks at it there')), reason: 'review is where a person looks');
       expect(prompt, contains('Never push.'));
       expect(notes.last, contains('started the agent in w1 to fix them (automatic round 1 of 2)'));
       final item = (await backlog.planning.snapshot())[ItemId('T-0001')]!;
@@ -687,6 +703,69 @@ dispatcher:
       await back();
       expect(launcher.started.last, 'T-0001 AI review on_enter', reason: 'a new head is reviewed');
       expect(launcher.started, hasLength(3));
+    });
+
+    test('in a status of its own the review hands the item on to a person: ok, changes, no rounds left', () async {
+      await setUpLoop(autoFix: 1, aiReview: true);
+      Future<String> status() async => (await backlog.items.get('T-0001')).status;
+      expect(dispatcher.current!.config.handover, 'ai-review', reason: 'new work is handed over for the AI review');
+      final first = await commit('Work');
+      await backlog.items.update('T-0001', [FieldChange.parse('status=ai-review')]);
+      await tick();
+      expect(launcher.started, ['T-0001 AI review on_enter']);
+      await review(ReviewVerdict.changes, first);
+      await launcher.finish('T-0001');
+      await tick();
+      expect(launcher.started.last, 'T-0001 fix 1 resumed');
+      expect(launcher.prompts.last, contains('run `backlog set T-0001 status=review` instead (a person looks at it'));
+      expect(launcher.prompts.last, contains('run `backlog set T-0001 status=ai-review` (that reviews it again)'));
+
+      // The agent fixes, gives it back for the review; still changes, no round left: to a person.
+      final second = await commit('Fix');
+      await launcher.finish('T-0001');
+      await tick();
+      expect(launcher.started.last, 'T-0001 AI review on_enter');
+      await review(ReviewVerdict.changes, second);
+      await launcher.finish('T-0001');
+      await tick();
+      expect(await status(), 'review');
+      expect(notes.last, contains('a person decides now'));
+
+      // Back for the AI review with a new head: ok goes on to review as well.
+      await backlog.items.update('T-0001', [FieldChange.parse('status=in-progress')]);
+      await tick();
+      final third = await commit('Rework');
+      await backlog.items.update('T-0001', [FieldChange.parse('status=ai-review')]);
+      await tick();
+      expect(launcher.started.last, 'T-0001 AI review on_enter');
+      await review(ReviewVerdict.ok, third, text: 'Fine.');
+      await launcher.finish('T-0001');
+      await tick();
+      expect(await status(), 'review');
+
+      // Without new commits there is nothing to review again: straight on.
+      await backlog.items.update('T-0001', [FieldChange.parse('status=ai-review')]);
+      await tick();
+      await tick();
+      expect(launcher.started, hasLength(4));
+      expect(await status(), 'review');
+    });
+
+    test('a fix agent that sends the item to a person ends the loop there', () async {
+      await setUpLoop(autoFix: 2, aiReview: true);
+      final first = await commit('Work');
+      await backlog.items.update('T-0001', [FieldChange.parse('status=ai-review')]);
+      await tick();
+      await review(ReviewVerdict.changes, first);
+      await launcher.finish('T-0001');
+      await tick();
+      expect(launcher.started.last, 'T-0001 fix 1 resumed');
+      await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+      await launcher.finish('T-0001');
+      await tick();
+      await tick();
+      expect(launcher.started, hasLength(2), reason: 'no review in review');
+      expect((await backlog.items.get('T-0001')).status, 'review');
     });
 
     test('without auto_fix a review asking for changes wakes nobody, also in auto mode', () async {

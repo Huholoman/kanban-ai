@@ -319,6 +319,7 @@ ActionDefinition _action(Object? node, String origin) {
     'review',
     'auto_fix',
     'changes_code',
+    'then',
   };
   for (final key in yaml.keys) {
     if (!known.contains('$key')) {
@@ -363,6 +364,7 @@ ActionDefinition _action(Object? node, String origin) {
     review: review,
     autoFix: autoFix,
     changesCode: changesCode,
+    then: yaml['then'] == null ? null : _string(yaml['then'], '$path.then', origin),
   );
 }
 
@@ -602,6 +604,14 @@ claims:
 #       # prompt: "Also check the database migrations."   # added to the built-in task
 #       # auto_fix: 2       # on changes wake the item's agent to fix them and review
 #       #                   # again, at most 2 rounds; then a person decides (default 0)
+#     # With a status of its own (ai-review, category active, between
+#     # in-progress and review): agents hand over to ai-review, the review
+#     # runs there and then moves the item on to review, where a person looks.
+#     # - name: AI review
+#     #   review: true
+#     #   on_enter: ai-review
+#     #   then: review
+#     #   auto_fix: 2
 #     - name: Tests
 #       statuses: [review]
 #       run: [sh, -c, "mise run check"]   # in the item's worktree; result as a note in the discussion

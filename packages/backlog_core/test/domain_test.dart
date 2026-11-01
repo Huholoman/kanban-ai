@@ -479,6 +479,15 @@ dispatcher:
       expect((extra.review, extra.prompt!.render({'branch': 'b'}), extra.autoFix), (true, 'Focus on b.', 2));
       expect(extra.summary, 'AI review (auto-fix 2), agent claude, new session');
       expect((fixer.changesCode, builtIn.changesCode, fixer.summary), (true, false, 'agent, changes code'));
+      expect(dispatcher.handover, 'review');
+      final own = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  actions:
+    - {name: AI review, review: true, on_enter: in-progress, then: review}
+''').dispatcher!;
+      expect((own.handover, own.actions.single.then), ('in-progress', 'review'));
+      expect(own.actions.single.summary, 'AI review, then review, agent, new session');
       expect(dispatcher.action('merge'), isNull);
     });
 
@@ -498,6 +507,10 @@ dispatcher:
       rejects('{name: A, review: true, changes_code: true}', 'changes_code only applies to prompt actions');
       rejects('{name: A, run: noop, changes_code: true}', 'changes_code only applies to prompt actions');
       rejects('{name: A, prompt: x, changes_code: 1}', 'changes_code must be true or false');
+      rejects('{name: A, prompt: x, on_enter: review, then: done}', 'then only applies to a review');
+      rejects('{name: A, review: true, then: review}', 'then needs on_enter');
+      rejects('{name: A, review: true, on_enter: review, then: review}', 'must name another status');
+      rejects('{name: A, review: true, on_enter: in-progress, then: checked}', 'unknown status "checked"');
       rejects('{name: A, run: "mise run check"}', 'unknown built-in action "mise run check" (known: noop, merge)');
       rejects('{name: A, prompt: x}, {name: A, run: noop}', 'Duplicate dispatcher action "A"');
       rejects('{name: A, prompt: x, on_enter: reviewed}', 'unknown status "reviewed"');

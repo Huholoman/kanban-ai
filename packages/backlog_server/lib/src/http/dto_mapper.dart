@@ -95,6 +95,7 @@ abstract final class DtoMapper {
     review: action.review,
     autoFix: action.autoFix,
     changesCode: action.changesCode,
+    then: action.then,
   );
 
   static AgentRunDto run(AgentRun run) => AgentRunDto(

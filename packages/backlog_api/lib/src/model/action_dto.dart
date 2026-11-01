@@ -13,6 +13,7 @@ final class ActionDto {
     this.review = false,
     this.autoFix = 0,
     this.changesCode = false,
+    this.then,
   });
 
   factory ActionDto.fromJson(Json json) => ActionDto(
@@ -25,6 +26,7 @@ final class ActionDto {
     review: json.boolean('review'),
     autoFix: json['auto_fix'] == null ? 0 : json.integer('auto_fix'),
     changesCode: json.boolean('changes_code'),
+    then: json.optionalString('then'),
   );
 
   final String name;
@@ -57,6 +59,10 @@ final class ActionDto {
   /// while it runs.
   final bool changesCode;
 
+  /// For a [review] in a status of its own: where the item goes on to when
+  /// the review is over.
+  final String? then;
+
   bool get isPrompt => kind == 'prompt';
 
   /// Whether items in [status] show it as a button.
@@ -75,6 +81,7 @@ final class ActionDto {
     'review': review,
     'auto_fix': autoFix,
     'changes_code': changesCode,
+    'then': then,
   };
 }
 

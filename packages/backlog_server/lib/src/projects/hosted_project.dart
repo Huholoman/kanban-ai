@@ -143,6 +143,8 @@ final class HostedProject {
         text: text,
         note: true,
       ),
+      move: (item, status) async =>
+          (await host.backlog).items.update(item.value, [FieldChange('status', ChangeOp.set, status)]),
     );
     dispatcher.plans.listen((plan) {
       say(describePlan(plan));

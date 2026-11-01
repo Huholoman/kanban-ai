@@ -153,6 +153,9 @@ const _reviewActions = r'''
       review: true
       on_enter: review
       # auto_fix: 2       # on changes wake the item's agent to fix them, at most 2 rounds
+      # A column of its own: add the status ai-review (category active) before
+      # review above, then on_enter: ai-review and then: review — agents hand
+      # over to ai-review and the review moves the item on to review for you.
     - name: Merge
       statuses: [review]
       run: merge
