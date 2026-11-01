@@ -338,10 +338,12 @@ abstract final class DtoMapper {
           waits: member.waits,
           milestone: member.item.item.milestone,
           inScope: member.inScope,
+          parked: member.parked,
         ),
     ],
     milestone: plan.milestone,
     skipped: [for (final member in plan.skipped) member.id.value],
+    parked: [for (final member in plan.parked) member.id.value],
     progress: [
       for (final entry in plan.progress)
         EpicProgressDto(milestone: entry.milestone, settled: entry.settled, total: entry.total),

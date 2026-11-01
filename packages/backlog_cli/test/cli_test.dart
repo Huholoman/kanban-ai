@@ -102,7 +102,7 @@ void main() {
   test('epic checks an epic and hands out its items one by one on its branch', () async {
     final epic = await create('Payments', ['-t', 'epic']);
     final first = await create('Model', ['--parent', epic, '-s', 'todo']);
-    final second = await create('API', ['--parent', epic, '-d', first]);
+    final second = await create('API', ['--parent', epic, '-d', first, '-s', 'todo']);
     final outside = await create('Outside', ['-s', 'backlog']);
 
     final check = await backlog(['--json', 'epic', epic]);
@@ -133,6 +133,19 @@ void main() {
     final text = await backlog(['epic', epic]);
     expect(text.out, contains('Cannot start:'));
     expect(text.out, contains('✗ Nothing left to implement'));
+  });
+
+  test('epic takes only items in todo; those in the backlog are listed as not taken', () async {
+    final epic = await create('Payments', ['-t', 'epic']);
+    final now = await create('Model', ['--parent', epic, '-s', 'todo']);
+    final parked = await create('Reports', ['--parent', epic, '-s', 'backlog']);
+
+    final check = (await backlog(['--json', 'epic', epic])).json! as Map;
+    expect(check['parked'], [parked]);
+    expect(check['next'], now);
+    final text = await backlog(['epic', epic]);
+    expect(text.out, contains('1 to do, 1 not taken (backlog):'));
+    expect(text.out, contains('(not taken from backlog)'));
   });
 
   test('epic --milestone limits the run to the items of a milestone', () async {

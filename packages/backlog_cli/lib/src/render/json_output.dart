@@ -127,8 +127,10 @@ abstract final class JsonOutput {
           'waits': member.waits,
           'milestone': member.item.item.milestone,
           'in_scope': member.inScope,
+          'parked': member.parked,
         },
     ],
+    'parked': [for (final member in plan.parked) member.id.value],
     'milestone': plan.milestone,
     'skipped': [for (final member in plan.skipped) member.id.value],
     'progress': [

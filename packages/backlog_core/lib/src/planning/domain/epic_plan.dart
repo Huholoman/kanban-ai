@@ -49,6 +49,7 @@ final class EpicMember {
     this.after = const [],
     this.waits = const [],
     this.inScope = true,
+    this.parked = false,
   });
 
   final PlannedItem item;
@@ -66,10 +67,14 @@ final class EpicMember {
   /// without one.
   final bool inScope;
 
+  /// Not started and in an open status that is not pickable (`backlog`, the
+  /// parking lot): the run leaves it until a person moves it to `todo`.
+  final bool parked;
+
   ItemId get id => item.id;
 
   /// The agent can take it now.
-  bool get canStart => inScope && state == EpicMemberState.remaining && after.isEmpty && waits.isEmpty;
+  bool get canStart => inScope && !parked && state == EpicMemberState.remaining && after.isEmpty && waits.isEmpty;
 }
 
 /// How far the items of an epic in one milestone are ([EpicPlan.progress]).
@@ -103,6 +108,11 @@ final class EpicMilestoneProgress {
 /// ([skipped]). An item in the scope that comes after an unsettled item
 /// outside it (a dependency or a child) forbids the start: the agent would
 /// get stuck there.
+///
+/// Only items in a pickable status (`todo`) are taken; those in another
+/// open status (`backlog`) are [parked] — a person decides what is next by
+/// moving them to `todo`, also while the run goes on. An item that comes
+/// after a parked one is a warning.
 final class EpicPlan {
   const EpicPlan._({
     required this.epic,
@@ -148,6 +158,13 @@ final class EpicPlan {
       if (milestone == null) return true;
       final own = snapshot[member]!.item.milestone;
       return own == null || own == milestone;
+    }
+
+    bool parked(ItemId member) {
+      final planned = snapshot[member]!;
+      return states[member] == EpicMemberState.remaining &&
+          planned.category == StatusCategory.open &&
+          workflow.status(planned.item.status)?.pickable != true;
     }
 
     // Children before their parent, dependencies before their dependents,
@@ -212,14 +229,25 @@ final class EpicPlan {
         members.add(EpicMember(item: planned, state: state));
         continue;
       }
+      if (parked(planned.id)) {
+        members.add(EpicMember(item: planned, state: state, parked: true));
+        continue;
+      }
       // Across the scope's border: the agent would wait for an item it never takes.
       for (final other in before(planned)) {
-        if (states[other]!.settled || inScope(other)) continue;
+        if (states[other]!.settled) continue;
         final kind = planned.item.dependsOn.contains(other) ? 'depends on' : 'has the open child';
-        problems.add(
-          '${planned.id} ($milestone) $kind ${describe(other)} of ${snapshot[other]!.item.milestone}, outside the '
-          'scope $milestone: implement that milestone too (or all of it).',
-        );
+        if (!inScope(other)) {
+          problems.add(
+            '${planned.id} ($milestone) $kind ${describe(other)} of ${snapshot[other]!.item.milestone}, outside the '
+            'scope $milestone: implement that milestone too (or all of it).',
+          );
+        } else if (parked(other)) {
+          warnings.add(
+            '${planned.id} $kind ${describe(other)}, which is not taken from ${snapshot[other]!.item.status}: move it '
+            'to ${workflow.pickableStatus}, or the agent stops there and asks.',
+          );
+        }
       }
       final waits = outside(planned);
       if (planned.category == null) {
@@ -263,15 +291,18 @@ final class EpicPlan {
     if (epic.isDone) problems.insert(0, '$id is already ${epic.item.status}.');
     if (epic.isClaimed && epic.claim!.agent != agent) problems.add('$id is claimed by ${epic.claim!.agent}.');
     final scoped = members.where((m) => m.inScope);
+    final waiting = {for (final m in scoped.where((m) => m.parked)) m.item.item.status};
     if (members.isEmpty) {
       problems.add('$id has no child items to implement.');
     } else if (scoped.isEmpty) {
       problems.add('$id has no items in $milestone (or without a milestone).');
-    } else if (scoped.every((m) => m.state.settled)) {
+    } else if (scoped.every((m) => m.state.settled || m.parked)) {
+      final where = milestone == null ? 'every item of $id' : 'every item of $id in $milestone';
+      final rest = waiting.isEmpty
+          ? '.'
+          : ', the rest waits in ${waiting.join(', ')}: move what is next to ${workflow.pickableStatus}.';
       problems.add(
-        milestone == null
-            ? 'Nothing left to implement: every item of $id is handed over or done.'
-            : 'Nothing left to implement in $milestone: every item of $id in it is handed over or done.',
+        'Nothing left to implement${milestone == null ? '' : ' in $milestone'}: $where is handed over or done$rest',
       );
     }
 
@@ -333,6 +364,13 @@ final class EpicPlan {
       if (!member.inScope && !member.state.settled) member,
   ];
 
+  /// Items in [milestone] that are not taken because of their status
+  /// ([EpicMember.parked]).
+  List<EpicMember> get parked => [
+    for (final member in members)
+      if (member.inScope && member.parked) member,
+  ];
+
   /// How far the items are per milestone, in the workflow's order of
   /// milestones (those without one last), whatever the scope.
   final List<EpicMilestoneProgress> progress;
@@ -355,9 +393,11 @@ final class EpicPlan {
   /// start; null when nothing can.
   EpicMember? get next => current ?? members.firstWhereOrNull((m) => m.canStart);
 
-  /// Every item (in [milestone]) is handed over or done.
-  bool get finished => members.any((m) => m.inScope) && members.where((m) => m.inScope).every((m) => m.state.settled);
+  /// Every item (in [milestone]) is handed over or done, apart from the
+  /// [parked] ones.
+  bool get finished =>
+      members.any((m) => m.inScope) && members.where((m) => m.inScope).every((m) => m.state.settled || m.parked);
 
-  /// How many items are in [state].
-  int count(EpicMemberState state) => members.where((m) => m.state == state).length;
+  /// How many items (in [milestone], not [parked]) are in [state].
+  int count(EpicMemberState state) => members.where((m) => m.inScope && !m.parked && m.state == state).length;
 }
