@@ -193,7 +193,7 @@ Future<DoctorSection> _worktrees(List<(ProjectEntry, Backlog)> projects) async {
       findings.add(DoctorFinding(DoctorLevel.info, entry.id, 'no worktrees yet (the dispatcher creates them)'));
     }
     for (final (name, path, listed) in worktrees) {
-      findings.add(await _worktree('${entry.id}: $name', path, listed: listed));
+      findings.add(await checkWorktree('${entry.id}: $name', path, listed: listed));
     }
   }
   if (findings.isEmpty) findings.add(const DoctorFinding(DoctorLevel.info, 'dispatcher', 'no project has one'));
@@ -221,7 +221,9 @@ Future<List<(String, String, bool)>> _created(NewWorktrees? created, String root
   ];
 }
 
-Future<DoctorFinding> _worktree(String subject, String path, {required bool listed}) async {
+/// Whether the worktree at [path] exists, is a git worktree and is clean;
+/// a missing one is an error when [listed] in `backlog.yaml`.
+Future<DoctorFinding> checkWorktree(String subject, String path, {bool listed = true}) async {
   if (!Directory(path).existsSync()) {
     return DoctorFinding(
       listed ? DoctorLevel.error : DoctorLevel.warning,

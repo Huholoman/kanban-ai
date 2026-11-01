@@ -2,6 +2,7 @@ import 'package:backlog_core/backlog_core.dart';
 import 'package:dart_tui/dart_tui.dart' show Cmd;
 
 import 'appearance_page.dart';
+import 'dispatcher_page.dart';
 import 'doctor_page.dart';
 import 'project_pages.dart';
 import 'projects_page.dart';
@@ -183,7 +184,15 @@ MenuEntry _projectEntry(String label, String root, String? name, {String? proble
                 return null;
               },
             ),
-            const MenuEntry('Dispatcher', detail: 'not yet: agents, worktrees, actions, pull requests', enabled: false),
+            MenuEntry(
+              'Dispatcher',
+              detail: 'mode, limits, worktrees, base branch, agent, command preview',
+              enabled: screen.draft.isYaml,
+              onSelect: (navigator) {
+                navigator.push(dispatcherScreen(screen));
+                return null;
+              },
+            ),
           ],
         ),
       );

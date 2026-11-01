@@ -346,6 +346,28 @@ void main() {
     expect(appearance.statuses, {'in-progress': '#fb8c00'});
   });
 
+  test('adds a dispatcher worktree, checks it and previews the command', () async {
+    final driver = Driver([
+      ...openProjectEntry(5), // Dispatcher
+      down, down, enter, // Worktrees
+      enter, ...type('w1'), enter, enter, // Add a worktree… → w1 in ../w1
+      key(KeyCode.escape),
+      end, up, enter, // Command preview
+      key(KeyCode.escape),
+      end, enter, char('y'), // Review and save
+      ctrlC,
+    ]);
+    final (code, err) = await run(['config'], driver);
+    expect(code, 0, reason: err);
+    expect(driver.showed('No dispatcher yet'), isTrue);
+    expect(driver.showed('Added worktree w1 (not saved yet).'), isTrue);
+    expect(driver.showed('w1: ${p.join(workspace.path, 'w1')} does not exist'), isTrue);
+    expect(driver.showed('{id} = HB-7f3a'), isTrue);
+    expect(driver.showed('claude -p '), isTrue);
+    expect(driver.showed('Saved ${config().path}.'), isTrue, reason: driver.last);
+    expect(parseWorkflowYaml(config().readAsStringSync()).dispatcher!.worktrees.single.name, 'w1');
+  });
+
   test('the global part shows the project registry', () async {
     final registry = p.join(workspace.path, 'projects.yaml');
     File(registry).writeAsStringSync('projects:\n  - id: hb\n    name: Hobby\n    path: backlog\n    pinned: true\n');
