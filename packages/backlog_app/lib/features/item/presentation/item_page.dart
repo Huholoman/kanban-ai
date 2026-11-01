@@ -122,7 +122,13 @@ class _ItemDetailViewState extends State<ItemDetailView> {
             onAddChild: widget.onAddChild,
           ),
           if (controller.item case final item?)
-            AgentPanel(key: ValueKey('agent-${item.id}'), item: item, onOpen: _open),
+            AgentPanel(
+              key: ValueKey('agent-${item.id}'),
+              item: item,
+              workflow: controller.workflow,
+              onOpen: _open,
+              question: controller.detail?.discussion.where((comment) => comment.question).lastOrNull,
+            ),
           const Divider(height: 1),
           Expanded(
             child: switch ((controller.detail, controller.error)) {

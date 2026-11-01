@@ -7,9 +7,13 @@ import '../../../app/app_scope.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
 import '../application/agent_log_controller.dart';
+import '../application/ball.dart';
 import '../application/dispatch_controller.dart';
+import '../application/next_step.dart';
 import 'agent_log_view.dart';
+import 'ball_badge.dart';
 import 'dispatch_scope.dart';
+import 'next_step_line.dart';
 
 /// `14:05 (12 min)`: when [time] was, and how long ago.
 String sinceText(DateTime time, {DateTime? now}) {
@@ -30,12 +34,19 @@ String sinceText(DateTime time, {DateTime? now}) {
 /// how its last run ended — fine, or with problems that need a person —
 /// with the agent's final message; the log on demand. An item another
 /// item's agent works on (an epic's agent going through its children) shows
-/// that agent and its log, with a link to that item ([onOpen]). Empty when
-/// none applies.
+/// that agent and its log, with a link to that item ([onOpen]). Its first
+/// line starts with who has the ball ([BallBadge]), followed by the next
+/// step when it is a person's turn ([NextStepLine]). Empty when none applies.
 class AgentPanel extends StatefulWidget {
-  const AgentPanel({super.key, required this.item, this.onOpen});
+  const AgentPanel({super.key, required this.item, this.workflow, this.onOpen, this.question});
 
   final ItemDto item;
+
+  /// The agent's open question, quoted by the next step.
+  final CommentDto? question;
+
+  /// Tells which actions are AI reviews.
+  final WorkflowDto? workflow;
 
   /// Opens another item (the one whose agent works on this one).
   final ValueChanged<String>? onOpen;
@@ -120,7 +131,11 @@ class _AgentPanelState extends State<AgentPanel> {
     // A finished item needs nobody: the problems of its last run are history.
     final needsYou = problems.isNotEmpty && !widget.item.isDone;
     final problemsText = problems.length == 1 ? 'a problem' : 'problems';
-    if (run == null &&
+    final ball = Ball.of(widget.item, dispatch.plan, widget.workflow);
+    final next = NextStep.of(widget.item, dispatch.plan, widget.workflow, question: widget.question);
+    if (ball == null &&
+        next == null &&
+        run == null &&
         via == null &&
         held == null &&
         waiting == null &&
@@ -164,6 +179,11 @@ class _AgentPanelState extends State<AgentPanel> {
           ?last.outcome,
         ].join(' · '),
       ),
+      _ when !hasLog && ball != null => (
+        Icons.info_outline,
+        tokens.muted,
+        ball.holder == BallHolder.queue ? 'In the queue' : ball.reason,
+      ),
       _ => (Icons.smart_toy_outlined, tokens.muted, 'Agent · last run'),
     };
     final lastLine = run == null && via == null
@@ -189,6 +209,11 @@ class _AgentPanelState extends State<AgentPanel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (ball != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: BallBadge(ball, item: id),
+                      ),
                     Text(
                       text,
                       key: ValueKey(run != null || via != null ? 'agent-running' : 'agent-held'),
@@ -228,6 +253,18 @@ class _AgentPanelState extends State<AgentPanel> {
                 ),
             ],
           ),
+          if (next != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: NextStepLine(
+                next,
+                item: id,
+                busy: !dispatch.canRunAction(id),
+                onAction: (name) => unawaited(dispatch.runAction(id, name)),
+                onStart: dispatch.canStart(widget.item) ? () => unawaited(dispatch.startAgent(id)) : null,
+                onOpen: widget.onOpen,
+              ),
+            ),
           if (reply != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),
