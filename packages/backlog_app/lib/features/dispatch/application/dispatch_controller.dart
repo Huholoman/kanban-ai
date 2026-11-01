@@ -47,10 +47,19 @@ class DispatchController extends ChangeNotifier {
   /// The agent running for [item], if any.
   AgentRunDto? runFor(String item) => plan.runFor(item);
 
-  /// Whether [item] can get an agent now: a dispatcher, the item ready, a
-  /// free worktree within `max_agents`, nothing running for it yet.
+  /// Whether [item] can be given an agent: a dispatcher, the item ready,
+  /// nothing running for it and no start of it queued yet. Without a free
+  /// worktree within `max_agents` the start is queued.
   bool canStart(ItemDto item) =>
-      plan.canStart && item.ready && !item.isDone && runFor(item.id) == null && !pending.contains(item.id);
+      configured &&
+      item.ready &&
+      !item.isDone &&
+      runFor(item.id) == null &&
+      !pending.contains(item.id) &&
+      queuedFor(item.id) == null;
+
+  /// The start of [item] that waits in the dispatcher's queue, if any.
+  QueuedStartDto? queuedFor(String item) => plan.queuedFor(item);
 
   /// Whether a start of [item] would continue the session of its last
   /// agent: there is one and its worktree is free.
@@ -64,9 +73,24 @@ class DispatchController extends ChangeNotifier {
   Future<void> startAgent(String item, {bool fresh = false}) => _act(item, () async {
     final resuming = !fresh && canResume(item);
     plan = await _api.startAgent(item, fresh: fresh);
+    if (_queued(item)) return;
     final run = plan.runFor(item);
     final verb = resuming ? 'Continued' : 'Started';
     _notices.add(run == null ? '$verb an agent for $item.' : '$verb ${run.agent} for $item in ${run.worktree}.');
+  });
+
+  /// Reports a start of [item] that could not happen yet and was queued.
+  bool _queued(String item) {
+    final queued = plan.queuedFor(item);
+    if (queued == null) return false;
+    _notices.add('Queued: ${queued.what} for $item waits for ${queued.reason} (position ${queued.position}).');
+    return true;
+  }
+
+  /// Drops the queued start of [item].
+  Future<void> cancelQueued(String item) => _act(item, () async {
+    plan = await _api.cancelQueued(item);
+    _notices.add('Cancelled the queued start of $item.');
   });
 
   /// Whether one agent could be started for all of [item]'s children (*Implement
@@ -74,7 +98,8 @@ class DispatchController extends ChangeNotifier {
   /// children, nothing running for it and not implemented already. Whether
   /// the epic can really start is [epic]'s verdict.
   bool canImplementEpic(ItemDto item) =>
-      plan.canStart &&
+      configured &&
+      queuedFor(item.id) == null &&
       !item.isDone &&
       item.children.total > 0 &&
       runFor(item.id) == null &&
@@ -97,6 +122,7 @@ class DispatchController extends ChangeNotifier {
   /// Starts one agent implementing all of [item]'s children on one branch.
   Future<void> startEpic(String item) => _act(item, () async {
     plan = await _api.startEpic(item);
+    if (_queued(item)) return;
     final run = plan.runFor(item);
     _notices.add(
       run == null
@@ -105,9 +131,10 @@ class DispatchController extends ChangeNotifier {
     );
   });
 
-  /// Whether an action can start on [item] now: a dispatcher runs and
-  /// nothing runs for the item yet.
-  bool canRunAction(String item) => configured && runFor(item) == null && !pending.contains(item);
+  /// Whether an action can be asked for on [item]: a dispatcher runs and no
+  /// start of it is queued. While something runs for the item (or no
+  /// worktree is free) the action is queued.
+  bool canRunAction(String item) => configured && !pending.contains(item) && queuedFor(item) == null;
 
   /// The `on_enter` actions waiting to run for [item].
   List<PendingActionDto> pendingActionsFor(String item) => plan.pendingFor(item);
@@ -115,6 +142,7 @@ class DispatchController extends ChangeNotifier {
   /// Starts the configured action [name] on [item].
   Future<void> runAction(String item, String name) => _act(item, () async {
     plan = await _api.runAction(item, name);
+    if (_queued(item)) return;
     final run = plan.runFor(item);
     _notices.add(switch (run) {
       null => 'Started "$name" for $item.',

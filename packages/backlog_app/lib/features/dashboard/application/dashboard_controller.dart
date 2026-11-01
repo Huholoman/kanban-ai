@@ -84,14 +84,25 @@ class DashboardController extends ChangeNotifier {
   });
 
   Future<bool> runAction(ProjectDigest digest, String item, String name) => _act(digest, item, (api) async {
-    await api.runAction(item, name);
-    _notices.add('Started "$name" for $item.');
+    final plan = await api.runAction(item, name);
+    _notices.add(_queued(plan, item) ?? 'Started "$name" for $item.');
   });
 
   Future<bool> startAgent(ProjectDigest digest, String item) => _act(digest, item, (api) async {
-    await api.startAgent(item);
-    _notices.add('Started an agent for $item.');
+    final plan = await api.startAgent(item);
+    _notices.add(_queued(plan, item) ?? 'Started an agent for $item.');
   });
+
+  Future<bool> cancelQueued(ProjectDigest digest, String item) => _act(digest, item, (api) async {
+    await api.cancelQueued(item);
+    _notices.add('Cancelled the queued start of $item.');
+  });
+
+  /// What a start of [item] that was queued instead says; null when it started.
+  static String? _queued(DispatchDto plan, String item) => switch (plan.queuedFor(item)) {
+    final queued? => 'Queued: ${queued.what} for $item waits for ${queued.reason} (position ${queued.position}).',
+    null => null,
+  };
 
   Future<bool> stopAgent(ProjectDigest digest, String item) => _act(digest, item, (api) async {
     await api.stopAgent(item);

@@ -106,6 +106,7 @@ class _AgentPanelState extends State<AgentPanel> {
     final waiting = dispatch.plan.waitingReason(id);
     final queued = dispatch.pendingActionsFor(id);
     final reply = dispatch.plan.queuedReplyOf(id);
+    final start = dispatch.queuedFor(id);
     final log = _log;
     final hasLog = log?.hasLog ?? false;
     final running = run != null || via != null || (log?.running ?? false);
@@ -125,6 +126,7 @@ class _AgentPanelState extends State<AgentPanel> {
         waiting == null &&
         !hasLog &&
         queued.isEmpty &&
+        start == null &&
         problems.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -141,6 +143,7 @@ class _AgentPanelState extends State<AgentPanel> {
         tokens.success,
         '${_running(run)} since ${sinceText(run.startedAt)}${run.branch == null ? '' : ' · ${run.branch}'}',
       ),
+      _ when start != null => (Icons.schedule, tokens.accent, 'In the queue to start'),
       _ when held != null => (Icons.pause_circle_outline, tokens.warning, 'Held: $held'),
       _ when waiting != null => (Icons.hourglass_empty, tokens.warning, 'Waiting for an agent: $waiting'),
       _ when needsYou => (Icons.error_outline, tokens.danger, 'Needs you: the last run ended with $problemsText'),
@@ -238,6 +241,28 @@ class _AgentPanelState extends State<AgentPanel> {
                       key: const ValueKey('agent-reply-queued'),
                       style: small?.copyWith(color: tokens.accent),
                     ),
+                  ),
+                ],
+              ),
+            ),
+          if (start != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                children: [
+                  Icon(Icons.schedule, size: 16, color: tokens.accent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Queued: ${start.what} waits for ${start.reason} · position ${start.position}',
+                      key: const ValueKey('start-queued'),
+                      style: small?.copyWith(color: tokens.accent),
+                    ),
+                  ),
+                  LinkButton(
+                    key: const ValueKey('cancel-queued'),
+                    label: 'Cancel',
+                    onPressed: dispatch.pending.contains(id) ? null : () => unawaited(dispatch.cancelQueued(id)),
                   ),
                 ],
               ),

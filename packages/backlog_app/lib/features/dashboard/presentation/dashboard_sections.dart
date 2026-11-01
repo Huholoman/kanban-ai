@@ -164,6 +164,7 @@ final class DashboardSections {
     ];
     final proposals = _each((d) => d.plan.assignments).toList();
     final waiting = _each((d) => d.plan.waitingReasons).toList();
+    final queued = _each((d) => d.plan.queue).toList();
     final conflicting = _each((d) => d.conflicting).toList();
     return [
       _Heading('Running', count: runs.length, key: const ValueKey('running')),
@@ -206,7 +207,8 @@ final class DashboardSections {
             icon: Icons.speed,
             text:
                 'Agents ${digest.plan.running}/${digest.plan.maxAgents} · ${digest.plan.mode}'
-                '${digest.plan.waiting.isEmpty ? '' : ' · ${digest.plan.waiting.length} waiting'}',
+                '${digest.plan.waiting.isEmpty ? '' : ' · ${digest.plan.waiting.length} waiting'}'
+                '${digest.plan.queue.isEmpty ? '' : ' · ${digest.plan.queue.length} queued'}',
           ),
         for (final (digest, proposal) in proposals)
           _ItemRow(
@@ -231,6 +233,28 @@ final class DashboardSections {
                       ? null
                       : (_) => unawaited(controller.startAgent(digest, proposal.item)),
                 ),
+            ],
+          ),
+        for (final (digest, start) in queued)
+          _ItemRow(
+            key: _key(digest, 'queued-${start.item}'),
+            digest: digest,
+            id: start.item,
+            title: start.title,
+            labelled: labelled,
+            onOpen: onOpen,
+            icon: Icons.schedule,
+            iconColor: (tokens) => tokens.accent,
+            note: 'In the queue (${start.position}): ${start.what} waits for ${start.reason}',
+            actions: [
+              _ActionButton(
+                key: ValueKey('cancel-queued-${start.item}'),
+                label: 'Cancel',
+                icon: Icons.close,
+                onPressed: controller.isPending(digest, start.item)
+                    ? null
+                    : (_) => unawaited(controller.cancelQueued(digest, start.item)),
+              ),
             ],
           ),
         for (final (digest, entry) in waiting)

@@ -46,6 +46,7 @@ DispatchDto _plan({
   List<AgentRunDto> runs = const [],
   List<HeldItemDto> held = const [],
   List<ProblemItemDto> problems = const [],
+  List<QueuedStartDto> queue = const [],
 }) => DispatchDto(
   configured: true,
   mode: 'manual',
@@ -55,6 +56,7 @@ DispatchDto _plan({
   runs: runs,
   held: held,
   problems: problems,
+  queue: queue,
   worktrees: const [DispatchWorktreeDto(name: 'w2', path: '/w/w2', busy: false, unavailable: 'uncommitted changes')],
 );
 
@@ -75,7 +77,21 @@ FakeProjectsApi _projects() {
     ..actions = const [
       ActionDto(name: 'Merge', kind: 'builtin', statuses: ['review']),
     ];
-  final b = FakeBacklogApi([item('B-1', status: 'in-progress')])..plan = _plan(runs: [_run('B-1')]);
+  final b = FakeBacklogApi([item('B-1', status: 'in-progress'), item('B-2', ready: true)])
+    ..plan = _plan(
+      runs: [_run('B-1')],
+      queue: [
+        QueuedStartDto(
+          item: 'B-2',
+          title: 'Item B-2',
+          kind: 'action',
+          action: 'AI review',
+          since: _now,
+          reason: 'max_agents (2) reached',
+          position: 1,
+        ),
+      ],
+    );
   return FakeProjectsApi({'a': a, 'b': b});
 }
 
@@ -246,7 +262,7 @@ void main() {
       expect(find.byKey(const ValueKey('b:run-B-1')), findsOneWidget);
     });
 
-    testWidgets('answers a question, runs an action and stops an agent', (tester) async {
+    testWidgets('answers a question, runs an action, cancels a queued start and stops an agent', (tester) async {
       final api = await pumpApp(tester);
       await tester.tap(find.byKey(const ValueKey('open-dashboard')));
       await tester.pumpAndSettle();
@@ -260,6 +276,12 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('action-A-2-Merge')));
       await tester.pumpAndSettle();
       expect(api.backlogs['a']!.actionsRun, ['A-2 Merge']);
+
+      expect(find.text('In the queue (1): "AI review" waits for max_agents (2) reached'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('cancel-queued-B-2')));
+      await tester.pumpAndSettle();
+      expect(api.backlogs['b']!.cancelled, ['B-2']);
+      expect(find.byKey(const ValueKey('b:queued-B-2')), findsNothing);
 
       await tester.tap(find.byKey(const ValueKey('stop-B-1')));
       await tester.pumpAndSettle();

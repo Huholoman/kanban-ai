@@ -25,6 +25,7 @@ DispatchDto _plan({
   List<HeldItemDto> held = const [],
   List<HeldItemDto> waiting = const [],
   List<AgentSessionDto> sessions = const [],
+  List<QueuedStartDto> queue = const [],
 }) => DispatchDto(
   configured: true,
   mode: 'manual',
@@ -66,6 +67,16 @@ DispatchDto _plan({
   waiting: [for (final item in waiting) item.item],
   waitingReasons: waiting,
   sessions: sessions,
+  queue: queue,
+);
+
+QueuedStartDto _queued(String item, {int position = 1}) => QueuedStartDto(
+  item: item,
+  title: 'Item $item',
+  kind: 'agent',
+  since: _started,
+  reason: 'no free worktree',
+  position: position,
 );
 
 List<ItemDto> _items() => [
@@ -158,7 +169,32 @@ void main() {
 
       api.dispatchChange(_plan(running: true, free: false));
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      expect(controller.canStart(api.items_['R-2']!), isFalse, reason: 'no free worktree');
+      expect(controller.canStart(api.items_['R-2']!), isTrue, reason: 'no free worktree: the start is queued');
+
+      api.dispatchChange(_plan(running: true, free: false, queue: [_queued('R-2')]));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(controller.canStart(api.items_['R-2']!), isFalse, reason: 'queued already');
+      expect(controller.queuedFor('R-2')!.position, 1);
+    });
+
+    test('a start that cannot happen yet says it was queued; Cancel drops it', () async {
+      final api = FakeBacklogApi(_items())
+        ..plan = _plan(free: false)
+        ..afterStart = _plan(free: false, queue: [_queued('R-2')]);
+      final controller = DispatchController(api, refreshDelay: Duration.zero);
+      addTearDown(controller.dispose);
+      final notices = <String>[];
+      controller.notices.listen(notices.add);
+      await controller.start();
+      await controller.startAgent('R-2');
+      await controller.cancelQueued('R-2');
+      await Future<void>.delayed(Duration.zero);
+      expect(api.cancelled, ['R-2']);
+      expect(controller.queuedFor('R-2'), isNull);
+      expect(notices, [
+        'Queued: Start agent for R-2 waits for no free worktree (position 1).',
+        'Cancelled the queued start of R-2.',
+      ]);
     });
 
     test('start and stop go to the API and report back; failures become notices', () async {
@@ -203,6 +239,17 @@ void main() {
     await tester.tap(_key('start-R-2'));
     await tester.pumpAndSettle();
     expect(api.started, ['R-2', 'R-2']);
+  });
+
+  testWidgets('a queued start shows in the detail with Cancel', (tester) async {
+    final (api, _) = await _pumpDetail(tester, 'R-2', _plan(free: false, queue: [_queued('R-2')]));
+    expect(_key('start-agent'), findsNothing, reason: 'queued already');
+    expect(find.text('Queued: Start agent waits for no free worktree · position 1'), findsOneWidget);
+    await tester.tap(_key('cancel-queued'));
+    await tester.pumpAndSettle();
+    expect(api.cancelled, ['R-2']);
+    expect(_key('start-queued'), findsNothing);
+    expect(_key('start-agent'), findsOneWidget);
   });
 
   testWidgets('an item with a session continues it, or starts fresh', (tester) async {
@@ -294,10 +341,15 @@ void main() {
     });
   });
 
-  testWidgets('no Start without a free worktree or for items that are not ready', (tester) async {
-    await _pumpDetail(tester, 'R-3', _plan(free: false));
-    expect(_key('start-agent'), findsNothing);
+  testWidgets('Start without a free worktree queues the start', (tester) async {
+    final (api, _) = await _pumpDetail(tester, 'R-3', _plan(free: false));
     expect(find.text('w2 · unavailable'), findsOneWidget);
+    expect(_key('start-agent'), findsOneWidget, reason: 'the start waits in the queue');
+    api.afterStart = _plan(free: false, queue: [_queued('R-3')]);
+    await tester.tap(_key('start-agent'));
+    await tester.pumpAndSettle();
+    expect(find.text('Queued: Start agent waits for no free worktree · position 1'), findsOneWidget);
+    expect(_key('start-agent'), findsNothing);
   });
 
   testWidgets('a worktree the dispatcher would create shows as new; Start works without a free one', (tester) async {
@@ -435,7 +487,7 @@ void main() {
       expect(api2.actionsRun, ['R-1 Tests']);
       expect(find.textContaining('Action "Tests" (command) in w1 since'), findsOneWidget);
       final button = tester.widget<SecondaryButton>(_key('action-Fix comments'));
-      expect(button.onPressed, isNull, reason: 'something runs for the item');
+      expect(button.onPressed, isNotNull, reason: 'while something runs for the item it is queued');
       expect(dispatch.configured, isTrue);
     });
 
@@ -524,7 +576,7 @@ void main() {
       await dispatch.start();
       api.afterAction = testsRun;
       await dispatch.runAction('R-1', 'Tests');
-      expect(dispatch.canRunAction('R-1'), isFalse);
+      expect(dispatch.canRunAction('R-1'), isTrue, reason: 'a second one would be queued');
       api.failAction = const BacklogApiException(409, 'unavailable', 'The action "Tests" already runs for R-1.');
       await dispatch.runAction('R-1', 'Tests');
       await Future<void>.delayed(Duration.zero);
