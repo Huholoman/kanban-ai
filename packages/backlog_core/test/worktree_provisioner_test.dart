@@ -122,6 +122,7 @@ $extra''');
     await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
     await ended('T-0001');
     final again = await plan();
+    expect(again.starts[ItemId('T-0001')]?.worktree, 'repo-3', reason: 'the start is known for replies');
     expect(again.assignments.map((a) => '${a.id}@${a.agent}@${a.createFrom != null}'), [
       'T-0002@repo-3@false',
       'T-0003@repo-4@true',

@@ -134,6 +134,7 @@ final class WorktreeProvisioner extends AgentLauncher {
       blocked: inner.blocked,
       runs: inner.runs,
       sessions: inner.sessions,
+      starts: inner.starts,
       created: created,
       spare: spare,
       branches: inner.branches,
