@@ -9,9 +9,11 @@ import '../../../shared/ui/ui.dart';
 import '../application/agent_log_controller.dart';
 import '../application/ball.dart';
 import '../application/dispatch_controller.dart';
+import '../application/next_step.dart';
 import 'agent_log_view.dart';
 import 'ball_badge.dart';
 import 'dispatch_scope.dart';
+import 'next_step_line.dart';
 
 /// `14:05 (12 min)`: when [time] was, and how long ago.
 String sinceText(DateTime time, {DateTime? now}) {
@@ -33,11 +35,15 @@ String sinceText(DateTime time, {DateTime? now}) {
 /// with the agent's final message; the log on demand. An item another
 /// item's agent works on (an epic's agent going through its children) shows
 /// that agent and its log, with a link to that item ([onOpen]). Its first
-/// line starts with who has the ball ([BallBadge]). Empty when none applies.
+/// line starts with who has the ball ([BallBadge]), followed by the next
+/// step when it is a person's turn ([NextStepLine]). Empty when none applies.
 class AgentPanel extends StatefulWidget {
-  const AgentPanel({super.key, required this.item, this.workflow, this.onOpen});
+  const AgentPanel({super.key, required this.item, this.workflow, this.onOpen, this.question});
 
   final ItemDto item;
+
+  /// The agent's open question, quoted by the next step.
+  final CommentDto? question;
 
   /// Tells which actions are AI reviews.
   final WorkflowDto? workflow;
@@ -126,7 +132,9 @@ class _AgentPanelState extends State<AgentPanel> {
     final needsYou = problems.isNotEmpty && !widget.item.isDone;
     final problemsText = problems.length == 1 ? 'a problem' : 'problems';
     final ball = Ball.of(widget.item, dispatch.plan, widget.workflow);
+    final next = NextStep.of(widget.item, dispatch.plan, widget.workflow, question: widget.question);
     if (ball == null &&
+        next == null &&
         run == null &&
         via == null &&
         held == null &&
@@ -245,6 +253,18 @@ class _AgentPanelState extends State<AgentPanel> {
                 ),
             ],
           ),
+          if (next != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: NextStepLine(
+                next,
+                item: id,
+                busy: !dispatch.canRunAction(id),
+                onAction: (name) => unawaited(dispatch.runAction(id, name)),
+                onStart: dispatch.canStart(widget.item) ? () => unawaited(dispatch.startAgent(id)) : null,
+                onOpen: widget.onOpen,
+              ),
+            ),
           if (reply != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),

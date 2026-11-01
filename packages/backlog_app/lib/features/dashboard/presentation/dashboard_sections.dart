@@ -9,8 +9,10 @@ import '../../../shared/review_badge.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
 import '../../dispatch/application/ball.dart';
+import '../../dispatch/application/next_step.dart';
 import '../../dispatch/presentation/agent_panel.dart';
 import '../../dispatch/presentation/ball_badge.dart';
+import '../../dispatch/presentation/next_step_line.dart';
 import '../application/dashboard_controller.dart';
 import '../application/project_digest.dart';
 
@@ -88,6 +90,7 @@ final class DashboardSections {
             labelled: labelled,
             onOpen: onOpen,
             icon: Icons.fact_check_outlined,
+            next: _next(digest, item.id, withActions: false),
             details: [
               ReviewBadge(item),
               if (item.pr case final pr?) PrLink(pr),
@@ -108,7 +111,13 @@ final class DashboardSections {
             onOpen: onOpen,
             icon: Icons.error_outline,
             iconColor: (tokens) => tokens.danger,
-            note: entry.problems.join('\n'),
+            next: _next(digest, entry.item),
+            // The next step quotes the first problem.
+            note: switch (_next(digest, entry.item)) {
+              null => entry.problems.join('\n'),
+              _ when entry.problems.length > 1 => entry.problems.skip(1).join('\n'),
+              _ => null,
+            },
           ),
       ],
       if (held.isNotEmpty) ...[
@@ -123,7 +132,8 @@ final class DashboardSections {
             onOpen: onOpen,
             icon: Icons.pause_circle_outline,
             iconColor: (tokens) => tokens.warning,
-            note: entry.reason,
+            next: _next(digest, entry.item),
+            note: _next(digest, entry.item) == null ? entry.reason : null,
           ),
       ],
       if (!clean) ...[
@@ -320,6 +330,23 @@ final class DashboardSections {
     ];
   }
 
+  /// The next step of [id] with its buttons; without [withActions] the
+  /// row offers the status's actions by itself.
+  NextStepLine? _next(ProjectDigest digest, String id, {bool withActions = true}) {
+    final item = digest.item(id);
+    final step = item == null ? null : NextStep.of(item, digest.plan, digest.workflow);
+    if (step == null) return null;
+    final busy = controller.isPending(digest, id) || digest.plan.runFor(id) != null;
+    return NextStepLine(
+      step,
+      item: id,
+      busy: busy,
+      onAction: withActions ? (name) => unawaited(controller.runAction(digest, id, name)) : null,
+      onStart: () => unawaited(controller.startAgent(digest, id)),
+      onOpen: (other) => unawaited(onOpen(digest, other)),
+    );
+  }
+
   /// The actions the item's status offers (Merge, fix the review, …).
   List<_ActionButton> _actions(ProjectDigest digest, ItemDto item) {
     final busy = controller.isPending(digest, item.id) || digest.plan.runFor(item.id) != null;
@@ -428,8 +455,8 @@ class _ActionButton extends StatelessWidget {
   );
 }
 
-/// One item: icon, id and title (a tap opens it), tags (who has the ball
-/// first), a note line and buttons.
+/// One item: icon, id and title (a tap opens it), the next step, a note
+/// line, tags (who has the ball first) and buttons.
 class _ItemRow extends StatelessWidget {
   const _ItemRow({
     super.key,
@@ -441,6 +468,7 @@ class _ItemRow extends StatelessWidget {
     required this.icon,
     this.iconColor,
     this.note,
+    this.next,
     this.details = const [],
     this.actions = const [],
   });
@@ -453,6 +481,9 @@ class _ItemRow extends StatelessWidget {
   final IconData icon;
   final Color Function(BoardTokens tokens)? iconColor;
   final String? note;
+
+  /// What the person has to do next, under the title.
+  final Widget? next;
   final List<Widget> details;
   final List<Widget> actions;
 
@@ -497,6 +528,7 @@ class _ItemRow extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (next case final next?) Padding(padding: const EdgeInsets.only(top: 2), child: next),
                   if (note case final note?) Text(note, style: small),
                   if (tags.isNotEmpty)
                     Padding(

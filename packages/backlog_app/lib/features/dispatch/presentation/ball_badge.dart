@@ -4,14 +4,16 @@ import 'package:flutter/material.dart';
 import '../../../shared/item_style.dart';
 import '../../../shared/tokens.dart';
 import '../application/ball.dart';
+import '../application/next_step.dart';
 import 'dispatch_scope.dart';
 
 /// Who has the ball of an item, the same small tag on cards, in the agent
 /// box of the detail and on the Dashboard: *Agent works*, *AI review*,
 /// *Waits for you* (red after a run with problems) or *Queued*; the tooltip
-/// says why. Nothing when nobody has it.
+/// says why and, when it is a person's turn, the next step ([next]).
+/// Nothing when nobody has it.
 class BallBadge extends StatelessWidget {
-  const BallBadge(this.ball, {super.key, required this.item});
+  const BallBadge(this.ball, {super.key, required this.item, this.next});
 
   /// The badge of [item] by the plan of the enclosing [DispatchScope];
   /// [workflow] tells which actions are AI reviews.
@@ -20,7 +22,9 @@ class BallBadge extends StatelessWidget {
     builder: (context) {
       final dispatch = DispatchScope.maybeOf(context);
       final ball = dispatch == null ? null : Ball.of(item, dispatch.plan, workflow);
-      return ball == null ? const SizedBox.shrink() : BallBadge(ball, item: item.id);
+      return ball == null
+          ? const SizedBox.shrink()
+          : BallBadge(ball, item: item.id, next: NextStep.of(item, dispatch!.plan, workflow));
     },
   );
 
@@ -28,6 +32,9 @@ class BallBadge extends StatelessWidget {
 
   /// The item's id, for the key.
   final String item;
+
+  /// What the person has to do next, for the tooltip.
+  final NextStep? next;
 
   static String label(BallHolder holder) => switch (holder) {
     BallHolder.agent => 'Agent works',
@@ -47,7 +54,7 @@ class BallBadge extends StatelessWidget {
       BallHolder.queue => (Icons.schedule, tokens.muted),
     };
     return Tooltip(
-      message: ball.reason,
+      message: next == null ? ball.reason : '${ball.reason}\nNext: ${next!.text}',
       child: Tag(label(ball.holder), key: ValueKey('ball-${ball.holder.name}-$item'), icon: icon, color: color),
     );
   }
