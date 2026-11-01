@@ -118,6 +118,7 @@ class _BoardPageState extends State<BoardPage> {
           child: ItemPage(
             reference: id,
             onAddChild: (parent) => unawaited(_create(_controller!, parent: parent)),
+            milestone: _controller?.milestone,
           ),
         ),
       ),
@@ -286,6 +287,7 @@ class _BoardPageState extends State<BoardPage> {
     onClose: onClose,
     onScope: onScope,
     onAddChild: (parent) => unawaited(_create(_controller!, parent: parent)),
+    milestone: _controller?.milestone,
   );
 
   /// The board; with [sheet] the open item is a bottom sheet over it.

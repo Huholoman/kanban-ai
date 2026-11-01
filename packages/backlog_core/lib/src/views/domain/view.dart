@@ -78,6 +78,21 @@ final class ViewDefinition {
   final Filter filter;
   final String? groupBy;
 
+  /// The one value its [filter] requires of [field] (`milestone: v0.2`, also
+  /// as a part of an `all`), if any: what the view is about, e.g. the
+  /// milestone a start from it defaults to.
+  String? requiredValue(String field) {
+    String? of(Filter filter) => switch (filter) {
+      FieldIn(field: final f, :final values) when f == field && values.length == 1 => values.single,
+      AllOf(:final parts) => switch ({for (final part in parts) ?of(part)}) {
+        final found when found.length == 1 => found.single,
+        _ => null,
+      },
+      _ => null,
+    };
+    return of(filter);
+  }
+
   /// Groups to show, in this order. Items in other groups are left out.
   /// When null, groups come from the workflow (status, priority) or from the
   /// values present.

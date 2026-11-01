@@ -109,6 +109,7 @@ Future<(FakeBacklogApi, DispatchController)> _pumpDetail(
   DispatchDto plan, {
   List<ActionDto> actions = const [],
   List<ItemDto>? items,
+  String? milestone,
 }) async {
   tester.view.physicalSize = const Size(700, 1400);
   tester.view.devicePixelRatio = 1;
@@ -134,7 +135,9 @@ Future<(FakeBacklogApi, DispatchController)> _pumpDetail(
                   width: 220,
                   child: ListView(children: [DispatchOverview(onOpenItem: (_) {})]),
                 ),
-                Expanded(child: ItemDetailView(reference: reference)),
+                Expanded(
+                  child: ItemDetailView(reference: reference, milestone: milestone),
+                ),
               ],
             ),
           ),
@@ -319,6 +322,69 @@ void main() {
       expect(find.textContaining('Agent claude implements the epic in w1 since'), findsOneWidget);
       expect(_key('epic-progress'), findsOneWidget);
       expect(find.text('0 done · 0 handed over · 0 in progress · 2 to do'), findsOneWidget);
+    });
+
+    testWidgets('the run can be limited to a milestone, by default the board\'s', (tester) async {
+      const progress = [
+        EpicProgressDto(milestone: 'v0.2', settled: 0, total: 1),
+        EpicProgressDto(milestone: 'v0.3', settled: 0, total: 1),
+      ];
+      final (api, _) = await _pumpDetail(tester, 'E-1', _plan(), milestone: 'v0.2');
+      api
+        ..epics['E-1'] = const EpicDto(
+          epic: 'E-1',
+          title: 'Item E-1',
+          branch: 'agent/E-1',
+          verdict: 'ok',
+          next: 'T-1',
+          members: [
+            EpicMemberDto(id: 'T-1', title: 'Item T-1', status: 'todo', state: 'to-do', milestone: 'v0.2'),
+            EpicMemberDto(id: 'T-2', title: 'Item T-2', status: 'todo', state: 'to-do', milestone: 'v0.3'),
+          ],
+          progress: progress,
+        )
+        ..scopedEpics['E-1@v0.2'] = const EpicDto(
+          epic: 'E-1',
+          title: 'Item E-1',
+          branch: 'agent/E-1',
+          verdict: 'ok',
+          next: 'T-1',
+          milestone: 'v0.2',
+          skipped: ['T-2'],
+          members: [
+            EpicMemberDto(id: 'T-1', title: 'Item T-1', status: 'todo', state: 'to-do', milestone: 'v0.2'),
+            EpicMemberDto(
+              id: 'T-2',
+              title: 'Item T-2',
+              status: 'todo',
+              state: 'to-do',
+              milestone: 'v0.3',
+              inScope: false,
+            ),
+          ],
+          progress: progress,
+        );
+      expect(EpicDto.fromJson(api.scopedEpics['E-1@v0.2']!.toJson()).toJson(), api.scopedEpics['E-1@v0.2']!.toJson());
+      await tester.tap(_key('implement-epic'));
+      await tester.pumpAndSettle();
+      ChoiceChip chip(String id) => tester.widget<ChoiceChip>(_key('epic-scope-$id'));
+      expect(chip('v0.2').selected, isTrue);
+      expect(find.text('1 item(s) of other milestones stay as they are: T-2.'), findsOneWidget);
+      expect(find.text('v0.2 0/1 · v0.3 0/1'), findsOneWidget);
+      expect(_key('epic-member-T-2'), findsNothing);
+      expect(find.text('0 done · 0 handed over · 0 in progress · 1 to do'), findsOneWidget);
+
+      await tester.tap(_key('epic-scope-all'));
+      await tester.pumpAndSettle();
+      expect(chip('all').selected, isTrue);
+      expect(_key('epic-skipped'), findsNothing);
+      expect(_key('epic-member-T-2'), findsOneWidget);
+
+      await tester.tap(_key('epic-scope-v0.2'));
+      await tester.pumpAndSettle();
+      await tester.tap(_key('epic-start'));
+      await tester.pumpAndSettle();
+      expect(api.startedEpics, ['E-1@v0.2']);
     });
 
     testWidgets('an epic that cannot start says why and offers no start', (tester) async {

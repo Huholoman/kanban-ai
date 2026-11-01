@@ -109,26 +109,29 @@ class DispatchController extends ChangeNotifier {
   /// One agent implements [item] as an epic (it runs, or ran last).
   bool isEpic(String item) => plan.epics.contains(item);
 
-  /// Whether one agent can implement [item] as an epic, and how far it is;
-  /// null when the server cannot say.
-  Future<EpicDto?> epic(String item) async {
+  /// The milestone the run implementing the epic [item] is limited to; null
+  /// for all of it (or when it is not implemented as an epic).
+  String? epicMilestone(String item) => plan.epicMilestones[item];
+
+  /// Whether one agent can implement [item] as an epic (with [milestone]
+  /// only the items of that milestone and those without one), and how far
+  /// it is; null when the server cannot say.
+  Future<EpicDto?> epic(String item, {String? milestone}) async {
     try {
-      return await _api.epic(item);
+      return await _api.epic(item, milestone: milestone);
     } on BacklogApiException {
       return null;
     }
   }
 
-  /// Starts one agent implementing all of [item]'s children on one branch.
-  Future<void> startEpic(String item) => _act(item, () async {
-    plan = await _api.startEpic(item);
+  /// Starts one agent implementing all of [item]'s children (with
+  /// [milestone] those of that milestone and without one) on one branch.
+  Future<void> startEpic(String item, {String? milestone}) => _act(item, () async {
+    plan = await _api.startEpic(item, milestone: milestone);
     if (_queued(item)) return;
     final run = plan.runFor(item);
-    _notices.add(
-      run == null
-          ? 'Started an agent for the epic $item.'
-          : 'Started ${run.agent} for the epic $item in ${run.worktree}.',
-    );
+    final what = milestone == null ? 'the epic $item' : 'the epic $item ($milestone)';
+    _notices.add(run == null ? 'Started an agent for $what.' : 'Started ${run.agent} for $what in ${run.worktree}.');
   });
 
   /// Whether an action can be asked for on [item]: a dispatcher runs and no

@@ -197,6 +197,7 @@ abstract final class DtoMapper {
         for (final group in result.groups)
           ViewGroupDto(group.key, [for (final planned in group.items) item(planned, reviewing: reviewing)]),
       ],
+      milestone: definition.requiredValue('milestone'),
     );
   }
 

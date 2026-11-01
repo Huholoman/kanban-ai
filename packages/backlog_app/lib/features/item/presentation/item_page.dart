@@ -12,15 +12,23 @@ import 'detail_header.dart';
 
 /// The item detail as a full screen, for narrow windows.
 class ItemPage extends StatelessWidget {
-  const ItemPage({super.key, required this.reference, this.onAddChild});
+  const ItemPage({super.key, required this.reference, this.onAddChild, this.milestone});
 
   final String reference;
   final ValueChanged<ItemDto>? onAddChild;
 
+  /// See [ItemDetailView.milestone].
+  final String? milestone;
+
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(
-      child: ItemDetailView(reference: reference, onClose: () => Navigator.of(context).pop(), onAddChild: onAddChild),
+      child: ItemDetailView(
+        reference: reference,
+        onClose: () => Navigator.of(context).pop(),
+        onAddChild: onAddChild,
+        milestone: milestone,
+      ),
     ),
   );
 }
@@ -38,6 +46,7 @@ class ItemDetailView extends StatefulWidget {
     this.closeIcon = Icons.close,
     this.onScope,
     this.onAddChild,
+    this.milestone,
   });
 
   /// Id (or a shortened id) of the item shown first.
@@ -52,6 +61,10 @@ class ItemDetailView extends StatefulWidget {
   /// Opens the *New item* dialog for a child of the shown item; without it
   /// there is no *Add child* button.
   final ValueChanged<ItemDto>? onAddChild;
+
+  /// The milestone of the board it was opened from
+  /// ([BoardController.milestone]): *Implement epic* defaults to it.
+  final String? milestone;
 
   @override
   State<ItemDetailView> createState() => _ItemDetailViewState();
@@ -120,6 +133,7 @@ class _ItemDetailViewState extends State<ItemDetailView> {
             closeIcon: widget.closeIcon,
             onScope: widget.onScope,
             onAddChild: widget.onAddChild,
+            milestone: widget.milestone,
           ),
           if (controller.item case final item?)
             AgentPanel(key: ValueKey('agent-${item.id}'), item: item, workflow: controller.workflow, onOpen: _open),

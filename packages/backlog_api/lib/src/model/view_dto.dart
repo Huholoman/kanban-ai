@@ -85,6 +85,7 @@ final class ViewResultDto {
     this.columns,
     this.hidden = 0,
     required this.groups,
+    this.milestone,
   });
 
   factory ViewResultDto.fromJson(Json json) => ViewResultDto(
@@ -96,6 +97,7 @@ final class ViewResultDto {
     columns: json['columns'] == null ? null : json.strings('columns'),
     hidden: json.integer('hidden'),
     groups: json.objects('groups').map(ViewGroupDto.fromJson).toList(),
+    milestone: json.optionalString('milestone'),
   );
 
   final String id;
@@ -112,6 +114,10 @@ final class ViewResultDto {
   final int hidden;
   final List<ViewGroupDto> groups;
 
+  /// The one milestone the view's filter requires (`milestone: v0.2`), if
+  /// any.
+  final String? milestone;
+
   List<ItemDto> get items => [for (final group in groups) ...group.items];
 
   ViewSummaryDto get summary => ViewSummaryDto(id: id, name: name, layout: layout, groupBy: groupBy);
@@ -125,5 +131,6 @@ final class ViewResultDto {
     'columns': columns,
     'hidden': hidden,
     'groups': [for (final group in groups) group.toJson()],
+    'milestone': milestone,
   };
 }
