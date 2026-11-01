@@ -704,6 +704,12 @@ final class DispatchPlan {
       for (final planned in snapshot.items)
         if (planned.ancestors.any(epics.contains)) planned.id,
     };
+    // An item with open children that no agent implements as an epic cannot
+    // start for replies: only Implement epic takes them up.
+    bool epicToStart(PlannedItem planned) =>
+        !planned.isDone && planned.openChildCount > 0 && !epics.contains(planned.id) && !members.contains(planned.id);
+    final reasons = <ItemId, String>{};
+    final left = <PlannedItem>[];
     // A person wrote to an agent: first, even when held (unless its branch is
     // stuck in another worktree). Its session goes on, or without one a new
     // session takes the comments up.
@@ -724,6 +730,12 @@ final class DispatchPlan {
                 hasReplies(planned, sessions[planned.id], config)))
           planned,
     ];
+    for (final planned in [...replied.where(epicToStart)]) {
+      replied.remove(planned);
+      fresh.remove(planned.id);
+      left.add(planned);
+      reasons[planned.id] = epicReplyReason;
+    }
     final ready = [
       ...replied,
       for (final item in snapshot.ready)
@@ -740,8 +752,6 @@ final class DispatchPlan {
     ];
 
     final assignments = <DispatchAssignment>[];
-    final left = <PlannedItem>[];
-    final reasons = <ItemId, String>{};
     // In manual mode the assignments are only proposals: they reserve
     // nothing, so an item they leave out can still be started by hand
     // ([assignmentFor]) while an agent may start at all.
@@ -850,6 +860,10 @@ final class DispatchPlan {
       epics: Set.unmodifiable(epics),
     );
   }
+
+  /// Why a reply on an item with open children that no agent implements as
+  /// an epic waits ([waitingReasons]).
+  static const epicReplyReason = 'it has open child items: start Implement epic to take the reply up';
 
   final DispatcherConfig config;
   final BacklogSnapshot snapshot;
@@ -1119,6 +1133,12 @@ final class DispatchPlan {
     if (epicOf(planned.id) case final epic?) {
       throw InvalidInputException(
         '${planned.id} belongs to the epic $epic, which one agent implements on its branch; start $epic instead.',
+      );
+    }
+    if (!planned.isDone && planned.openChildCount > 0 && !epics.contains(planned.id)) {
+      throw InvalidInputException(
+        '${planned.id} has ${planned.openChildCount} open child item(s): implement it as an epic '
+        '(Implement epic), which also takes up the replies on it.',
       );
     }
     final replied = !fresh && hasReplies(planned, sessions[planned.id], config);

@@ -621,6 +621,29 @@ dispatcher:
       expect(resumed.prompt, contains('Use CSV.'));
     });
 
+    test('a reply to an item with open children that is not implemented as an epic waits for Implement epic', () {
+      const reply = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nUse CSV.\n';
+      for (final sessions in [
+        <ItemId, AgentSession>{},
+        {ItemId('E-1'): _session('E-1', 'w2')},
+      ]) {
+        final plan = _plan(
+          [item('E-1', type: 'epic', status: 'review', body: reply), item('T-1', parent: 'E-1', status: 'review')],
+          workflow: _resumingWorkflow(),
+          conditions: DispatchConditions(
+            sessions: sessions,
+            starts: {ItemId('E-1'): (at: DateTime.utc(2026, 10, 29, 11), worktree: 'w2')},
+          ),
+        );
+        expect(plan.assignments, isEmpty, reason: 'with sessions $sessions');
+        expect(plan.waitingReasons[ItemId('E-1')], DispatchPlan.epicReplyReason);
+        expect(
+          () => plan.assignmentFor('E-1'),
+          throwsA(isA<InvalidInputException>().having((e) => e.message, 'message', contains('Implement epic'))),
+        );
+      }
+    });
+
     test('sameDecisionAs compares assignments, waiting items and busy worktrees', () {
       final a = _plan([item('T-1')]);
       expect(a.sameDecisionAs(_plan([item('T-1')])), isTrue);
