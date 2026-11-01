@@ -1,6 +1,6 @@
 import 'package:backlog_core/backlog_core.dart';
 
-import 'tui/terminal.dart';
+import 'package:dart_tui/dart_tui.dart' show Model;
 
 /// Everything the CLI takes from its process, injectable for tests.
 final class CliContext {
@@ -11,7 +11,7 @@ final class CliContext {
     this.environment = const {},
     this.clock = const SystemClock(),
     this.readInput,
-    this.terminal,
+    this.runTui,
   });
 
   final StringSink out;
@@ -24,7 +24,7 @@ final class CliContext {
   /// there is none.
   final Future<String> Function()? readInput;
 
-  /// The interactive terminal for `backlog config`; null when the process
-  /// does not run in one.
-  final Terminal Function()? terminal;
+  /// Runs a `dart_tui` model in the interactive terminal until it quits
+  /// (`backlog config`); null when the process does not run in one.
+  final Future<void> Function(Model app)? runTui;
 }

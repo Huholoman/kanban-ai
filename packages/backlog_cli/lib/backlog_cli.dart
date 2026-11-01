@@ -18,8 +18,6 @@ import 'src/commands/work_commands.dart';
 import 'src/render/json_output.dart';
 
 export 'src/cli_context.dart';
-export 'src/tui/keys.dart';
-export 'src/tui/terminal.dart';
 
 /// Exit codes, so that scripts and agents can react without parsing text.
 abstract final class ExitCode {

@@ -1,4 +1,5 @@
 import 'package:backlog_core/backlog_core.dart';
+import 'package:dart_tui/dart_tui.dart' show Cmd;
 import 'package:path/path.dart' as p;
 
 import 'screen.dart';
@@ -30,12 +31,18 @@ Screen configRootScreen(ConfigLocations locations) => MenuScreen(
           ? 'no location: set HOME or pass --projects <file>'
           : 'this machine: project registry, server, doctor',
       enabled: locations.registryFile != null,
-      onSelect: (navigator) async => navigator.push(await _globalScreen(locations)),
+      onSelect: (_) => Navigator.task(() async {
+        final screen = await _globalScreen(locations);
+        return (navigator) => navigator.push(screen);
+      }),
     ),
     MenuEntry(
       'Project',
       detail: 'backlog.yaml of a project from the registry or this folder',
-      onSelect: (navigator) async => navigator.push(await _projectPicker(locations)),
+      onSelect: (_) => Navigator.task(() async {
+        final screen = await _projectPicker(locations);
+        return (navigator) => navigator.push(screen);
+      }),
     ),
   ],
 );
@@ -50,7 +57,10 @@ Future<Screen> _globalScreen(ConfigLocations locations) async {
       MenuEntry(
         'Projects',
         detail: 'the backlogs in the registry (view only for now)',
-        onSelect: (navigator) async => navigator.push(TextScreen('Projects', () => _registryLines(screen, locations))),
+        onSelect: (navigator) {
+          navigator.push(TextScreen('Projects', () => _registryLines(screen, locations)));
+          return null;
+        },
       ),
       const MenuEntry('Server', detail: 'not yet: server settings of this machine', enabled: false),
       const MenuEntry('Doctor', detail: 'not yet: check the installation and the projects', enabled: false),
@@ -67,7 +77,7 @@ List<String> _registryLines(ConfigFileScreen screen, ConfigLocations locations) 
       home: locations.home,
     );
   } on ConfigurationException catch (e) {
-    return [Style.red(e.message)];
+    return [Look.red(e.message)];
   }
   if (registry.isEmpty) return ['No projects in ${screen.editor.location}.'];
   return [
@@ -99,7 +109,7 @@ Future<Screen> _projectPicker(ConfigLocations locations) async {
   return MenuScreen(
     'Project',
     intro: () => [
-      if (registryProblem != null) Style.red('Registry: $registryProblem'),
+      if (registryProblem != null) Look.red('Registry: $registryProblem'),
       if (entries.isEmpty) 'No backlog in this folder and no projects in the registry.',
       if (entries.isNotEmpty) 'Which project?',
     ],
@@ -114,13 +124,14 @@ MenuEntry _projectEntry(String label, String root, String? name, {String? proble
     label,
     detail: [?name, root, ?problem].join('  '),
     enabled: !missing && !folderMissing,
-    onSelect: (navigator) async {
+    onSelect: (_) => Navigator.task(() async {
       final editor = projectConfigEditor(root);
-      navigator.push(
+      final draft = await editor.open();
+      return (navigator) => navigator.push(
         ConfigFileScreen(
           name ?? ProjectRegistry.projectFolderName(root),
           editor,
-          await editor.open(),
+          draft,
           sections: (_) => const [
             MenuEntry('Workflow', detail: 'not yet: statuses, priorities, types, milestones, ids', enabled: false),
             MenuEntry('Views, claims, lint', detail: 'not yet', enabled: false),
@@ -129,7 +140,7 @@ MenuEntry _projectEntry(String label, String root, String? name, {String? proble
           ],
         ),
       );
-    },
+    }),
   );
 }
 
@@ -153,9 +164,9 @@ final class ConfigFileScreen extends MenuScreen {
     final problem = editor.problem(draft);
     return [
       editor.location,
-      if (problem != null) Style.red(draft.changed ? 'Not valid: $problem' : 'The file is not valid: $problem'),
-      if (!draft.isYaml) Style.red('It is not even YAML, so nothing can be edited here: fix it in a text editor.'),
-      if (draft.changed) Style.yellow('Unsaved changes ($_changedLines changed lines).'),
+      if (problem != null) Look.red(draft.changed ? 'Not valid: $problem' : 'The file is not valid: $problem'),
+      if (!draft.isYaml) Look.red('It is not even YAML, so nothing can be edited here: fix it in a text editor.'),
+      if (draft.changed) Look.yellow('Unsaved changes ($_changedLines changed lines).'),
     ];
   }
 
@@ -166,54 +177,62 @@ final class ConfigFileScreen extends MenuScreen {
     MenuEntry(
       'Review and save',
       detail: draft.changed ? '$_changedLines changed lines' : 'no changes',
-      onSelect: (navigator) async => navigator.push(review()),
+      onSelect: (navigator) {
+        navigator.push(review());
+        return null;
+      },
     ),
   ];
 
   /// The shared review step for [draft].
-  ReviewScreen review() => ReviewScreen(editor, draft, onSaved: (saved, _) async => draft = saved);
+  ReviewScreen review() => ReviewScreen(editor, draft, onSaved: (saved) => draft = saved);
 
-  Future<void> _editValue(Navigator navigator) async => navigator.push(
-    PromptScreen(
-      'Edit a value',
-      'Key path:',
-      help: const [
-        'Dots between keys, [n] for list entries, e.g. claims.lease_minutes or statuses[1].pickable.',
-        'Unknown keys are allowed; the review says whether the file is still valid.',
-      ],
-      onSubmit: (text, navigator) async {
-        final path = parseConfigPath(text);
-        final shown = formatConfigPath(path);
-        navigator.push(
-          PromptScreen(
-            shown,
-            'Value of $shown:',
-            initial: formatConfigValue(draft.valueAt(path)),
-            help: const ['YAML: 30, true, text, [a, b], {key: value}. Empty removes the key.'],
-            onSubmit: (value, navigator) async {
-              if (value.trim().isEmpty) {
-                navigator.say(draft.remove(path) ? 'Removed $shown (not saved yet).' : 'There is no $shown.');
-              } else {
-                draft.set(path, parseConfigValue(value));
-                navigator.say('Set $shown (not saved yet; Review and save writes it).');
-              }
-            },
-          ),
-        );
-      },
-    ),
+  Cmd? _editValue(Navigator navigator) {
+    navigator.push(_keyPrompt());
+    return null;
+  }
+
+  PromptScreen _keyPrompt() => PromptScreen(
+    'Edit a value',
+    'Key path:',
+    help: const [
+      'Dots between keys, [n] for list entries, e.g. claims.lease_minutes or statuses[1].pickable.',
+      'Unknown keys are allowed; the review says whether the file is still valid.',
+    ],
+    onSubmit: (text, navigator) {
+      final path = parseConfigPath(text);
+      final shown = formatConfigPath(path);
+      navigator.push(
+        PromptScreen(
+          shown,
+          'Value of $shown:',
+          initial: formatConfigValue(draft.valueAt(path)),
+          help: const ['YAML: 30, true, text, [a, b], {key: value}. Empty removes the key.'],
+          onSubmit: (value, navigator) {
+            if (value.trim().isEmpty) {
+              navigator.say(draft.remove(path) ? 'Removed $shown (not saved yet).' : 'There is no $shown.');
+            } else {
+              draft.set(path, parseConfigValue(value));
+              navigator.say('Set $shown (not saved yet; Review and save writes it).');
+            }
+            return null;
+          },
+        ),
+      );
+      return null;
+    },
   );
 
   @override
-  Future<bool> mayLeave(Navigator navigator) async {
+  bool mayLeave(Navigator navigator) {
     if (!draft.changed) return true;
     navigator.push(
       ConfirmScreen(
         'Unsaved changes',
         'Leave $title without saving $_changedLines changed lines? (y: discard them, n: stay)',
-        onYes: (navigator) async {
+        onYes: (navigator) {
           draft.reset();
-          await navigator.pop();
+          navigator.pop();
         },
       ),
     );

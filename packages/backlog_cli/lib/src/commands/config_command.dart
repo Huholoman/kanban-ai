@@ -27,8 +27,7 @@ final class ConfigCommand extends BacklogCommand {
   @override
   Future<int> run() async {
     if (args.rest.isNotEmpty) throw UsageException('`config` takes no arguments.', usage);
-    final terminal =
-        context.terminal?.call() ?? (throw UsageException('`backlog config` needs an interactive terminal.', usage));
+    final runTui = context.runTui ?? (throw UsageException('`backlog config` needs an interactive terminal.', usage));
     final registry = args.option('projects') ?? projectRegistryFile(context.environment);
     String? current;
     try {
@@ -36,16 +35,17 @@ final class ConfigCommand extends BacklogCommand {
     } on NotFoundException {
       current = null;
     }
-    await Navigator(
-      terminal,
-      configRootScreen(
-        ConfigLocations(
-          registryFile: registry == null ? null : p.normalize(p.join(context.cwd, registry)),
-          home: context.environment['HOME'],
-          currentBacklog: current,
+    await runTui(
+      Navigator(
+        configRootScreen(
+          ConfigLocations(
+            registryFile: registry == null ? null : p.normalize(p.join(context.cwd, registry)),
+            home: context.environment['HOME'],
+            currentBacklog: current,
+          ),
         ),
       ),
-    ).run();
+    );
     return 0;
   }
 }
