@@ -296,6 +296,7 @@ title: Production DB backups   # required
 type: task               # epic | story | task | bug | decision | idea
 status: todo             # as defined in backlog.yaml
 priority: p0
+rank: 1024                    # manual order in views sorted by rank (the board's drag & drop sets it)
 milestone: launch
 parent: MA-m4an          # the epic/story it belongs to
 depends_on: [MA-2c91]    # hard prerequisites, they block
@@ -559,10 +560,12 @@ filter:                     # a map = AND; also and/or/not
     - labels: security
 group_by: status
 columns: [todo, in-progress, review, done]
-sort: [priority, -updated]
+sort: [priority, -updated]   # - = descending; rank = manual order
 ```
 
 Views can filter and group by every item field, by custom keys and by the computed fields `ready`, `blocked`, `conflicting`, `conflicts_with`, `claimed`, `claimed_by`, `needs_human`, `category`, `has_children`, `ancestors` (the parent chain) and `epic` (epics among the item and its ancestors, so `epic: X-m4an` is everything under that epic). A day as a value of `created` or `updated` (`created: 2026-10-31`) matches everything from that UTC day.
+
+`rank` is a number giving a manual order: `sort: [rank, priority]` lists lower ranks first and items without a rank after them (by priority here). The *Board* view of `init` sorts by `[rank, priority, created]`; set a rank with `backlog set X-7f3a rank=1024` (`rank=` removes it).
 
 ## CLI reference
 

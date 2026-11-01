@@ -607,6 +607,20 @@ void main() {
     expect(cleared.pr, isNull);
     expect(cleared.extra, isEmpty);
   });
+
+  test('rank is a number field: set, saved and cleared', () async {
+    final (backlog, _) = await tempBacklog();
+    final created = await backlog.items.create(const NewItem(title: 'First'));
+    await backlog.items.update(created.id.value, [FieldChange.parse('rank=1024')]);
+    expect((await backlog.items.get(created.id.value)).rank, 1024);
+    await expectLater(
+      () => backlog.items.update(created.id.value, [FieldChange.parse('rank=top')]),
+      throwsA(isA<InvalidInputException>()),
+    );
+    final cleared = await backlog.items.update(created.id.value, [FieldChange.parse('rank=')]);
+    expect(cleared.rank, isNull);
+    expect(cleared.extra, isEmpty);
+  });
 }
 
 /// A storage that records which stores the backlog asked for and which items

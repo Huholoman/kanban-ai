@@ -64,6 +64,7 @@ final class ItemDto {
     required this.status,
     this.category,
     required this.priority,
+    this.rank,
     this.milestone,
     this.parent,
     this.dependsOn = const [],
@@ -107,6 +108,7 @@ final class ItemDto {
       status: json.string('status'),
       category: category == null ? null : StatusCategoryDto.values.byName(category),
       priority: json.string('priority'),
+      rank: json['rank'] as num?,
       milestone: json.optionalString('milestone'),
       parent: json.optionalString('parent'),
       dependsOn: json.strings('depends_on'),
@@ -150,6 +152,9 @@ final class ItemDto {
   final String status;
   final StatusCategoryDto? category;
   final String priority;
+
+  /// Manual order where a view sorts by `rank` (lower first); null for none.
+  final num? rank;
   final String? milestone;
   final String? parent;
   final List<String> dependsOn;
@@ -217,6 +222,7 @@ final class ItemDto {
     'status': status,
     'category': category?.name,
     'priority': priority,
+    'rank': rank,
     'milestone': milestone,
     'parent': parent,
     'depends_on': dependsOn,

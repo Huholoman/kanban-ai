@@ -62,6 +62,7 @@ final class MarkdownItemCodec {
         type: optional('type') ?? defaults.type,
         status: optional('status') ?? defaults.status,
         priority: optional('priority') ?? defaults.priority,
+        rank: _number(yaml['rank'], 'rank'),
         milestone: optional('milestone'),
         parent: switch (optional('parent')) {
           null => null,
@@ -137,6 +138,7 @@ final class MarkdownItemCodec {
     'type': item.type,
     'status': item.status,
     'priority': item.priority,
+    'rank': item.rank,
     'milestone': item.milestone,
     'parent': item.parent?.value,
     'depends_on': [for (final id in item.dependsOn) id.value],
@@ -172,6 +174,14 @@ final class MarkdownItemCodec {
     final text = '$value'.trim();
     return text.isEmpty ? null : text;
   }
+
+  static num? _number(Object? value, String key) => switch (_scalar(value, key)) {
+    null => null,
+    final text => switch (num.tryParse(text)) {
+      final number? when number.isFinite => number,
+      _ => throw FormatException('"$key" must be a number, not "$text"'),
+    },
+  };
 
   static List<String> _strings(Object? value, String key) {
     if (value == null) return const [];

@@ -106,7 +106,8 @@ abstract final class TextOutput {
     return [
       '${item.id}  ${item.title}',
       'type: ${item.type}   status: ${item.status}   priority: ${item.priority}'
-          '${item.milestone == null ? '' : '   milestone: ${item.milestone}'}',
+          '${item.milestone == null ? '' : '   milestone: ${item.milestone}'}'
+          '${item.rank == null ? '' : '   rank: ${item.rank}'}',
       if (item.parent != null) 'parent: ${describe(item.parent!)}',
       for (final id in item.dependsOn) 'depends on: ${describe(id)}',
       for (final other in dependents) 'blocks: ${describe(other.id)}',

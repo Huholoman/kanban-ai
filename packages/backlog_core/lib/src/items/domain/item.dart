@@ -18,6 +18,7 @@ final class Item {
     required this.type,
     required this.status,
     required this.priority,
+    this.rank,
     this.milestone,
     this.parent,
     List<ItemId> dependsOn = const [],
@@ -50,6 +51,7 @@ final class Item {
     'type',
     'status',
     'priority',
+    'rank',
     'milestone',
     'parent',
     'depends_on',
@@ -69,6 +71,10 @@ final class Item {
   final String type;
   final String status;
   final String priority;
+
+  /// Manual order: a lower rank comes first where a view sorts by `rank`;
+  /// items without one come after all ranked ones.
+  final num? rank;
   final String? milestone;
 
   /// The epic or story this item belongs to.
@@ -119,6 +125,7 @@ final class Item {
     String? type,
     String? status,
     String? priority,
+    num? Function()? rank,
     String? Function()? milestone,
     ItemId? Function()? parent,
     List<ItemId>? dependsOn,
@@ -139,6 +146,7 @@ final class Item {
     type: type ?? this.type,
     status: status ?? this.status,
     priority: priority ?? this.priority,
+    rank: rank == null ? this.rank : rank(),
     milestone: milestone == null ? this.milestone : milestone(),
     parent: parent == null ? this.parent : parent(),
     dependsOn: dependsOn ?? this.dependsOn,
@@ -169,6 +177,7 @@ final class Item {
       type == other.type &&
       status == other.status &&
       priority == other.priority &&
+      rank == other.rank &&
       milestone == other.milestone &&
       parent == other.parent &&
       _equality.equals(dependsOn, other.dependsOn) &&

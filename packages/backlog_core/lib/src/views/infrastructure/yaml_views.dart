@@ -255,7 +255,7 @@ filter:
   type: {not: [epic]}
 group_by: status
 columns: [todo, in-progress, review, done]
-sort: [priority, created]
+sort: [rank, priority, created]
 ''',
   'ready': '''
 name: Ready to pick up

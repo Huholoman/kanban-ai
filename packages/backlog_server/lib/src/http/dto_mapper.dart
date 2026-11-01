@@ -68,6 +68,7 @@ abstract final class DtoMapper {
       status: item.status,
       category: _category(planned.category),
       priority: item.priority,
+      rank: item.rank,
       milestone: item.milestone,
       parent: item.parent?.value,
       dependsOn: [for (final id in item.dependsOn) id.value],

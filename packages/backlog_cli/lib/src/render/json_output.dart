@@ -13,6 +13,7 @@ abstract final class JsonOutput {
       'status': item.status,
       'category': planned.category?.name,
       'priority': item.priority,
+      'rank': item.rank,
       'milestone': item.milestone,
       'parent': item.parent?.value,
       'depends_on': [for (final id in item.dependsOn) id.value],

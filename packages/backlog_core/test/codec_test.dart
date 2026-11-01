@@ -56,6 +56,19 @@ estimate: 3d          # custom key
     expect(codec.decode(updated).status, 'done');
   });
 
+  test('rank is a number; a value that is not one makes the file unreadable', () {
+    final item = codec.decode(handWritten);
+    expect(item.rank, isNull);
+    final ranked = codec.update(handWritten, item.copyWith(rank: () => 1536));
+    expect(ranked, contains('rank: 1536\n'));
+    expect(codec.decode(ranked).rank, 1536);
+    expect(codec.decode(ranked.replaceFirst('rank: 1536', 'rank: 7.25')).rank, 7.25);
+    expect(codec.decode(codec.encode(item.copyWith(rank: () => 2048))).rank, 2048);
+    expect(codec.update(ranked, item), handWritten);
+    expect(() => codec.decode(ranked.replaceFirst('rank: 1536', 'rank: high')), throwsFormatException);
+    expect(() => codec.decode(ranked.replaceFirst('rank: 1536', 'rank: .nan')), throwsFormatException);
+  });
+
   test('clearing a field removes its key', () {
     final item = codec.decode(handWritten);
     final updated = codec.update(handWritten, item.copyWith(labels: [], dependsOn: []));

@@ -32,6 +32,7 @@ Item item(
   List<String> touches = const [],
   String? milestone,
   String? created,
+  num? rank,
   String body = '',
 }) => Item(
   id: ItemId(id),
@@ -39,6 +40,7 @@ Item item(
   type: type,
   status: status,
   priority: priority,
+  rank: rank,
   parent: parent == null ? null : ItemId(parent),
   dependsOn: dependsOn.map(ItemId.new).toList(),
   labels: labels,

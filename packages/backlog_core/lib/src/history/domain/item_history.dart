@@ -288,6 +288,7 @@ abstract final class ItemHistory {
       'type': item.type,
       'status': item.status,
       'priority': item.priority,
+      'rank': item.rank?.toString(),
       'milestone': item.milestone,
       'parent': item.parent?.value,
       'depends_on': list(item.dependsOn),

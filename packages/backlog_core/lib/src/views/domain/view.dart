@@ -179,6 +179,10 @@ abstract final class ViewEngine {
         return ItemTime.compare(a.item.created, b.item.created);
       case 'updated':
         return ItemTime.compare(a.item.updated, b.item.updated);
+      case 'rank':
+        final (left, right) = (a.item.rank, b.item.rank);
+        if (left == null || right == null) return left == right ? 0 : (left == null ? 1 : -1);
+        return left.compareTo(right);
     }
     final left = ItemFields.valuesOf(a, field);
     final right = ItemFields.valuesOf(b, field);

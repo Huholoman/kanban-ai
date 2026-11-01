@@ -898,6 +898,18 @@ dispatcher:
       expect(ids(result), ['T-4', 'T-1', 'T-2', 'T-3']);
     });
 
+    test('sorts by rank numerically, unranked items after the ranked ones', () {
+      final ranked = snapshotOf([
+        item('T-1', priority: 'p0'),
+        item('T-2', rank: 1024),
+        item('T-3', rank: 512.5),
+        item('T-4', priority: 'p3', rank: 4096),
+        item('T-5', priority: 'p1'),
+      ]);
+      expect(ids(ViewEngine.evaluate(parseViewYaml('r', 'sort: [rank]'), ranked)), ['T-3', 'T-2', 'T-4', 'T-1', 'T-5']);
+      expect(ItemFields.valuesOf(ranked.items.firstWhere((i) => i.id.value == 'T-3'), 'rank'), ['512.5']);
+    });
+
     test('rejects unknown layouts and operators', () {
       expect(() => parseViewYaml('v', 'layout: pie'), throwsA(isA<ConfigurationException>()));
       expect(() => parseViewYaml('v', 'filter: {status: {like: x}}'), throwsA(isA<ConfigurationException>()));

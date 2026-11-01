@@ -72,7 +72,7 @@ name: Board
 layout: kanban
 group_by: status
 columns: [todo, in-progress, done]
-sort: [priority, created]
+sort: [rank, priority, created]
 ''',
   'open': '''
 name: Open

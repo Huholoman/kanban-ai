@@ -206,6 +206,7 @@ title: Production DB backups   # required, non-empty
 type: task
 status: todo
 priority: p0
+rank: 1024               # manual order where a view sorts by rank (§6)
 milestone: launch
 parent: X-m4an           # epic/story it belongs to
 depends_on: [X-2c91]     # hard prerequisites — they block
@@ -232,6 +233,7 @@ Rules:
 - **Ids** are `<prefix>-<random>`. Anywhere an id is expected, an unambiguous shortening works (`7f3a`, `X-7f`); an ambiguous one is an error listing the candidates.
 - **File name** is `<id>-<slug-of-title>.md`; the slug strips diacritics (`Zürich DB backups` → `zurich-db-backups`). `lint` reports files whose name does not match.
 - **Writing preserves the file:** comments, key order and unknown keys are kept, only changed keys are rewritten (YAML editing, not re-serialisation), so git diffs stay minimal. Writes are atomic (temp file + rename).
+- **Rank** is a number (integer or decimal, may be negative) giving a manual order: a view with `sort: [rank, …]` lists lower ranks first and items without a rank after all ranked ones, in the order of its further sort keys. The board sets it when a card is dragged within a column; `set <id> rank=1024` sets it by hand, `rank=` removes it. A value that is not a finite number makes the file unreadable (`unreadable`), like any other malformed field.
 - **Body** is free Markdown. Checkboxes `- [ ]` / `- [x]` give the checklist progress.
 - **Discussion** is the section from a `## Discussion` heading (outside code fences) to the next level-1 or level-2 heading or the end of the body. Each comment starts with a heading line `### <author> · <YYYY-MM-DD HH:MM:SS> UTC` (seconds and ` UTC` optional when written by hand), followed by ` · question` for a question, ` · note` for a note (a comment that neither answers a question nor wakes the item's agent, §8.2) or ` · review ok` / ` · review changes` for a **review** (the verdict of a review of the item's work, `backlog review`; optionally followed by ` @<commit>`, 4–40 hex digits, the commit reviewed — the head of the item's branch then; like a note it answers no question and is no reply that wakes the agent, but a resumed agent sees it in `{news}`, even when the reviewer ran under the agent's worktree name; its *findings* are the lines of its text starting a numbered list, `1. …` or `1) …`, indented at most three spaces, outside code fences; headings without a marker are plain comments, as before); its text runs to the next comment heading (text before the first one is ignored; fences are never structure). `backlog comment` / `ask` (and `POST /api/items/<ref>/comments`) append a comment at the end of the section, or a new section at the end of the body, with a blank line around; headings of level 1–3 in the text become level 4, everything else in the body stays byte for byte. Authors lose line breaks, `·` becomes `-`; empty text or author is refused. Example:
 
@@ -378,7 +380,7 @@ filter:
     - labels: security
 group_by: status           # any field; items with several values (labels) appear in each group
 columns: [todo, in-progress, review, done]   # groups shown and their order
-sort: [priority, -updated] # - = descending
+sort: [priority, -updated] # - = descending; rank = manual order (§3)
 fields: [estimate]         # extra fields for cards/tables
 ```
 
@@ -388,13 +390,13 @@ A mapping is an AND of its entries; `and: [...]`, `or: [...]`, `not: <expr>` com
 
 ### 6.2 Fields
 
-All front-matter keys (`id`, `title`, `type`, `status`, `priority`, `milestone`, `parent`, `depends_on`, `related`, `assignee`, `branch`, `pr`, `labels`, `docs`, `touches`, `created`, `updated`), the computed `ready`, `blocked`, `conflicting`, `conflicts_with`, `claimed`, `claimed_by`, `needs_human`, `review` (`none`/`ok`/`changes`/`stale`, §3.1), `category`, `has_children`, `ancestors` (parent chain, cycle-safe), `epic` (epics among the item and its ancestors — `epic: X` selects everything under epic X), and any custom key.
+All front-matter keys (`id`, `title`, `type`, `status`, `priority`, `rank`, `milestone`, `parent`, `depends_on`, `related`, `assignee`, `branch`, `pr`, `labels`, `docs`, `touches`, `created`, `updated`), the computed `ready`, `blocked`, `conflicting`, `conflicts_with`, `claimed`, `claimed_by`, `needs_human`, `review` (`none`/`ok`/`changes`/`stale`, §3.1), `category`, `has_children`, `ancestors` (parent chain, cycle-safe), `epic` (epics among the item and its ancestors — `epic: X` selects everything under epic X), and any custom key.
 
 ### 6.3 Grouping
 
 Without `columns`, groups come from the workflow (statuses, priorities, types, milestones, categories in their configured order), then other present values alphabetically, then "(none)". With `columns`, other matching items are counted as `hidden`.
 
-Default views from `init`: **Board** (kanban by status, epics hidden), **Ready to pick up**, **What's on fire** (p0/p1 not done), **Blocked**, **Dependencies** (graph).
+Default views from `init`: **Board** (kanban by status, epics hidden, `sort: [rank, priority, created]`), **Ready to pick up**, **What's on fire** (p0/p1 not done), **Blocked**, **Dependencies** (graph).
 
 ## 7. Validation — `lint`
 

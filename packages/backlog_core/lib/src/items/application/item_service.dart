@@ -221,6 +221,7 @@ final class ItemService {
       'status' => item.copyWith(status: _checkStatus(_required(change))),
       'priority' => item.copyWith(priority: _checkPriority(_required(change))),
       'milestone' => item.copyWith(milestone: () => optional(_checkMilestone)),
+      'rank' => item.copyWith(rank: () => change.clears ? null : _number(change)),
       'parent' => item.copyWith(parent: () => change.clears ? null : resolve(_scalar(change))),
       'depends_on' => item.copyWith(dependsOn: _applyList(item.dependsOn, change, listed(item.dependsOn))),
       'related' => item.copyWith(related: _applyList(item.related, change, listed(item.related))),
@@ -286,6 +287,11 @@ final class ItemService {
     }
     return change.value;
   }
+
+  num _number(FieldChange change) => switch (num.tryParse(_scalar(change))) {
+    final number? when number.isFinite => number,
+    _ => throw InvalidInputException('"${change.field}" must be a number, not "${change.value}".'),
+  };
 
   String _checkType(String type) => _workflow.hasType(type)
       ? type
