@@ -29,6 +29,7 @@ final class AgentRun {
     this.action,
     this.kind = RunKind.agent,
     this.epic = false,
+    this.milestone,
   });
 
   final ItemId item;
@@ -36,6 +37,10 @@ final class AgentRun {
   /// The item's own agent implements it as an epic: all items under it on
   /// its branch ([DispatchAssignment.epic]).
   final bool epic;
+
+  /// The milestone an [epic] run implements ([DispatchAssignment.milestone]);
+  /// null for all of the epic.
+  final String? milestone;
 
   /// Name of the worktree it runs in (also the name of its claim); for an
   /// action's command outside the worktrees, the folder name of the primary
@@ -93,6 +98,7 @@ final class DispatchConditions {
     this.pending = const [],
     this.problems = const {},
     this.epics = const {},
+    this.epicMilestones = const {},
     this.queue = const [],
   });
 
@@ -105,6 +111,10 @@ final class DispatchConditions {
   /// implementation of the whole epic ([DispatchAssignment.epic]): the items
   /// under them belong to that agent.
   final Set<ItemId> epics;
+
+  /// The milestone each of [epics] is implemented for, when its run was
+  /// limited to one ([EpicPlan.milestone]).
+  final Map<ItemId, String> epicMilestones;
 
   /// Worktree name → why no agent can start there (uncommitted changes, not
   /// a git worktree, missing folder…).
@@ -166,6 +176,7 @@ final class DispatchConditions {
     pending: pending,
     problems: problems,
     epics: epics,
+    epicMilestones: epicMilestones,
     queue: queue ?? this.queue,
   );
 }
@@ -236,6 +247,7 @@ final class DispatchAssignment {
     this.fix,
     this.newSession = false,
     this.epic = false,
+    this.milestone,
     this.repair = false,
     this.returnTo,
   });
@@ -258,7 +270,9 @@ final class DispatchAssignment {
   /// epic whose items are all handed over or done, see
   /// [DispatchPlan.isRepair]) it is the epic's agent too, but its prompt is
   /// [repairFrame]: take up the replies on the epic's branch (typically a
-  /// rebase after a failed merge) without taking items.
+  /// rebase after a failed merge) without taking items. A [milestone] limits
+  /// the epic's agent to the items of that milestone (`backlog epic
+  /// --milestone`).
   ///
   /// The item's own agent and the agent of an action that changes code
   /// ([ActionDefinition.changesCode]) work on an item handed over before
@@ -279,10 +293,13 @@ final class DispatchAssignment {
     ReviewFix? fix,
     String? replies,
     bool epic = false,
+    String? milestone,
     bool repair = false,
   }) {
     repair = repair && action == null && fix == null;
     epic = (epic || repair) && action == null && fix == null;
+    if (!epic) milestone = null;
+    final scope = milestone == null ? '' : ' --milestone $milestone';
     final branch = branchFor(item);
     final status = item.item.status;
     final returnTo =
@@ -334,7 +351,7 @@ final class DispatchAssignment {
             ? 'You continue your earlier session on this epic. Since your last run: $news\n'
                   'Run `backlog show ${item.id}` to see it as it is now.'
             : 'Since the last agent on this epic: ${replies ?? 'no new comments.'}\n'
-                  'Run `backlog show ${item.id}` and `backlog epic ${item.id}` first.',
+                  'Run `backlog show ${item.id}` and `backlog epic ${item.id}$scope` first.',
         'publish': config.pr == null
             ? 'Never push and never open pull requests.'
             : 'Publish the branch with `backlog pr ${item.id} --force` (it pushes $branch and keeps the pull '
@@ -343,13 +360,17 @@ final class DispatchAssignment {
     } else if (epic) {
       prompt = epicFrame.render({
         ...values,
+        'scope': scope,
+        'items': milestone == null
+            ? 'all of its items'
+            : 'the items of the milestone $milestone and those without a milestone (leave the others as they are)',
         'context': session != null
             ? 'You continue your earlier session on this epic. Since your last run: $news\n'
                   'Run `backlog show ${item.id}` to see it as it is now. If the new comments only ask you '
                   'something, answer with `backlog comment ${item.id} "…"` and stop; otherwise go on as below.'
             : replies != null
             ? 'Since the last agent on this epic: $replies'
-            : 'First run `backlog instructions`, `backlog show ${item.id}` and `backlog epic ${item.id}`.',
+            : 'First run `backlog instructions`, `backlog show ${item.id}` and `backlog epic ${item.id}$scope`.',
         'finish': config.pr == null
             ? 'run `backlog set ${item.id} status=${values['handover']}` and stop.'
             : 'write the description of one pull request for the whole epic (what changed and why, the items it '
@@ -429,6 +450,7 @@ final class DispatchAssignment {
       fix: fix,
       newSession: session == null && replies != null && action == null && fix == null,
       epic: epic,
+      milestone: milestone,
       repair: repair,
       returnTo: returnTo,
     );
@@ -466,23 +488,25 @@ final class DispatchAssignment {
     label: 'epic repair prompt',
   );
 
-  /// What the agent implementing an epic is told: work through the items
-  /// with `backlog epic {id} --next`, one after another on {branch}, each
+  /// What the agent implementing an epic is told: work through {items}
+  /// with `backlog epic {id}{scope} --next` (`{scope}`: ` --milestone <m>`
+  /// for a run limited to one milestone), one after another on {branch}, each
   /// handed over to review; ask on the epic and stop when the rest waits
   /// for something outside it; finish the epic (`{finish}`: review, with
   /// `dispatcher.pr` after one pull request); `{publish}`: how its work may
   /// leave the worktree.
   static final epicFrame = TextTemplate(
-    'You are the coding agent {worktree}, implementing the epic {id} ("{title}") in this git worktree: all of its '
-    'items, one after another, in this one session and on the one branch {branch} (commit there and do not switch '
+    'You are the coding agent {worktree}, implementing the epic {id} ("{title}") in this git worktree: {items}, '
+    'one after another, in this one session and on the one branch {branch} (commit there and do not switch '
     'branches). The epic is claimed for you (BACKLOG_AGENT={worktree}); take no items outside it.\n'
     '{context}\n\n'
-    '1. Run `backlog epic {id} --next`. It claims the next item of the epic for you (the one you have in progress, '
-    'else the first that can start), puts it on {branch} and shows it. `backlog epic {id}` shows the whole plan.\n'
+    '1. Run `backlog epic {id}{scope} --next`. It claims the next item of the epic for you (the one you have in '
+    'progress, else the first that can start), puts it on {branch} and shows it. `backlog epic {id}{scope}` shows '
+    'the whole plan.\n'
     '2. Implement that item in small commits whose messages contain its id, tick off its checklist with '
     '`backlog check <item id> <number or text>` (never edit item files), then run '
     '`backlog set <item id> status=review` and go back to step 1. Items unblocked meanwhile come up by themselves.\n'
-    '3. When `backlog epic {id} --next` says nothing is left (every item handed over or done): {finish}\n'
+    '3. When `backlog epic {id}{scope} --next` says nothing is left (every item handed over or done): {finish}\n'
     '4. When it says nothing can start although items are left (they wait for something outside the epic: a '
     'dependency, an answer, overlapping work), ask on the epic with `backlog ask {id} "<what blocks which items, '
     'what is done>"`, leave every status as it is and stop; you will be resumed in this session with the answer.\n'
@@ -492,7 +516,7 @@ final class DispatchAssignment {
     'above the `## Discussion` section (never edit the comments).\n'
     '{publish}\n'
     '${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}',
-    known: const [...DispatcherConfig.promptPlaceholders, 'context', 'finish', 'publish'],
+    known: const [...DispatcherConfig.promptPlaceholders, 'scope', 'items', 'context', 'finish', 'publish'],
     label: 'epic prompt',
   );
 
@@ -615,6 +639,9 @@ final class DispatchAssignment {
   /// item even with open children and the items under it on its branch.
   final bool epic;
 
+  /// The milestone an [epic] run is limited to; null for all of the epic.
+  final String? milestone;
+
   /// The epic's agent takes up replies on an epic whose items are all
   /// handed over or done ([repairFrame]; [epic] is set too): it works on the
   /// epic's branch without taking items.
@@ -635,7 +662,7 @@ final class DispatchAssignment {
   /// `<id>@<worktree>` (with `+resume` when continuing a session); equal
   /// keys mean the same decision.
   String get key =>
-      '$id@${worktree.name}${resume == null ? '' : '+resume'}${newSession ? '+reply' : ''}${epic ? '+epic' : ''}${repair ? '+repair' : ''}'
+      '$id@${worktree.name}${resume == null ? '' : '+resume'}${newSession ? '+reply' : ''}${epic ? '+epic' : ''}${milestone == null ? '' : '@$milestone'}${repair ? '+repair' : ''}'
       '${action == null ? '' : ':${action!.name}'}'
       '${fix == null ? '' : '+fix'}';
 }
@@ -684,6 +711,7 @@ final class DispatchPlan {
     this.problems = const [],
     this.queuedReplies = const {},
     this.epics = const {},
+    this.epicMilestones = const {},
     this.queue = const [],
   });
 
@@ -820,7 +848,7 @@ final class DispatchPlan {
         planned.openChildCount > 0 &&
         !epics.contains(planned.id) &&
         !members.contains(planned.id) &&
-        !isRepair(snapshot, planned);
+        !isRepair(snapshot, planned, milestone: conditions.epicMilestones[planned.id]);
     final reasons = <ItemId, String>{};
     final left = <PlannedItem>[];
     // A person wrote to an agent: first, even when held (unless its branch is
@@ -922,7 +950,10 @@ final class DispatchPlan {
                 )
               : null,
           epic: epics.contains(candidate.id),
-          repair: replied.contains(candidate) && isRepair(snapshot, candidate),
+          milestone: conditions.epicMilestones[candidate.id],
+          repair:
+              replied.contains(candidate) &&
+              isRepair(snapshot, candidate, milestone: conditions.epicMilestones[candidate.id]),
         ),
       );
     }
@@ -973,6 +1004,10 @@ final class DispatchPlan {
                 : 'the agent continues after the action "${run.action}" ends',
       }),
       epics: Set.unmodifiable(epics),
+      epicMilestones: Map.unmodifiable({
+        for (final MapEntry(:key, :value) in conditions.epicMilestones.entries)
+          if (epics.contains(key)) key: value,
+      }),
       queue: List.unmodifiable(conditions.queue),
     );
   }
@@ -980,14 +1015,15 @@ final class DispatchPlan {
   /// Whether a reply on [planned] goes to its epic's agent in repair mode
   /// ([DispatchAssignment.repair]): it is unfinished, has children and a
   /// `branch` (its work was done on one branch, by an epic run), and all
-  /// items under it are handed over or done ([EpicPlan.finished]), so there
-  /// is nothing left to implement — only its branch to fix (e.g. a rebase
-  /// after a failed merge) or questions to answer.
-  static bool isRepair(BacklogSnapshot snapshot, PlannedItem planned) =>
+  /// items under it are handed over or done ([EpicPlan.finished]; those of
+  /// [milestone] when its run was limited to one), so there is nothing left
+  /// to implement — only its branch to fix (e.g. a rebase after a failed
+  /// merge) or questions to answer.
+  static bool isRepair(BacklogSnapshot snapshot, PlannedItem planned, {String? milestone}) =>
       !planned.isDone &&
       planned.openChildCount > 0 &&
       (planned.item.branch?.trim().isNotEmpty ?? false) &&
-      EpicPlan.of(snapshot, planned.id).finished;
+      EpicPlan.of(snapshot, planned.id, milestone: milestone).finished;
 
   /// Why a reply on an item with open children that no agent implements as
   /// an epic waits ([waitingReasons]).
@@ -1054,6 +1090,10 @@ final class DispatchPlan {
   /// Unfinished epics one agent implements ([DispatchConditions.epics]).
   final Set<ItemId> epics;
 
+  /// The milestone of each of [epics] whose run is limited to one
+  /// ([DispatchConditions.epicMilestones]).
+  final Map<ItemId, String> epicMilestones;
+
   /// Starts people asked for that wait, oldest first
   /// ([DispatchConditions.queue]).
   final List<QueuedStart> queue;
@@ -1077,7 +1117,7 @@ final class DispatchPlan {
   /// [epicStart], a prompt action) or an action's job; fails like those.
   ({DispatchAssignment? agent, ActionJob? job}) startOf(QueuedStart start) => switch (start.kind) {
     StartKind.agent => (agent: assignmentFor(start.item.value, fresh: start.fresh), job: null),
-    StartKind.epic => (agent: epicStart(start.item.value, fresh: start.fresh), job: null),
+    StartKind.epic => (agent: epicStart(start.item.value, fresh: start.fresh, milestone: start.milestone), job: null),
     StartKind.action => actionStart(start.item.value, start.action ?? '', trigger: ActionTrigger.request),
   };
 
@@ -1298,7 +1338,7 @@ final class DispatchPlan {
         '${planned.id} belongs to the epic $epic, which one agent implements on its branch; start $epic instead.',
       );
     }
-    final repair = isRepair(snapshot, planned);
+    final repair = isRepair(snapshot, planned, milestone: epicMilestones[planned.id]);
     if (!planned.isDone && planned.openChildCount > 0 && !epics.contains(planned.id) && !repair) {
       throw InvalidInputException(
         '${planned.id} has ${planned.openChildCount} open child item(s): implement it as an epic '
@@ -1315,7 +1355,7 @@ final class DispatchPlan {
     }
     // An epic one agent implements goes on as an epic.
     if (epics.contains(planned.id) && !planned.isReady && !replied && news == null) {
-      return epicStart(reference, fresh: fresh);
+      return epicStart(reference, fresh: fresh, milestone: epicMilestones[planned.id]);
     }
     if (!planned.isReady && !replied && news == null) throw _notReady(planned);
     final free = available;
@@ -1352,6 +1392,7 @@ final class DispatchPlan {
       create: target.isNew,
       replies: own == null ? news : null,
       epic: epics.contains(planned.id),
+      milestone: epicMilestones[planned.id],
       repair: repair,
     );
   }
@@ -1365,8 +1406,10 @@ final class DispatchPlan {
   /// checked out or in the first free (or new) worktree. Fails with
   /// `InvalidInputException` when it cannot start, `ClaimConflictException`
   /// when it is claimed, `UnavailableException` while something runs for it
-  /// or no worktree is free.
-  DispatchAssignment epicStart(String reference, {bool fresh = false}) {
+  /// or no worktree is free. A [milestone] limits the run to the items of
+  /// that milestone and those without one ([EpicPlan.milestone]); it must
+  /// be one of the workflow's.
+  DispatchAssignment epicStart(String reference, {bool fresh = false, String? milestone}) {
     final planned = snapshot[ItemReference.resolve(reference, snapshot.ids)]!;
     final id = planned.id;
     if (runFor(id) case final run?) {
@@ -1378,7 +1421,10 @@ final class DispatchPlan {
     if (epicOf(id) case final epic?) {
       throw InvalidInputException('$id belongs to the epic $epic, which one agent implements already.');
     }
-    final plan = EpicPlan.of(snapshot, id);
+    if (milestone != null && !snapshot.workflow.acceptsMilestone(milestone)) {
+      throw InvalidInputException('Unknown milestone "$milestone".');
+    }
+    final plan = EpicPlan.of(snapshot, id, milestone: milestone);
     if (plan.verdict == EpicVerdict.forbidden) {
       throw InvalidInputException('$id cannot be implemented as an epic: ${plan.problems.join(' ')}');
     }
@@ -1399,6 +1445,7 @@ final class DispatchPlan {
       resume: own == null ? null : session,
       create: target.isNew,
       epic: true,
+      milestone: plan.milestone,
     );
   }
 

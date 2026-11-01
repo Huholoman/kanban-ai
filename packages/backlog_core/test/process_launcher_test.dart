@@ -279,6 +279,24 @@ dispatcher:
     expect(later.assignments, isEmpty);
   });
 
+  test('an epic run limited to a milestone keeps its scope after it ended', () async {
+    await backlog.items.create(const NewItem(title: 'Epic', type: 'epic', status: 'todo'));
+    await backlog.items.create(const NewItem(title: 'One', parent: 'T-0001', status: 'todo', milestone: 'v0.2'));
+    await backlog.items.create(const NewItem(title: 'Two', parent: 'T-0001', status: 'todo', milestone: 'v0.3'));
+    await launcher.launch((await plan()).epicStart('T-0001', milestone: 'v0.2'));
+    final during = await plan();
+    expect(during.worktrees.first.run!.milestone, 'v0.2');
+    expect(during.epicMilestones, {ItemId('T-0001'): 'v0.2'});
+
+    await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+    await finish('T-0001', 0);
+    expect((await plan()).epicMilestones, {ItemId('T-0001'): 'v0.2'});
+    // An action that continues the epic's session keeps the scope too.
+    await launcher.launch((await plan()).actionStart('T-0001', 'Fix').agent!);
+    await finish('T-0001', 0);
+    expect((await plan()).epicMilestones, {ItemId('T-0001'): 'v0.2'});
+  });
+
   group('pull requests (dispatcher.pr)', () {
     late String remote;
 

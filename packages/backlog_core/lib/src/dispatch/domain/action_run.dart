@@ -95,6 +95,7 @@ final class QueuedStart {
     required this.since,
     this.action,
     this.fresh = false,
+    this.milestone,
     this.by,
     this.reason,
   });
@@ -105,6 +106,7 @@ final class QueuedStart {
     since: DateTime.parse(json['since']! as String),
     action: json['action'] as String?,
     fresh: json['fresh'] == true,
+    milestone: json['milestone'] as String?,
     by: json['by'] as String?,
     reason: json['reason'] as String?,
   );
@@ -119,6 +121,10 @@ final class QueuedStart {
   /// A new session instead of the item's last one (agent and epic).
   final bool fresh;
 
+  /// The milestone an epic's run is limited to ([StartKind.epic]); null for
+  /// all of it.
+  final String? milestone;
+
   /// Who asked, when known.
   final String? by;
 
@@ -128,12 +134,20 @@ final class QueuedStart {
   /// `Start agent`, `Implement epic`, `the action "AI review"`.
   String get what => switch (kind) {
     StartKind.agent => fresh ? 'Start fresh' : 'Start agent',
-    StartKind.epic => 'Implement epic',
+    StartKind.epic => milestone == null ? 'Implement epic' : 'Implement epic ($milestone)',
     StartKind.action => 'the action "$action"',
   };
 
-  QueuedStart withReason(String reason) =>
-      QueuedStart(item: item, kind: kind, since: since, action: action, fresh: fresh, by: by, reason: reason);
+  QueuedStart withReason(String reason) => QueuedStart(
+    item: item,
+    kind: kind,
+    since: since,
+    action: action,
+    fresh: fresh,
+    milestone: milestone,
+    by: by,
+    reason: reason,
+  );
 
   Map<String, Object?> toJson() => {
     'item': item.value,
@@ -141,6 +155,7 @@ final class QueuedStart {
     'since': since.toUtc().toIso8601String(),
     'action': ?action,
     if (fresh) 'fresh': true,
+    'milestone': ?milestone,
     'by': ?by,
     'reason': ?reason,
   };

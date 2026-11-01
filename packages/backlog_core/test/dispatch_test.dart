@@ -586,6 +586,72 @@ dispatcher:
       expect(during.assignmentFor('E-1').epic, isTrue);
     });
 
+    test('an epic run limited to a milestone tells its agent the scope and keeps it for replies', () {
+      final items = [
+        item('E-1', type: 'epic'),
+        item('T-1', parent: 'E-1', milestone: 'v0.2'),
+        item('T-2', parent: 'E-1', milestone: 'v0.3', dependsOn: ['T-1']),
+      ];
+      final start = _plan(items).epicStart('E-1', milestone: 'v0.2');
+      expect(start.key, 'E-1@w1+epic@v0.2');
+      expect(start.milestone, 'v0.2');
+      expect(start.branch, 'agent/E-1');
+      expect(start.prompt, contains('the items of the milestone v0.2 and those without a milestone'));
+      expect(start.prompt, contains('`backlog epic E-1 --milestone v0.2 --next`'));
+      expect(_plan(items).epicStart('E-1').prompt, contains('all of its items'));
+
+      // v0.3 alone would wait for T-1 of v0.2.
+      expect(
+        () => _plan(items).epicStart('E-1', milestone: 'v0.3'),
+        throwsA(isA<InvalidInputException>().having((e) => e.message, 'message', contains('outside the scope v0.3'))),
+      );
+
+      const reply = '## Discussion\n\n### tobik · 2026-10-29 11:30:00 UTC\n\nUse CSV.\n';
+      final replied = _plan(
+        [items.first.copyWith(body: reply), ...items.skip(1)],
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(
+          starts: {ItemId('E-1'): (at: DateTime.utc(2026, 10, 29, 11), worktree: 'w2')},
+          epics: {ItemId('E-1')},
+          epicMilestones: {ItemId('E-1'): 'v0.2'},
+        ),
+      );
+      final again = replied.assignments.single;
+      expect(again.key, 'E-1@w1+reply+epic@v0.2');
+      expect(again.prompt, contains('`backlog epic E-1 --milestone v0.2 --next`'));
+      expect(replied.epicMilestones, {ItemId('E-1'): 'v0.2'});
+
+      final queued = QueuedStart(
+        item: ItemId('E-1'),
+        kind: StartKind.epic,
+        since: DateTime.utc(2026),
+        milestone: 'v0.2',
+      );
+      expect(QueuedStart.fromJson(queued.toJson()).milestone, 'v0.2');
+      expect(queued.what, 'Implement epic (v0.2)');
+      expect(_plan(items).startOf(queued).agent!.milestone, 'v0.2');
+    });
+
+    test('an epic whose milestone is finished goes to repair for replies, though later milestones are left', () {
+      const merge = '## Discussion\n\n### kanban-ai · 2026-10-29 11:30:00 UTC\n\nMerging failed.\n';
+      final items = [
+        item('E-1', type: 'epic', status: 'review', body: merge).copyWith(branch: () => 'agent/E-1'),
+        item('T-1', parent: 'E-1', milestone: 'v0.2', status: 'review'),
+        item('T-2', parent: 'E-1', milestone: 'v0.3'),
+      ];
+      DispatchPlan plan(Map<ItemId, String> milestones) => _plan(
+        items,
+        workflow: _resumingWorkflow(),
+        conditions: DispatchConditions(
+          starts: {ItemId('E-1'): (at: DateTime.utc(2026, 10, 29, 10), worktree: 'w2')},
+          epics: {ItemId('E-1')},
+          epicMilestones: milestones,
+        ),
+      );
+      expect(plan({ItemId('E-1'): 'v0.2'}).assignments.single.repair, isTrue);
+      expect(plan(const {}).assignments.single.repair, isFalse);
+    });
+
     test('an epic that cannot be implemented, is claimed or has no free worktree does not start', () {
       expect(
         () => _plan([item('E-1', type: 'epic')]).epicStart('E-1'),

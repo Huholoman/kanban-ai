@@ -126,16 +126,18 @@ final class Dispatcher {
   /// it, on its branch — now, whatever the mode ([DispatchPlan.epicStart]);
   /// returns what was started. Fails like [start], and with
   /// `InvalidInputException` when the epic cannot be implemented
-  /// ([EpicVerdict.forbidden]).
-  Future<DispatchAssignment> startEpic(String reference, {bool fresh = false}) => _serialized(() async {
-    final plan = await _evaluate(launchAuto: false);
-    if (plan == null) throw const NotFoundException('No dispatcher is configured in backlog.yaml.');
-    final assignment = plan.epicStart(reference, fresh: fresh);
-    await _launcher.launch(assignment);
-    _launched.add(assignment.key);
-    await _evaluate();
-    return assignment;
-  });
+  /// ([EpicVerdict.forbidden]). A [milestone] limits it to the items of
+  /// that milestone and those without one.
+  Future<DispatchAssignment> startEpic(String reference, {bool fresh = false, String? milestone}) =>
+      _serialized(() async {
+        final plan = await _evaluate(launchAuto: false);
+        if (plan == null) throw const NotFoundException('No dispatcher is configured in backlog.yaml.');
+        final assignment = plan.epicStart(reference, fresh: fresh, milestone: milestone);
+        await _launcher.launch(assignment);
+        _launched.add(assignment.key);
+        await _evaluate();
+        return assignment;
+      });
 
   /// Starts the action [name] on [reference] now, as a person asked
   /// ([ActionTrigger.request]), whatever the mode; returns what started
@@ -168,6 +170,7 @@ final class Dispatcher {
       since: start.since,
       action: start.action,
       fresh: start.fresh,
+      milestone: start.milestone,
       by: start.by,
     );
     QueuedStart? queued;
