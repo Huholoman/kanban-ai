@@ -7,7 +7,8 @@ import '../application/next_step.dart';
 
 /// The next step of an item ([NextStep]) as one line, *Next: …*, with the
 /// buttons that do it: *Open PR*, the offered actions ([onAction]), *Start
-/// agent* ([onStart]) and *Open X-1* for blockers ([onOpen]). Buttons
+/// agent* ([onStart]), *Implement epic* ([onImplementEpic]) and *Open X-1*
+/// for blockers ([onOpen]). Buttons
 /// without a callback are left out; [busy] disables them.
 class NextStepLine extends StatelessWidget {
   const NextStepLine(
@@ -16,6 +17,7 @@ class NextStepLine extends StatelessWidget {
     required this.item,
     this.onAction,
     this.onStart,
+    this.onImplementEpic,
     this.onOpen,
     this.busy = false,
   });
@@ -26,6 +28,7 @@ class NextStepLine extends StatelessWidget {
   final String item;
   final ValueChanged<String>? onAction;
   final VoidCallback? onStart;
+  final VoidCallback? onImplementEpic;
   final ValueChanged<String>? onOpen;
   final bool busy;
 
@@ -65,6 +68,13 @@ class NextStepLine extends StatelessWidget {
           label: 'Start agent',
           icon: Icons.play_arrow,
           onPressed: busy ? null : onStart,
+        ),
+      if (step.epic && onImplementEpic != null)
+        SecondaryButton(
+          key: ValueKey('next-epic-$item'),
+          label: 'Implement epic',
+          icon: Icons.account_tree_outlined,
+          onPressed: busy ? null : onImplementEpic,
         ),
       if (onOpen case final open?)
         for (final other in step.open)

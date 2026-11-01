@@ -30,18 +30,30 @@ enum NextStepKind {
 
 /// The concrete next step of an item, one sentence ([text]) and what does
 /// it: the workflow [actions] to offer by name, the pull request to open
-/// ([pr]), *Start agent* ([start]) and the items to open ([open]). Derived
-/// in one place for the badge's tooltip, the agent box of the detail and the
-/// Dashboard.
+/// ([pr]), *Start agent* ([start]), *Implement epic* ([epic]) and the items
+/// to open ([open]); [quotesProblem] when [text] starts with the first
+/// problem of the last run. Derived in one place for the badge's tooltip,
+/// the agent box of the detail and the Dashboard.
 final class NextStep {
-  const NextStep(this.kind, this.text, {this.actions = const [], this.pr, this.start = false, this.open = const []});
+  const NextStep(
+    this.kind,
+    this.text, {
+    this.actions = const [],
+    this.pr,
+    this.start = false,
+    this.epic = false,
+    this.open = const [],
+    this.quotesProblem = false,
+  });
 
   final NextStepKind kind;
   final String text;
   final List<String> actions;
   final String? pr;
   final bool start;
+  final bool epic;
   final List<String> open;
+  final bool quotesProblem;
 
   /// The next step of [item] by the dispatcher's [plan] and the [workflow]'s
   /// actions; [question] is the open question of an agent, when known. Null
@@ -63,21 +75,29 @@ final class NextStep {
       );
     }
     final problems = plan.problemsOf(id);
-    if (problems.isNotEmpty) {
-      final retry = offered.where((a) => !a.review && a.kind != 'prompt').map((a) => a.name).toList();
-      final more = problems.length > 1 ? ' (and ${problems.length - 1} more)' : '';
+    final problem = problems.isEmpty
+        ? null
+        : '${problems.first.trim()}${problems.length > 1 ? ' (and ${problems.length - 1} more)' : ''}';
+    // The problems are mostly the agent's (a failed exit, denied tool calls,
+    // no pull request): in review the work still waits to be looked through.
+    final review = item.status == Ball.reviewStatus;
+    if (problem != null && !review) {
+      final then = [
+        for (final a in offered)
+          if (!a.review && a.kind != 'prompt') a.name,
+      ];
       return NextStep(
         NextStepKind.fix,
-        '${problems.first.trim()}$more – fix it, then '
-        '${retry.isEmpty ? 'start the agent again' : 'run ${_names(retry)} again'}',
-        actions: retry,
-        start: retry.isEmpty && item.ready,
+        '$problem – fix it, then ${then.isEmpty ? 'start the agent again' : 'run ${_names(then)}'}',
+        actions: then,
+        start: then.isEmpty && item.ready,
+        quotesProblem: true,
       );
     }
-    if (plan.heldReason(id) case final held?) {
+    if (plan.heldReason(id) case final held? when problem == null) {
       return NextStep(NextStepKind.held, 'Held: $held – start the agent again when it can go on', start: item.ready);
     }
-    if (item.status == Ball.reviewStatus) return _review(item, offered);
+    if (review) return _review(item, offered, problem: problem);
     if (ball != null) return null;
     if (item.blocked && item.blockedBy.isNotEmpty) {
       return NextStep(
@@ -88,13 +108,20 @@ final class NextStep {
     }
     if (item.ready && item.claim == null && plan.isManual && plan.runFor(id) == null) {
       return item.children.total > 0
-          ? const NextStep(NextStepKind.start, 'Ready and nothing runs – Implement epic')
+          ? const NextStep(NextStepKind.start, 'Ready and nothing runs – Implement epic', epic: true)
           : const NextStep(NextStepKind.start, 'Ready and nothing runs – Start agent', start: true);
     }
     return null;
   }
 
-  static NextStep _review(ItemDto item, List<ActionDto> offered) {
+  /// The step of an item in review; a [problem] of the last run comes first.
+  static NextStep _review(ItemDto item, List<ActionDto> offered, {String? problem}) {
+    final step = _reviewOf(item, offered);
+    if (problem == null) return step;
+    return NextStep(step.kind, '$problem · ${step.text}', actions: step.actions, pr: step.pr, quotesProblem: true);
+  }
+
+  static NextStep _reviewOf(ItemDto item, List<ActionDto> offered) {
     final reviews = [
       for (final a in offered)
         if (a.review) a.name,

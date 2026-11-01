@@ -13,6 +13,7 @@ import '../application/next_step.dart';
 import 'agent_log_view.dart';
 import 'ball_badge.dart';
 import 'dispatch_scope.dart';
+import 'epic_panel.dart';
 import 'next_step_line.dart';
 
 /// `14:05 (12 min)`: when [time] was, and how long ago.
@@ -262,6 +263,9 @@ class _AgentPanelState extends State<AgentPanel> {
                 busy: !dispatch.canRunAction(id),
                 onAction: (name) => unawaited(dispatch.runAction(id, name)),
                 onStart: dispatch.canStart(widget.item) ? () => unawaited(dispatch.startAgent(id)) : null,
+                onImplementEpic: dispatch.canImplementEpic(widget.item)
+                    ? () => unawaited(confirmEpicStart(context, dispatch, id))
+                    : null,
                 onOpen: widget.onOpen,
               ),
             ),
