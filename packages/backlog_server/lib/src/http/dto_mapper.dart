@@ -3,6 +3,20 @@ import 'package:backlog_core/backlog_core.dart';
 
 /// Translates core domain objects into the API contract.
 abstract final class DtoMapper {
+  static HistoryEntryDto historyEntry(HistoryEntry entry) => HistoryEntryDto(
+    kind: entry.kind.name,
+    at: entry.at,
+    author: entry.author,
+    field: entry.field,
+    before: entry.before,
+    after: entry.after,
+    text: entry.text,
+    tag: entry.tag,
+    commit: entry.commit,
+    uncommitted: entry.uncommitted,
+    log: entry.log,
+  );
+
   static WorkflowDto workflow(Workflow workflow) => WorkflowDto(
     statuses: [
       for (final status in workflow.statuses)
@@ -66,6 +80,8 @@ abstract final class DtoMapper {
       touches: item.touches,
       created: item.created,
       updated: item.updated,
+      createdAt: ItemTime.hasTime(item.created) ? item.createdAt : null,
+      updatedAt: ItemTime.hasTime(item.updated) ? item.updatedAt : null,
       extra: item.extra,
       ready: planned.isReady,
       blocked: planned.isBlocked,

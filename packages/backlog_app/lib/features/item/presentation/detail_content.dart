@@ -14,7 +14,7 @@ import '../application/item_body.dart';
 import '../application/item_controller.dart';
 import 'ask_text.dart';
 import 'detail_relations.dart';
-import 'discussion_section.dart';
+import 'history_section.dart';
 
 /// The scrolling part of the detail: title, state, fields, children,
 /// relations and the Markdown body, all editable.
@@ -128,16 +128,9 @@ class DetailContent extends StatelessWidget {
               const SizedBox(height: 16),
               _Body(body: item.body ?? '', onSave: controller.saveBody, enabled: !controller.busy),
               const SizedBox(height: 16),
-              DiscussionSection(controller: controller),
+              ActivitySection(controller: controller),
               const SizedBox(height: 12),
-              Text(
-                [
-                  ?item.path,
-                  if (item.created != null) 'created ${item.created}',
-                  if (item.updated != null) 'updated ${item.updated}',
-                ].join(' · '),
-                style: theme.textTheme.bodySmall,
-              ),
+              _Times(item: item),
               for (final MapEntry(:key, :value) in item.extra.entries)
                 Text('$key: $value', style: theme.textTheme.bodySmall),
             ],
@@ -561,6 +554,35 @@ class _Status extends StatelessWidget {
     final local = moment.toLocal();
     String two(int value) => value.toString().padLeft(2, '0');
     return '${local.day}.${local.month}. ${two(local.hour)}:${two(local.minute)}';
+  }
+}
+
+/// Where the item's file is, when it was created and last changed: times
+/// relative to now in local time (exact in the tooltip), a day from an older
+/// file as it is.
+class _Times extends StatelessWidget {
+  const _Times({required this.item});
+
+  final ItemDto item;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodySmall;
+    Widget? time(String label, String? value, DateTime? at) => switch ((value, at)) {
+      (_, final DateTime at) => TimeText(at, prefix: '$label ', style: style),
+      (final String value, null) => Text('$label $value', style: style),
+      _ => null,
+    };
+    final parts = [
+      if (item.path case final path?) Text(path, style: style),
+      ?time('created', item.created, item.createdAt),
+      ?time('updated', item.updated, item.updatedAt),
+    ];
+    return Wrap(
+      children: [
+        for (final (index, part) in parts.indexed) ...[if (index > 0) Text(' · ', style: style), part],
+      ],
+    );
   }
 }
 

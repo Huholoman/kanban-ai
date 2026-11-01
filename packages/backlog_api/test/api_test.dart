@@ -95,6 +95,9 @@ void main() {
       dependsOn: const ['T-2'],
       labels: const ['infra'],
       extra: const {'estimate': '3d'},
+      created: '2026-10-30',
+      updated: '2026-10-31T20:27:12Z',
+      updatedAt: DateTime.utc(2026, 10, 31, 20, 27, 12),
       blocked: true,
       blockedBy: const ['T-2'],
       touches: const ['lib/*.{dart,yaml}'],
@@ -117,6 +120,22 @@ void main() {
       expect(copy.toJson(), item.toJson());
       expect(copy.children.toString(), '1/3');
       expect(copy.isClaimed, isTrue);
+      expect(copy.createdAt, isNull);
+      expect(copy.updatedAt, DateTime.utc(2026, 10, 31, 20, 27, 12));
+    });
+
+    test('history entry', () {
+      final entry = HistoryEntryDto(
+        kind: 'field',
+        at: DateTime.utc(2026, 10, 31, 20, 27, 12),
+        author: 'tobik',
+        field: 'status',
+        before: 'todo',
+        after: 'review',
+        commit: 'abc',
+        uncommitted: true,
+      );
+      expect(roundTrip(entry.toJson(), HistoryEntryDto.fromJson).toJson(), entry.toJson());
     });
 
     test('detail, view and workflow', () {

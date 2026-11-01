@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:backlog_cli/backlog_cli.dart';
+import 'package:backlog_cli/src/render/text_output.dart';
 import 'package:backlog_core/backlog_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -164,6 +165,21 @@ void main() {
     expect((await backlog(['show', id])).out, contains('touches: lib/payments/, lib/*.{dart,yaml}\n'));
   });
 
+  test('times: UTC in the file and JSON, local time in show; a day from an older file stays', () async {
+    final id = await create('Payments');
+    final json = (await backlog(['--json', 'show', id])).json! as Map;
+    expect(json['created'], '2026-10-29T12:00:00Z');
+    expect(json['created_at'], '2026-10-29T12:00:00.000Z');
+    expect(json['updated_at'], '2026-10-29T12:00:00.000Z');
+    expect((await backlog(['show', id])).out, contains('created: ${TextOutput.time(DateTime.utc(2026, 10, 29, 12))}'));
+
+    expect((await backlog(['set', id, 'created=2026-10-01'])).exitCode, 0);
+    final old = (await backlog(['--json', 'show', id])).json! as Map;
+    expect(old['created'], '2026-10-01');
+    expect(old['created_at'], isNull);
+    expect((await backlog(['show', id])).out, contains('created: 2026-10-01 '));
+  });
+
   test('an item overlapping work in progress waits: list, ready, show, JSON', () async {
     final doing = await create('Payments', ['-s', 'in-progress', '--touches', 'lib/pay/']);
     final waiting = await create('Stripe', ['-s', 'todo', '--touches', 'lib/pay/stripe.dart']);
@@ -304,6 +320,37 @@ void main() {
     expect((await backlog(['check', id, 'export'])).err, contains('matches 2 checklist items'));
     expect((await backlog(['check', await create('Empty'), '1'])).err, contains('has no checklist'));
     expect((await backlog(['check'])).exitCode, ExitCode.usage);
+  });
+
+  test('history: text and JSON, filters, runs from the logs of a registered project', () async {
+    final env = {
+      'HOME': p.join(workspace.path, 'home'),
+      'XDG_CONFIG_HOME': p.join(workspace.path, 'config'),
+      'KANBAN_AI_STATE_DIR': p.join(workspace.path, 'state'),
+    };
+    final id = await create('Payments', ['-s', 'todo']);
+    expect((await backlog(['ask', id, 'CSV or JSON?', '--as', 'm2'])).exitCode, 0);
+    final added = await backlog(['--json', 'projects', 'add'], env: env);
+    expect(added.exitCode, 0, reason: '$added');
+    final project = (added.json! as Map)['id'] as String;
+    final logs = await Directory(p.join(workspace.path, 'state', 'logs', project)).create(recursive: true);
+    File(p.join(logs.path, '$id-20261029T130000Z.log')).writeAsStringSync(
+      '# kanban-ai: claude for $id in wt-1 (/w), branch agent/$id, started 2026-10-29T13:00:00.000Z\n'
+      '# kanban-ai: the agent exited with code 0; $id stays todo\n',
+    );
+
+    final text = await backlog(['history', id], env: env);
+    expect(text.exitCode, 0, reason: '$text');
+    expect(text.out, contains('created (todo)'));
+    expect(text.out, contains('m2'));
+    expect(text.out, contains('question: CSV or JSON?'));
+    expect(text.out, contains('wt-1  agent: the agent exited with code 0; $id stays todo'));
+
+    final json = (await backlog(['--json', 'history', id, '--only', 'runs'], env: env)).json! as List;
+    expect(json.single, containsPair('kind', 'run'));
+    expect(json.single, containsPair('at', '2026-10-29T13:00:00.000Z'));
+    expect((await backlog(['--json', 'history', id, '--only', 'comments'])).json, [containsPair('author', 'm2')]);
+    expect((await backlog(['history', id, '--only', 'nope'])).exitCode, ExitCode.usage);
   });
 
   test('projects: add the backlog found here or a given one, list, pin, remove', () async {

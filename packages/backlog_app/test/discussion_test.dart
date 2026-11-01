@@ -154,4 +154,59 @@ void main() {
     await _reply(tester, 'CSV.', 'send-comment');
     expect(_key('note-only'), findsNothing, reason: 'nothing left that a note would keep quiet');
   });
+
+  testWidgets('the History tab lists who changed what, newest first, and filters', (tester) async {
+    final api = await _pump(tester);
+    api.histories['Q-1'] = [
+      HistoryEntryDto(
+        kind: 'created',
+        at: DateTime.utc(2026, 10, 30, 9),
+        author: 'tobik',
+        after: 'todo',
+        commit: 'abcdef123',
+      ),
+      HistoryEntryDto(kind: 'run', at: DateTime.utc(2026, 10, 30, 10), author: 'w1', text: 'the agent exited'),
+      HistoryEntryDto(
+        kind: 'field',
+        at: DateTime.utc(2026, 10, 31, 9),
+        field: 'status',
+        before: 'todo',
+        after: 'in-progress',
+        uncommitted: true,
+      ),
+      _historyComment,
+    ];
+    expect(find.text('Comments · 1'), findsOneWidget);
+    await tester.ensureVisible(_key('tab-history'));
+    await tester.tap(_key('tab-history'));
+    await tester.pumpAndSettle();
+    expect(_key('discussion'), findsNothing);
+    expect(find.text('status: todo → in-progress'), findsOneWidget);
+    expect(find.text('uncommitted'), findsOneWidget);
+    expect(find.text('abcdef1'), findsOneWidget);
+    expect(find.text('agent: the agent exited'), findsOneWidget);
+    final texts = [
+      for (final key in ['history-0', 'history-3'])
+        tester.widgetList<Text>(find.descendant(of: _key(key), matching: find.byType(Text))).last.data,
+    ];
+    expect(texts, ['question: CSV or JSON?', 'created the item (todo)'], reason: 'newest first');
+
+    await tester.tap(_key('history-filter-status'));
+    await tester.pumpAndSettle();
+    expect(api.historyRequests.last, 'status');
+    expect(find.text('agent: the agent exited'), findsNothing);
+    expect(find.text('status: todo → in-progress'), findsOneWidget);
+
+    await tester.tap(_key('tab-comments'));
+    await tester.pumpAndSettle();
+    expect(_key('discussion'), findsOneWidget);
+  });
 }
+
+final _historyComment = HistoryEntryDto(
+  kind: 'comment',
+  at: DateTime.utc(2026, 10, 31, 10),
+  author: 'w1',
+  text: 'CSV or JSON?',
+  tag: 'question',
+);

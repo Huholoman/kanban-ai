@@ -145,8 +145,6 @@ class _Comment extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = BoardTokens.of(context);
     final small = Theme.of(context).textTheme.bodySmall;
-    final local = comment.at.toLocal();
-    String two(int value) => value.toString().padLeft(2, '0');
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Column(
@@ -160,10 +158,7 @@ class _Comment extends StatelessWidget {
                 comment.author,
                 style: small?.copyWith(color: tokens.text, fontWeight: FontWeight.w600),
               ),
-              Text(
-                '${local.day}.${local.month}. ${two(local.hour)}:${two(local.minute)}',
-                style: small?.copyWith(color: tokens.muted),
-              ),
+              TimeText(comment.at, style: small?.copyWith(color: tokens.muted)),
               if (comment.note) Tag('note', icon: Icons.sticky_note_2_outlined, color: tokens.muted),
               if (comment.review case final review?)
                 Tag(

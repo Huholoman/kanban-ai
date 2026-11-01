@@ -21,6 +21,8 @@ List<ItemDto> _tree() => [
   item('T-3', parent: 'T-1'),
   item('W-1', status: 'in-progress', touches: ['lib/pay/']),
   item('W-2', touches: ['lib/pay/stripe.dart', 'docs/*.{md,txt}'], conflictsWith: ['W-1']),
+  item('D-1', created: '2026-10-01'),
+  item('D-2', created: 'set by the test', createdAt: DateTime.now().subtract(const Duration(minutes: 5))),
 ];
 
 Future<FakeBacklogApi> _pumpDetail(
@@ -201,6 +203,19 @@ void main() {
       await _tap(tester, _key('conflict-W-1'));
       expect(find.text('Holds up'), findsOneWidget);
       expect(_key('waiting-W-2'), findsOneWidget);
+    });
+
+    testWidgets('created: relative local time with the exact one in a tooltip', (tester) async {
+      await _pumpDetail(tester, 'D-2');
+      final created = find.text('created 5 min ago');
+      await tester.ensureVisible(created);
+      expect(created, findsOneWidget);
+      expect(find.ancestor(of: created, matching: find.byType(Tooltip)), findsOneWidget);
+    });
+
+    testWidgets('created: a day from an older file as it is', (tester) async {
+      await _pumpDetail(tester, 'D-1');
+      expect(find.text('created 2026-10-01'), findsOneWidget);
     });
 
     testWidgets('touches are chips: removed with x, added from the + chip', (tester) async {

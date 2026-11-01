@@ -8,6 +8,7 @@ import '../model/agent_log_update_dto.dart';
 import '../model/discussion_dto.dart';
 import '../model/dispatch_dto.dart';
 import '../model/epic_dto.dart';
+import '../model/history_dto.dart';
 import '../model/item_dto.dart';
 import '../model/json.dart';
 import '../model/misc_dto.dart';
@@ -101,6 +102,10 @@ final class HttpBacklogApi implements BacklogApi {
   Future<DispatchDto> startAgent(String reference, {bool fresh = false}) async => DispatchDto.fromJson(
     asJson(await _send('POST', ApiPaths.dispatchStart, DispatchRequest(reference, fresh: fresh).toJson())),
   );
+
+  @override
+  Future<List<HistoryEntryDto>> history(String reference, {String? only}) async =>
+      _list(await _get(ApiPaths.history(reference), query: {'only': ?only})).map(HistoryEntryDto.fromJson).toList();
 
   @override
   Future<EpicDto> epic(String reference) async => EpicDto.fromJson(asJson(await _get(ApiPaths.epic(reference))));

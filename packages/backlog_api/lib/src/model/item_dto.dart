@@ -76,6 +76,8 @@ final class ItemDto {
     this.touches = const [],
     this.created,
     this.updated,
+    this.createdAt,
+    this.updatedAt,
     this.extra = const {},
     this.ready = false,
     this.blocked = false,
@@ -117,6 +119,14 @@ final class ItemDto {
       touches: json.strings('touches'),
       created: json.optionalString('created'),
       updated: json.optionalString('updated'),
+      createdAt: switch (json.optionalString('created_at')) {
+        null => null,
+        final at => DateTime.parse(at),
+      },
+      updatedAt: switch (json.optionalString('updated_at')) {
+        null => null,
+        final at => DateTime.parse(at),
+      },
       extra: json.optionalObject('extra') ?? const {},
       ready: json.boolean('ready'),
       blocked: json.boolean('blocked'),
@@ -154,8 +164,16 @@ final class ItemDto {
 
   /// Paths and globs in the code repository the work will change.
   final List<String> touches;
+
+  /// `created` and `updated` as written in the file: a UTC instant, or a
+  /// day (`2026-10-31`) in older files.
   final String? created;
   final String? updated;
+
+  /// [created] and [updated] as instants (UTC); null when the file has only a
+  /// day or nothing.
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
   final Json extra;
   final bool ready;
   final bool blocked;
@@ -211,6 +229,8 @@ final class ItemDto {
     'touches': touches,
     'created': created,
     'updated': updated,
+    'created_at': createdAt?.toUtc().toIso8601String(),
+    'updated_at': updatedAt?.toUtc().toIso8601String(),
     'extra': extra,
     'ready': ready,
     'blocked': blocked,

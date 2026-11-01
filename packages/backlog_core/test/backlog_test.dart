@@ -51,7 +51,8 @@ void main() {
       expect(p.basename(path!), 'T-0002-zurich-db-backups.md');
       final text = File(path).readAsStringSync();
       expect(text, contains('parent: T-0001'));
-      expect(text, contains('created: 2026-10-29'));
+      expect(text, contains('created: 2026-10-29T12:00:00Z\n'));
+      expect(text, contains('updated: 2026-10-29T12:00:00Z\n'));
       expect((await backlog.items.get('0002')).labels, ['infra']);
     });
 
@@ -85,8 +86,15 @@ void main() {
       expect(updated.dependsOn, [a.id]);
       expect(updated.labels, ['y']);
       expect(updated.extra['estimate'], '2d');
-      expect(updated.updated, '2026-10-30');
+      expect(updated.updated, '2026-10-30T12:00:00Z');
       expect(File(path).readAsStringSync(), contains('Hand-written notes.'));
+      expect(File(path).readAsStringSync(), contains('updated: 2026-10-30T12:00:00Z\n'));
+
+      clock.advance(const Duration(minutes: 5));
+      final before = File(path).readAsStringSync();
+      final unchanged = await backlog.items.update('0002', [FieldChange.parse('labels=y')]);
+      expect(unchanged.updated, '2026-10-30T12:00:00Z', reason: 'a change that changes nothing keeps updated');
+      expect(File(path).readAsStringSync(), before);
 
       await expectLater(
         () => backlog.items.update('0002', [FieldChange.parse('depends_on+=0002')]),

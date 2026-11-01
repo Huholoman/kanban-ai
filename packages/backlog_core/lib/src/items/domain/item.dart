@@ -1,7 +1,10 @@
+import 'package:collection/collection.dart';
+
 import '../../shared/errors.dart';
 import 'checklist.dart';
 import 'discussion.dart';
 import 'item_id.dart';
+import 'item_time.dart';
 
 /// A unit of planned work: an epic, story, task, bug, decision or idea.
 ///
@@ -89,8 +92,14 @@ final class Item {
   /// Paths and globs in the code repository the work is expected to change
   /// (see `PathGlob`); open items overlapping active ones wait for them.
   final List<String> touches;
+
+  /// When the item was created and last changed, as written in the file
+  /// (see [ItemTime]: a UTC instant, or a day in older files).
   final String? created;
   final String? updated;
+
+  DateTime? get createdAt => ItemTime.parse(created);
+  DateTime? get updatedAt => ItemTime.parse(updated);
 
   /// Unknown front-matter keys, kept so that rewriting a file never loses them.
   final Map<String, Object?> extra;
@@ -145,6 +154,34 @@ final class Item {
     extra: extra ?? this.extra,
     body: body ?? this.body,
   );
+
+  /// This item with `updated` set to [now] when it differs from [before] in
+  /// anything else; unchanged otherwise, so that a change that changes
+  /// nothing leaves the file alone.
+  Item touchedSince(Item before, DateTime now) =>
+      _sameAs(before) ? copyWith(updated: () => before.updated) : copyWith(updated: () => ItemTime.format(now));
+
+  static const _equality = DeepCollectionEquality();
+
+  bool _sameAs(Item other) =>
+      id == other.id &&
+      title == other.title &&
+      type == other.type &&
+      status == other.status &&
+      priority == other.priority &&
+      milestone == other.milestone &&
+      parent == other.parent &&
+      _equality.equals(dependsOn, other.dependsOn) &&
+      _equality.equals(related, other.related) &&
+      assignee == other.assignee &&
+      branch == other.branch &&
+      pr == other.pr &&
+      _equality.equals(labels, other.labels) &&
+      _equality.equals(docs, other.docs) &&
+      _equality.equals(touches, other.touches) &&
+      created == other.created &&
+      _equality.equals(extra, other.extra) &&
+      body == other.body;
 
   @override
   String toString() => '$id $title';

@@ -1,6 +1,7 @@
 import '../../claims/domain/claim.dart';
 import '../../items/domain/item.dart';
 import '../../items/domain/item_id.dart';
+import '../../items/domain/item_time.dart';
 import '../../items/domain/path_glob.dart';
 import '../../workflow/domain/workflow.dart';
 import 'planned_item.dart';
@@ -185,7 +186,7 @@ final class BacklogSnapshot {
   static int compareDefault(Workflow workflow, PlannedItem a, PlannedItem b) {
     final byPriority = workflow.priorityRank(a.item.priority).compareTo(workflow.priorityRank(b.item.priority));
     if (byPriority != 0) return byPriority;
-    final byCreated = (a.item.created ?? '9999').compareTo(b.item.created ?? '9999');
+    final byCreated = ItemTime.compare(a.item.created, b.item.created);
     if (byCreated != 0) return byCreated;
     return a.id.compareTo(b.id);
   }

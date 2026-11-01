@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 
 import '../../claims/domain/claim.dart';
+import '../../history/domain/item_history.dart';
 import '../../items/domain/discussion.dart';
 import '../../items/domain/item_id.dart';
 import '../../planning/domain/backlog_snapshot.dart';
@@ -1242,6 +1243,9 @@ abstract class AgentLauncher {
   /// Where the log of the agent running for [item] is, else that of its
   /// last run; null when there is none. For following a log as it grows.
   Future<AgentLogSource?> agentLogSource(ItemId item) async => null;
+
+  /// The agent and action runs of [item] it has logs of, oldest first.
+  Future<List<RunRecord>> runsOf(ItemId item) async => const [];
 
   /// Starts background work (watching processes); [onChange] is called when
   /// something the plan depends on changed outside the backlog files.
