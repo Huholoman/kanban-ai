@@ -201,6 +201,8 @@ backlog lint                    # before ending the session
 
 **Touches keep agents apart:** an open item whose `touches` overlap the `touches` of an item in an active status (in progress, review) *waits for* it — `backlog list` shows `waits for MA-7f3a (touches overlap)`, JSON has `conflicting` and `conflicts_with`. It is not ready, so `next` skips it and `claim` needs `--force`, until the other item is done or released. Items without `touches` never wait. An item in an active status (in progress, review) also holds the files its branch has really changed (`git diff <base>...<branch>`, where `base` is `dispatcher.base`, default `main`), even when its `touches` miss them or it has none; `backlog show` lists them as `changed on its branch`, JSON as `changed_files`. Two items in progress that overlap are a lint warning.
 
+**MCP clients** (Claude desktop or mobile, other clients without a shell) reach the backlog through the server: `backlog-server` speaks MCP over streamable HTTP at `/mcp`, one endpoint for every project of the server. Its tools are `projects`, `instructions`, `ready`, `show`, `next`, `claim`, `release`, `done` and `comment`; each takes an optional `project` (default: the first one) and `agent` names who claims (default `mcp`). With a token, send it as `Authorization: Bearer <token>` or add `?token=<token>` to the URL, e.g. `claude mcp add --transport http backlog http://127.0.0.1:8640/mcp --header "Authorization: Bearer secret"`. Details in SPEC §8.3.
+
 ## The web board
 
 ```bash
@@ -225,7 +227,7 @@ backlog-server --allow 127.0.0.1,10.77.11.22,10.77.0.0/16  # answer only these c
 | `--host` | `0.0.0.0` | addresses to bind, repeatable or comma-separated; `127.0.0.1` = local only |
 | `--allow` | `BACKLOG_ALLOW` | only these client IPs or CIDR ranges get an answer, others 403 |
 | `-p`, `--port` | `8640` | |
-| `--token` | `BACKLOG_TOKEN` | when set, `/api/` requires it |
+| `--token` | `BACKLOG_TOKEN` | when set, `/api/` and `/mcp` require it |
 | `--generate-token` | | require a random token; it is printed at start, inside the URLs |
 | `--web` | `BACKLOG_WEB`, else `packages/backlog_app/build/web` | the built web app (served with ETags and `no-cache`, so browsers pick up a new build at once; Brotli or gzip copies made by the build are sent to browsers that accept them) |
 | `-q` | | do not log requests |
@@ -640,7 +642,7 @@ backlog_cli ──────────────────────�
 
 There is no event bus or event sourcing: the state lives in files and git keeps the history.
 
-**The server** is a driving adapter. `ApiHandler` parses requests, calls the core services and maps the results through `DtoMapper` to the DTOs of `backlog_api`. Changes come from the project's storage (`BacklogStorage.watch`, port `ChangeSource`): for a folder `FolderChangeSource` watches it, debounces bursts of changes and ignores `.git` and temporary files. `BacklogHost` holds the `BacklogStorage` of a project (chosen by the server's storage factory, the folder with an item cache by default) and reloads the workflow after a configuration change, the core's `Dispatcher` re-plans on the same change events. The server opens backlogs with an in-memory item cache: each request still lists and `stat`s the item files but parses only those whose modification time, ctime or size changed (recently written files are always re-read, because file times are coarse), so edits by agents, editors or `git` are seen without relying on the watcher; claims are always read fresh (SPEC §8). Each backlog is a `HostedProject` (host, change source, dispatcher, API); `ProjectHub` keeps them in registry order and routes `/api/p/<id>/…`, `RegistryWatcher` applies registry edits live, and `BacklogServer` is the composition root.
+**The server** is a driving adapter. `ApiHandler` parses requests, calls the core services and maps the results through `DtoMapper` to the DTOs of `backlog_api`. Changes come from the project's storage (`BacklogStorage.watch`, port `ChangeSource`): for a folder `FolderChangeSource` watches it, debounces bursts of changes and ignores `.git` and temporary files. `BacklogHost` holds the `BacklogStorage` of a project (chosen by the server's storage factory, the folder with an item cache by default) and reloads the workflow after a configuration change, the core's `Dispatcher` re-plans on the same change events. The server opens backlogs with an in-memory item cache: each request still lists and `stat`s the item files but parses only those whose modification time, ctime or size changed (recently written files are always re-read, because file times are coarse), so edits by agents, editors or `git` are seen without relying on the watcher; claims are always read fresh (SPEC §8). Each backlog is a `HostedProject` (host, change source, dispatcher, API); `ProjectHub` keeps them in registry order and routes `/api/p/<id>/…`, `RegistryWatcher` applies registry edits live, `McpHandler` answers MCP at `/mcp` with the tools of `McpTools` (core services over the hub's projects, results mapped by `DtoMapper` as in the REST API), and `BacklogServer` is the composition root.
 
 **The app** is split by feature (`features/board`, `features/item`, `features/projects`, `features/dispatch`). Each feature has `application/` (`ChangeNotifier` controllers without widgets, and pure logic such as `ColumnArrangement`) and `presentation/`. It depends only on the `BacklogApi` interface, which `AppScope` provides. `ProjectsController` picks the open project from the `ProjectsApi`; each project gets its own session (its `BacklogApi` in `AppScope`, theme, board), thrown away as a whole when another project is opened.
 
@@ -711,4 +713,5 @@ That is 95 tests in total. After changing a `pubspec.lock`, just run `nix build`
 - [ ] use it on a real project
 - [ ] app: "Epic › Story" path in context headers, a real dependency graph, table layout, filters in the UI, saving views from the UI
 - [ ] server: commit/push from the UI, real users instead of a shared token, several people (database adapters)
-- [ ] an MCP server over the core, so that agents do not have to shell out to the CLI
+- [x] an MCP server over the core (`/mcp` of `backlog-server`), for clients without a shell
+- [ ] `backlog mcp` over stdio for local MCP clients without the server
