@@ -16,35 +16,24 @@ import '../../dispatch/presentation/next_step_line.dart';
 import '../application/dashboard_controller.dart';
 import '../application/project_digest.dart';
 
-/// Opens an item of a project.
-typedef OpenItem = Future<void> Function(ProjectDigest digest, String item);
+/// Opens an item of the project.
+typedef OpenItem = void Function(String item);
 
-/// The dashboard's sections as lists of widgets, for one column or two.
-/// With [labelled] each row names its project.
+/// The dashboard's sections of one project as lists of widgets, for one
+/// column or two.
 final class DashboardSections {
-  const DashboardSections({
-    required this.digests,
-    required this.controller,
-    required this.labelled,
-    required this.onOpen,
-  });
+  const DashboardSections({required this.digest, required this.controller, required this.onOpen});
 
-  final List<ProjectDigest> digests;
+  final ProjectDigest digest;
   final DashboardController controller;
-  final bool labelled;
   final OpenItem onOpen;
 
-  /// Key of a row: `<project>:<name>`, unique although two projects may
-  /// share item ids or worktree names.
-  static ValueKey<String> _key(ProjectDigest digest, String name) => ValueKey('${digest.project?.id ?? ''}:$name');
+  /// Key of a row: `dashboard:<name>`.
+  static ValueKey<String> _key(String name) => ValueKey('dashboard:$name');
 
-  Iterable<(ProjectDigest, T)> _each<T>(List<T> Function(ProjectDigest digest) pick) sync* {
-    for (final digest in digests) {
-      for (final entry in pick(digest)) {
-        yield (digest, entry);
-      }
-    }
-  }
+  /// What [pick] takes from the digest, each with the digest.
+  Iterable<(ProjectDigest, T)> _each<T>(List<T> Function(ProjectDigest digest) pick) =>
+      pick(digest).map((entry) => (digest, entry));
 
   /// Questions, approvals, failures and clean-up.
   List<Widget> needsYou() {
@@ -54,10 +43,7 @@ final class DashboardSections {
     final problems = _each((d) => d.problems).toList();
     final expired = _each((d) => d.expiredClaims).toList();
     final worktrees = _each((d) => d.unavailableWorktrees).toList();
-    final lint = [
-      for (final digest in digests)
-        if (digest.lint.isNotEmpty) digest,
-    ];
+    final lint = [if (digest.lint.isNotEmpty) digest];
     final clean = expired.isEmpty && worktrees.isEmpty && lint.isEmpty;
     return [
       _Heading(
@@ -71,11 +57,10 @@ final class DashboardSections {
         _Subheading('Questions', count: questions.length),
         for (final (digest, item) in questions)
           _QuestionCard(
-            key: _key(digest, 'question-${item.id}'),
+            key: _key('question-${item.id}'),
             digest: digest,
             item: item,
             controller: controller,
-            labelled: labelled,
             onOpen: onOpen,
           ),
       ],
@@ -83,11 +68,10 @@ final class DashboardSections {
         _Subheading('To approve', count: approvals.length),
         for (final (digest, item) in approvals)
           _ItemRow(
-            key: _key(digest, 'approve-${item.id}'),
+            key: _key('approve-${item.id}'),
             digest: digest,
             id: item.id,
             title: item.title,
-            labelled: labelled,
             onOpen: onOpen,
             icon: Icons.fact_check_outlined,
             next: _next(digest, item.id, withActions: false),
@@ -104,11 +88,10 @@ final class DashboardSections {
         for (final (digest, entry) in problems)
           if (_next(digest, entry.item) case final next)
             _ItemRow(
-              key: _key(digest, 'problem-${entry.item}'),
+              key: _key('problem-${entry.item}'),
               digest: digest,
               id: entry.item,
               title: entry.title,
-              labelled: labelled,
               onOpen: onOpen,
               icon: Icons.error_outline,
               iconColor: (tokens) => tokens.danger,
@@ -124,11 +107,10 @@ final class DashboardSections {
         for (final (digest, entry) in held)
           if (_next(digest, entry.item) case final next)
             _ItemRow(
-              key: _key(digest, 'held-${entry.item}'),
+              key: _key('held-${entry.item}'),
               digest: digest,
               id: entry.item,
               title: entry.title,
-              labelled: labelled,
               onOpen: onOpen,
               icon: Icons.pause_circle_outline,
               iconColor: (tokens) => tokens.warning,
@@ -141,26 +123,23 @@ final class DashboardSections {
         const _Subheading('Clean-up'),
         for (final (digest, item) in expired)
           _ItemRow(
-            key: _key(digest, 'expired-${item.id}'),
+            key: _key('expired-${item.id}'),
             digest: digest,
             id: item.id,
             title: item.title,
-            labelled: labelled,
             onOpen: onOpen,
             icon: Icons.lock_clock_outlined,
             note: 'Claim of ${item.claim!.agent} expired',
           ),
-        for (final (digest, worktree) in worktrees)
+        for (final (_, worktree) in worktrees)
           _Line(
-            key: _key(digest, 'unavailable-${worktree.name}'),
-            digest: labelled ? digest : null,
+            key: _key('unavailable-${worktree.name}'),
             icon: Icons.block,
             text: '${worktree.name}: ${worktree.unavailable}',
           ),
         for (final digest in lint)
           _Line(
-            key: _key(digest, 'lint'),
-            digest: labelled ? digest : null,
+            key: _key('lint'),
             icon: digest.lintErrors > 0 ? Icons.error_outline : Icons.warning_amber,
             text: 'Lint: ${_count(digest.lintErrors, 'error')}, ${_count(digest.lintWarnings, 'warning')}',
           ),
@@ -171,10 +150,7 @@ final class DashboardSections {
   /// Running agents and the dispatcher's queue.
   List<Widget> running() {
     final runs = _each((d) => d.runs).toList();
-    final dispatched = [
-      for (final digest in digests)
-        if (digest.plan.configured) digest,
-    ];
+    final dispatched = [if (digest.plan.configured) digest];
     final proposals = _each((d) => d.plan.assignments).toList();
     final waiting = _each((d) => d.plan.waitingReasons).toList();
     final queued = _each((d) => d.plan.queue).toList();
@@ -184,11 +160,10 @@ final class DashboardSections {
       if (runs.isEmpty) const _Empty('No agent runs.'),
       for (final (digest, run) in runs)
         _ItemRow(
-          key: _key(digest, 'run-${run.item}'),
+          key: _key('run-${run.item}'),
           digest: digest,
           id: run.item,
           title: digest.item(run.item)?.title ?? '',
-          labelled: labelled,
           onOpen: onOpen,
           icon: run.kind == 'agent' ? Icons.smart_toy : Icons.terminal,
           iconColor: (tokens) => tokens.success,
@@ -215,8 +190,7 @@ final class DashboardSections {
         const _Subheading('Queue'),
         for (final digest in dispatched)
           _Line(
-            key: _key(digest, 'capacity'),
-            digest: labelled ? digest : null,
+            key: _key('capacity'),
             icon: Icons.speed,
             text:
                 'Agents ${digest.plan.running}/${digest.plan.maxAgents} · ${digest.plan.mode}'
@@ -225,11 +199,10 @@ final class DashboardSections {
           ),
         for (final (digest, proposal) in proposals)
           _ItemRow(
-            key: _key(digest, 'proposal-${proposal.item}'),
+            key: _key('proposal-${proposal.item}'),
             digest: digest,
             id: proposal.item,
             title: proposal.title,
-            labelled: labelled,
             onOpen: onOpen,
             icon: Icons.play_circle_outline,
             iconColor: (tokens) => tokens.accent,
@@ -250,11 +223,10 @@ final class DashboardSections {
           ),
         for (final (digest, start) in queued)
           _ItemRow(
-            key: _key(digest, 'queued-${start.item}'),
+            key: _key('queued-${start.item}'),
             digest: digest,
             id: start.item,
             title: start.title,
-            labelled: labelled,
             onOpen: onOpen,
             icon: Icons.schedule,
             iconColor: (tokens) => tokens.accent,
@@ -272,22 +244,20 @@ final class DashboardSections {
           ),
         for (final (digest, entry) in waiting)
           _ItemRow(
-            key: _key(digest, 'waiting-${entry.item}'),
+            key: _key('waiting-${entry.item}'),
             digest: digest,
             id: entry.item,
             title: entry.title,
-            labelled: labelled,
             onOpen: onOpen,
             icon: Icons.hourglass_empty,
             note: 'Waits: ${entry.reason}',
           ),
         for (final (digest, item) in conflicting)
           _ItemRow(
-            key: _key(digest, 'conflicting-${item.id}'),
+            key: _key('conflicting-${item.id}'),
             digest: digest,
             id: item.id,
             title: item.title,
-            labelled: labelled,
             onOpen: onOpen,
             icon: Icons.call_split,
             note: 'Waits for ${item.conflictsWith.join(', ')} (touches the same files)',
@@ -303,21 +273,16 @@ final class DashboardSections {
     if (milestones.isEmpty && urgent.isEmpty) return const [];
     return [
       const _Heading('Overview', key: ValueKey('overview')),
-      for (final (digest, progress) in milestones)
-        _MilestoneRow(
-          key: _key(digest, 'milestone-${progress.milestone.id}'),
-          digest: labelled ? digest : null,
-          progress: progress,
-        ),
+      for (final (_, progress) in milestones)
+        _MilestoneRow(key: _key('milestone-${progress.milestone.id}'), progress: progress),
       if (urgent.isNotEmpty) ...[
         _Subheading('Urgent', count: urgent.length),
         for (final (digest, item) in urgent)
           _ItemRow(
-            key: _key(digest, 'urgent-${item.id}'),
+            key: _key('urgent-${item.id}'),
             digest: digest,
             id: item.id,
             title: item.title,
-            labelled: labelled,
             onOpen: onOpen,
             icon: ItemStyle.type(item.type),
             iconColor: (tokens) => tokens.warning,
@@ -344,7 +309,7 @@ final class DashboardSections {
       busy: busy,
       onAction: withActions ? (name) => unawaited(controller.runAction(digest, id, name)) : null,
       onStart: () => unawaited(controller.startAgent(digest, id)),
-      onOpen: (other) => unawaited(onOpen(digest, other)),
+      onOpen: onOpen,
     );
   }
 
@@ -427,16 +392,6 @@ class _Empty extends StatelessWidget {
   );
 }
 
-/// The project's name, when the dashboard shows several.
-class _ProjectTag extends StatelessWidget {
-  const _ProjectTag(this.digest);
-
-  final ProjectDigest digest;
-
-  @override
-  Widget build(BuildContext context) => Tag(digest.project?.name ?? 'Backlog', icon: Icons.folder_outlined);
-}
-
 /// A button of a row; it gets the row's context (for dialogs).
 class _ActionButton extends StatelessWidget {
   const _ActionButton({super.key, required this.label, required this.icon, required this.onPressed});
@@ -464,7 +419,6 @@ class _ItemRow extends StatelessWidget {
     required this.digest,
     required this.id,
     required this.title,
-    required this.labelled,
     required this.onOpen,
     required this.icon,
     this.iconColor,
@@ -477,7 +431,6 @@ class _ItemRow extends StatelessWidget {
   final ProjectDigest digest;
   final String id;
   final String title;
-  final bool labelled;
   final OpenItem onOpen;
   final IconData icon;
   final Color Function(BoardTokens tokens)? iconColor;
@@ -496,9 +449,9 @@ class _ItemRow extends StatelessWidget {
       final item? => Ball.of(item, digest.plan, digest.workflow),
       null => null,
     };
-    final tags = [if (labelled) _ProjectTag(digest), if (ball != null) BallBadge(ball, item: id), ...details];
+    final tags = [if (ball != null) BallBadge(ball, item: id), ...details];
     return InkWell(
-      onTap: () => unawaited(onOpen(digest, id)),
+      onTap: () => onOpen(id),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         child: Row(
@@ -553,13 +506,10 @@ class _ItemRow extends StatelessWidget {
 
 /// A line that is not about one item (a worktree, lint, capacity).
 class _Line extends StatelessWidget {
-  const _Line({super.key, required this.icon, required this.text, this.digest});
+  const _Line({super.key, required this.icon, required this.text});
 
   final IconData icon;
   final String text;
-
-  /// The project to name; null when only one is shown.
-  final ProjectDigest? digest;
 
   @override
   Widget build(BuildContext context) {
@@ -573,7 +523,6 @@ class _Line extends StatelessWidget {
           Expanded(
             child: Text(text, style: TextStyle(color: tokens.text)),
           ),
-          if (digest case final digest?) _ProjectTag(digest),
         ],
       ),
     );
@@ -581,10 +530,9 @@ class _Line extends StatelessWidget {
 }
 
 class _MilestoneRow extends StatelessWidget {
-  const _MilestoneRow({super.key, required this.progress, this.digest});
+  const _MilestoneRow({super.key, required this.progress});
 
   final MilestoneProgress progress;
-  final ProjectDigest? digest;
 
   @override
   Widget build(BuildContext context) {
@@ -603,7 +551,6 @@ class _MilestoneRow extends StatelessWidget {
                   style: TextStyle(color: tokens.text),
                 ),
               ),
-              if (digest case final digest?) ...[_ProjectTag(digest), const SizedBox(width: 8)],
               Text('${progress.done}/${progress.total} done', style: TextStyle(color: tokens.muted, fontSize: 12)),
             ],
           ),
@@ -630,14 +577,12 @@ class _QuestionCard extends StatefulWidget {
     required this.digest,
     required this.item,
     required this.controller,
-    required this.labelled,
     required this.onOpen,
   });
 
   final ProjectDigest digest;
   final ItemDto item;
   final DashboardController controller;
-  final bool labelled;
   final OpenItem onOpen;
 
   @override
@@ -679,7 +624,6 @@ class _QuestionCardState extends State<_QuestionCard> {
             digest: widget.digest,
             id: item.id,
             title: item.title,
-            labelled: widget.labelled,
             onOpen: widget.onOpen,
             icon: Icons.help_outline,
             iconColor: (tokens) => tokens.warning,

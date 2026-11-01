@@ -7,11 +7,12 @@ import '../../../shared/debounced_changes.dart';
 import '../../projects/application/projects_controller.dart';
 import 'project_digest.dart';
 
-/// The dashboard across every project the server serves: a [ProjectDigest]
-/// per available project, kept live over each project's change feed, and
-/// the dashboard's actions (answer a question, run an action, start or stop
-/// an agent). Lives as long as the app, so the number of things that wait
-/// for a person ([needsMe]) is known on every page.
+/// What the dashboards of every project the server serves show: a
+/// [ProjectDigest] per available project, kept live over each project's
+/// change feed, and the dashboard's actions (answer a question, run an
+/// action, start or stop an agent). Lives as long as the app, so the number
+/// of things that wait for a person ([needsMe], [needsMeIn]) is known for
+/// every project whichever is open.
 class DashboardController extends ChangeNotifier {
   DashboardController(this._projects, {this.agent, Duration refreshDelay = const Duration(milliseconds: 300)})
     : _refreshDelay = refreshDelay {
@@ -29,9 +30,6 @@ class DashboardController extends ChangeNotifier {
   final _notices = StreamController<String>.broadcast();
   bool _disposed = false;
 
-  /// The project the dashboard is narrowed to; null for all of them.
-  String? only;
-
   /// Actions under way, as `<project>/<item>`.
   Set<String> pending = const {};
 
@@ -42,39 +40,28 @@ class DashboardController extends ChangeNotifier {
   /// without a project for a single backlog).
   List<ProjectDigest> get digests => [for (final source in _sources.values) ?source.digest];
 
-  /// [digests] narrowed to [only].
-  List<ProjectDigest> get shown => [
-    for (final digest in digests)
-      if (only == null || digest.project?.id == only) digest,
-  ];
+  /// The digest of [project] (null: the single backlog); null while it is
+  /// not loaded.
+  ProjectDigest? digestOf(String? project) => _sources[project ?? '']?.digest;
 
-  /// Projects that could not be loaded, by name, with the error.
-  List<(String, Object)> get errors => [
-    for (final source in _sources.values)
-      if (source.error case final error?) (source.project?.name ?? 'Backlog', error),
-  ];
+  /// Why [project] could not be (re)loaded; null when it could.
+  Object? errorOf(String? project) => _sources[project ?? '']?.error;
 
-  /// Nothing is loaded yet.
-  bool get loading => _sources.values.any((source) => source.digest == null && source.error == null);
-
-  /// Things waiting for a person in every project (not only the shown ones).
+  /// Things waiting for a person in every project.
   int get needsMe => digests.fold(0, (sum, digest) => sum + digest.needsMe);
 
-  /// Projects that can be picked as a filter.
-  List<ProjectDto> get projects => [for (final source in _sources.values) ?source.project];
-
-  void showOnly(String? project) {
-    only = project;
-    notifyListeners();
-  }
+  /// Things waiting for a person in [project] (null: the single backlog).
+  int needsMeIn(String? project) => digestOf(project)?.needsMe ?? 0;
 
   /// Reloads every project now.
   Future<void> refresh() => Future.wait([for (final source in _sources.values) _load(source)]);
 
-  bool isPending(ProjectDigest digest, String item) => pending.contains(_key(digest, item));
+  /// Reloads [project] (null: the single backlog) now.
+  Future<void> refreshProject(String? project) async {
+    if (_sources[project ?? ''] case final source?) await _load(source);
+  }
 
-  /// The API of [digest]'s backlog (to open its items).
-  BacklogApi apiOf(ProjectDigest digest) => _sources[digest.project?.id ?? '']!.api;
+  bool isPending(ProjectDigest digest, String item) => pending.contains(_key(digest, item));
 
   /// Answers the open question of [item]: the agent continues by itself
   /// when the dispatcher can resume its session.
@@ -141,7 +128,6 @@ class DashboardController extends ChangeNotifier {
     for (final id in [..._sources.keys]) {
       if (!wanted.containsKey(id)) _sources.remove(id)!.cancel();
     }
-    if (only != null && !wanted.containsKey(only)) only = null;
     final added = <_Source>[];
     for (final MapEntry(key: id, value: project) in wanted.entries) {
       if (_sources.containsKey(id)) {

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../../app/app_scope.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
+import '../../dashboard/presentation/dashboard_view.dart';
 import '../../dispatch/application/dispatch_controller.dart';
 import '../../dispatch/presentation/dispatch_scope.dart';
 import '../../item/presentation/item_page.dart';
@@ -21,8 +22,9 @@ import 'shell/board_header.dart';
 import 'shell/view_navigation.dart';
 import 'view_layouts.dart';
 
-/// Main screen. On a wide window: saved views on the left, the board in the
-/// middle and the open item in a panel on the right. Medium windows have the
+/// Main screen. On a wide window: saved views on the left, the board (or
+/// the project's dashboard) in the middle and the open item in a panel on
+/// the right. Medium windows have the
 /// views as tabs and show the open item in a bottom sheet over the board;
 /// phones have a bottom bar with the pinned views and open items as a page.
 class BoardPage extends StatefulWidget {
@@ -193,6 +195,8 @@ class _BoardPageState extends State<BoardPage> {
     final sheet = !panel && width >= BoardPage.detailSheetWidth;
     final veryWide = width >= BoardPage.veryWideWidth;
     final openId = panel || sheet ? _openId : null;
+    final scope = AppScope.of(context);
+    final onMenu = sideNavigation ? null : () => _scaffold.currentState?.openDrawer();
     return DispatchScope(
       controller: _dispatch!,
       child: CallbackShortcuts(
@@ -248,18 +252,35 @@ class _BoardPageState extends State<BoardPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (AppScope.of(context).preview case final preview?) PreviewBanner(controller: preview),
-                        BoardHeader(
-                          controller: controller,
-                          filter: controller.visible == null ? null : _filterBar(controller),
-                          onEditColumns: () => _editColumns(controller),
-                          compact: phone,
-                          filterOpen: _filterOpen,
-                          onToggleFilter: () => setState(() => _filterOpen = !_filterOpen),
-                          onMenu: sideNavigation ? null : () => _scaffold.currentState?.openDrawer(),
-                        ),
-                        if (!sideNavigation && !phone) ViewTabs(controller: controller),
-                        Expanded(child: _board(controller, openId, sheet: sheet)),
+                        if (scope.preview case final preview?) PreviewBanner(controller: preview),
+                        if (scope.dashboard case final dashboard? when controller.dashboard) ...[
+                          if (!sideNavigation && !phone) ViewTabs(controller: controller),
+                          Expanded(
+                            child: _withSheet(
+                              DashboardView(
+                                controller: dashboard,
+                                project: scope.projects?.current?.id,
+                                onOpen: (id) => unawaited(_open(id)),
+                                onMenu: onMenu,
+                              ),
+                              controller,
+                              openId,
+                              sheet: sheet,
+                            ),
+                          ),
+                        ] else ...[
+                          BoardHeader(
+                            controller: controller,
+                            filter: controller.visible == null ? null : _filterBar(controller),
+                            onEditColumns: () => _editColumns(controller),
+                            compact: phone,
+                            filterOpen: _filterOpen,
+                            onToggleFilter: () => setState(() => _filterOpen = !_filterOpen),
+                            onMenu: onMenu,
+                          ),
+                          if (!sideNavigation && !phone) ViewTabs(controller: controller),
+                          Expanded(child: _withSheet(_body(controller, openId), controller, openId, sheet: sheet)),
+                        ],
                       ],
                     ),
                   ),
@@ -288,9 +309,9 @@ class _BoardPageState extends State<BoardPage> {
     onAddChild: (parent) => unawaited(_create(_controller!, parent: parent)),
   );
 
-  /// The board; with [sheet] the open item is a bottom sheet over it.
-  Widget _board(BoardController controller, String? openId, {required bool sheet}) {
-    final body = _body(controller, openId);
+  /// The board or the dashboard; with [sheet] the open item is a bottom
+  /// sheet over it.
+  Widget _withSheet(Widget body, BoardController controller, String? openId, {required bool sheet}) {
     if (!sheet || openId == null) return body;
     return LayoutBuilder(
       builder: (context, constraints) => Stack(
