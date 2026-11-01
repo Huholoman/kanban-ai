@@ -539,9 +539,17 @@ final class DispatcherConfig {
       '4. Never push and never open pull requests.\n'
       '5. If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"`, leave the status as '
       'it is and stop; you will be resumed with the answer.\n'
-      '6. If a discussion in the item changes what it asks for, update its description or acceptance criteria in '
-      'the body above the `## Discussion` section (never edit the comments; no comment about it is needed).\n'
+      '6. If a discussion in the item changes what it asks for, $describeRule\n'
       '$checklistRules\n$talkRules\n$runRules';
+
+  /// How the default prompts tell the agent to update what its item asks
+  /// for: through `backlog describe`, since the item file lies outside its
+  /// worktree.
+  static const describeRule =
+      'update its description or acceptance criteria with `backlog describe {id} --file $scratchFolder/item-{id}.md` '
+      '(the text written with your Write tool replaces the description above `## Discussion`; add '
+      '`--section "Acceptance criteria"` to replace only that section). Never edit the item file or the comments; '
+      'no comment about it is needed.';
 
   /// The prompt for continuing an agent's earlier session on the same item
   /// (unless `dispatcher.resume_prompt` replaces it).
@@ -555,8 +563,7 @@ final class DispatcherConfig {
       '- If they answer your question or ask for changes, continue the work (no comment to acknowledge it) under the same rules as before: small commits containing {id} on {branch}, '
       '`backlog set {id} status=review` when finished, never push.\n'
       '- Without new comments, continue the work under the same rules.\n'
-      '- If the discussion changed what the item asks for, update its description or acceptance criteria in the body '
-      'above `## Discussion` (never edit the comments; no comment about it is needed).\n'
+      '- If the discussion changed what the item asks for, $describeRule\n'
       '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.\n'
       '$checklistRules\n$talkRules\n$runRules';
 
@@ -579,8 +586,7 @@ final class DispatcherConfig {
       'status to review.\n'
       '5. If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"`, leave the status as '
       'it is and stop; you will be resumed with the answer.\n'
-      '6. If a discussion in the item changes what it asks for, update its description or acceptance criteria in '
-      'the body above the `## Discussion` section (never edit the comments; no comment about it is needed).\n'
+      '6. If a discussion in the item changes what it asks for, $describeRule\n'
       '$checklistRules\n$talkRules\n$runRules';
 
   /// The resume prompt when the project opens pull requests (`dispatcher.pr`).
@@ -596,8 +602,7 @@ final class DispatcherConfig {
       '`--description-file $scratchFolder/pr-{id}.md` then, written with your Write tool) and '
       '`backlog set {id} status=review`; never run `git push` yourself.\n'
       '- Without new comments, continue the work under the same rules.\n'
-      '- If the discussion changed what the item asks for, update its description or acceptance criteria in the body '
-      'above `## Discussion` (never edit the comments; no comment about it is needed).\n'
+      '- If the discussion changed what the item asks for, $describeRule\n'
       '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.\n'
       '$checklistRules\n$talkRules\n$runRules';
 

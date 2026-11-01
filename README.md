@@ -511,6 +511,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `list [-w field=a,b] [-s] [-m] [-l] [-t] [--all]` | list items (without finished ones) |
 | `show <id>`, `path <id>` | details, path of the file |
 | `set <id> status=review labels+=x touches+=lib/a/ depends_on-=MA-1 milestone=` | edit fields (`=` sets, `+=`/`-=` for lists, empty clears) |
+| `describe <id> --file f [--section "Acceptance criteria"]` | replace the description above `## Discussion` (or only one `##` section) without editing the file; the discussion stays — how agents update what their item asks for |
 | `ready`, `blocked` | what can be done / what is waiting |
 | `next [-w …] --as <agent>` | claim the most urgent ready item |
 | `epic <id> [--next --as <agent>]` | implementing an epic on one branch: whether it can start, what is done, what comes next; `--next` claims its next item onto the epic's branch (exit 2 = nothing can start) |

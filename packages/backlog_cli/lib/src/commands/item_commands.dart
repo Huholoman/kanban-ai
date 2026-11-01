@@ -336,3 +336,48 @@ final class SetCommand extends BacklogCommand {
     return 0;
   }
 }
+
+/// `backlog describe <id> (<text…> | --file f) [--section name]`: replaces
+/// the item's description or one of its sections without editing its file
+/// (agents cannot: it lies outside their worktree).
+final class DescribeCommand extends BacklogCommand {
+  DescribeCommand(super.context) {
+    argParser.addOption(
+      'section',
+      abbr: 's',
+      help: 'Replace only the content of the section "## <name>" (added when missing), e.g. "Acceptance criteria".',
+      valueHelp: 'name',
+    );
+    addTextFileOption();
+  }
+
+  @override
+  String get name => 'describe';
+
+  @override
+  String get description =>
+      'Replace the description of an item (its body above ## Discussion) or one of its sections; the discussion '
+      'stays.';
+
+  @override
+  String get invocation =>
+      'backlog describe <id> ("<text>" | --file <path>) [--section "<name>"]   (text - or --file - reads standard input)';
+
+  @override
+  Future<int> run() async {
+    if (args.rest.isEmpty || (args.rest.length < 2 && args.option('file') == null)) {
+      throw UsageException('Expected an item id and the text (or --file).', usage);
+    }
+    final text = await textOf(args.rest.skip(1).toList());
+    final section = args.option('section');
+    final backlog = await openBacklog();
+    final item = await backlog.items.describe(args.rest.first, text, section: section);
+    await emitItem(
+      backlog,
+      item.id,
+      detail: json,
+      message: section == null ? 'Described ${item.id}.' : 'Replaced the section "$section" of ${item.id}.',
+    );
+    return 0;
+  }
+}

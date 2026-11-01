@@ -614,6 +614,30 @@ statuses: [{id: open, category: open, pickable: true}, {id: doing, category: act
     expect((await backlog(['comment', id, '--file', '-'], env: agent, input: 'From stdin.')).exitCode, 0);
   });
 
+  test('describe replaces the description or one section; the discussion stays', () async {
+    final id = await create('Export', ['-s', 'todo', '--body', 'Old.\n\n## Acceptance criteria\n\n- old']);
+    await backlog(['ask', id, 'CSV?'], env: {'BACKLOG_AGENT': 'monorepo-2'});
+    File(p.join(workspace.path, 'criteria.md')).writeAsStringSync('- CSV with a header\n- UTF-8\n');
+    final section = await backlog(['describe', id, '--section', 'Acceptance criteria', '--file', 'criteria.md']);
+    expect(section.exitCode, 0, reason: '$section');
+    expect(section.out, contains('Replaced the section "Acceptance criteria" of $id.'));
+    final path = (await backlog(['path', id])).out.trim();
+    expect(
+      File(path).readAsStringSync(),
+      endsWith(
+        '\nOld.\n\n## Acceptance criteria\n\n- CSV with a header\n- UTF-8\n\n## Discussion\n\n'
+        '### monorepo-2 · 2026-10-29 12:00:00 UTC · question\n\nCSV?\n',
+      ),
+    );
+
+    expect((await backlog(['describe', id, 'Export', 'it', 'as', 'CSV.'])).exitCode, 0);
+    final json = (await backlog(['--json', 'show', id])).json! as Map;
+    expect(json['body'], startsWith('Export it as CSV.\n\n## Discussion\n'));
+    expect(json['needs_human'], isTrue, reason: 'the open question stays');
+    expect((await backlog(['describe', id, '--section', 'Discussion', 'x'])).exitCode, isNot(0));
+    expect((await backlog(['describe', id])).exitCode, ExitCode.usage);
+  });
+
   test('comment --note keeps an open question open', () async {
     final id = await create('Export', ['-s', 'todo']);
     await backlog(['ask', id, 'CSV or JSON?'], env: {'BACKLOG_AGENT': 'monorepo-2'});

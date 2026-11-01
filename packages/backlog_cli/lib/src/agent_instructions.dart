@@ -49,7 +49,13 @@ CLI, not by editing the file (it may lie outside your worktree):
     backlog uncheck T-7f3a 2
 
 Edit the rest of the body of your item file directly when you can (context,
-plan, notes). Do not edit `status`, `assignee` or `id` by hand.
+plan, notes), else with the CLI (the text from a file keeps long texts out
+of the command line):
+
+    backlog describe T-7f3a --file notes.md          # the description above ## Discussion
+    backlog describe T-7f3a --section "Acceptance criteria" --file criteria.md
+
+Do not edit `status`, `assignee` or `id` by hand.
 
 ## Questions and comments
 
@@ -60,8 +66,9 @@ Both add to the `## Discussion` section at the end of the item's body
 (author = your agent name). After `ask`, stop: the item needs a person and
 is not ready until someone answers with a comment. When the discussion
 changes what the item asks for, update the description or acceptance
-criteria above `## Discussion` and say so in a comment; never edit
-comments.
+criteria above `## Discussion` (`backlog describe`) and say so in a comment;
+never edit comments. Long texts: `backlog comment T-7f3a --file note.md`
+(also `ask` and `review`).
 
 Comments marked `· review ok` / `· review changes` are reviews of the
 work (`backlog review T-7f3a --changes "summary, then 1. … 2. …"`, by an AI
