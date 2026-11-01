@@ -387,7 +387,13 @@ final class ProcessAgentLauncher extends AgentLauncher {
       }
       record = await _spawn(assignment);
     } catch (_) {
-      await backlog.claims.release(id.value, agent: assignment.agent);
+      // A start that failed changes nothing: an action's agent only took the
+      // claim, the item's own agent gives the item back in its status.
+      if (action != null) {
+        await backlog.claims.drop(id.value, assignment.agent);
+      } else {
+        await backlog.claims.release(id.value, agent: assignment.agent, status: assignment.item.item.status);
+      }
       rethrow;
     }
     if (action == null) await _delete(_holdFile(id));

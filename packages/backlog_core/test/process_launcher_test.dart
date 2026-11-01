@@ -674,6 +674,16 @@ dispatcher:
         reason: 'the hold of the unfinished agent stays',
       );
       expect((await planned('T-0001')).claim, isNull);
+      expect((await planned('T-0001')).item.status, 'review', reason: 'a failed start changes no status');
+    });
+
+    test("the item's agent that cannot start leaves an item in review in review", () async {
+      await branchInWt2();
+      File(path('wt-2/scratch.txt')).writeAsStringSync('x');
+      await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+      await expectLater(launcher.launch((await plan()).assignmentFor('T-0001')), throwsA(isA<UnavailableException>()));
+      final after = await planned('T-0001');
+      expect((after.claim, after.item.status), (null, 'review'));
     });
   });
 
