@@ -116,6 +116,9 @@ class _AgentPanelState extends State<AgentPanel> {
         : (last?.problems.isNotEmpty ?? false)
         ? last!.problems
         : dispatch.plan.problemsOf(id);
+    // A finished item needs nobody: the problems of its last run are history.
+    final needsYou = problems.isNotEmpty && !widget.item.isDone;
+    final problemsText = problems.length == 1 ? 'a problem' : 'problems';
     if (run == null &&
         via == null &&
         held == null &&
@@ -140,10 +143,15 @@ class _AgentPanelState extends State<AgentPanel> {
       ),
       _ when held != null => (Icons.pause_circle_outline, tokens.warning, 'Held: $held'),
       _ when waiting != null => (Icons.hourglass_empty, tokens.warning, 'Waiting for an agent: $waiting'),
-      _ when problems.isNotEmpty => (
-        Icons.error_outline,
-        tokens.danger,
-        'Needs you: the last run ended with ${problems.length == 1 ? 'a problem' : 'problems'}',
+      _ when needsYou => (Icons.error_outline, tokens.danger, 'Needs you: the last run ended with $problemsText'),
+      _ when last != null && problems.isNotEmpty => (
+        Icons.history,
+        tokens.muted,
+        [
+          'Last run ended${last.endedAt == null ? '' : ' ${sinceText(last.endedAt!)}'}',
+          ?last.outcome,
+          'with $problemsText',
+        ].join(' · '),
       ),
       _ when last != null => (
         Icons.check_circle_outline,
@@ -259,13 +267,21 @@ class _AgentPanelState extends State<AgentPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (final problem in problems) Text('• $problem', style: small?.copyWith(color: tokens.danger)),
+                  for (final problem in problems)
+                    Text('• $problem', style: small?.copyWith(color: needsYou ? tokens.danger : tokens.muted)),
                 ],
               ),
             ),
           if (last?.result case final result?) ...[
             const SizedBox(height: 8),
-            _FinalMessage(result, color: problems.isEmpty ? tokens.success : tokens.danger),
+            _FinalMessage(
+              result,
+              color: problems.isEmpty
+                  ? tokens.success
+                  : needsYou
+                  ? tokens.danger
+                  : tokens.muted,
+            ),
           ],
           if (showLog && log != null) ...[const SizedBox(height: 8), AgentLogView(controller: log)],
         ],
