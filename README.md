@@ -280,6 +280,7 @@ backlog/
     MA-7f3a-production-db-backups.md
     MA-8m2x-content-reporting/   # a folder only when the item needs attachments
       index.md
+  archive/ finished items moved out of items/ by `backlog archive`, same layout
   views/   board.yaml, ready.yaml, hot.yaml, blocked.yaml, dependencies.yaml, …
   docs/    design documents that items link to (docs: [moderation])
   .locks/  claim locks (gitignored)
@@ -570,6 +571,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `new <title> -t -s -p -m --parent -d -l --touches --body --body-file` | create an item |
 | `list [-w field=a,b] [-s] [-m] [-l] [-t] [--all]` | list items (without finished ones) |
 | `show <id>`, `path <id>` | details, path of the file |
+| `archive [<id>…] [--older-than 30] [--dry-run]`, `archive --restore <id>…` | move finished items (the named ones, else those unchanged for 30 days) to `archive/` so that `items/` stays small; they are still found by id, references and history keep working, and one that becomes unfinished moves back |
 | `set <id> status=review labels+=x touches+=lib/a/ depends_on-=MA-1 milestone=` | edit fields (`=` sets, `+=`/`-=` for lists, empty clears) |
 | `describe <id> --file f [--section "Acceptance criteria"]` | replace the description above `## Discussion` (or only one `##` section) without editing the file; the discussion stays — how agents update what their item asks for |
 | `ready`, `blocked` | what can be done / what is waiting |
@@ -582,7 +584,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `action <id> ["name"]` | the actions of the item's status; with a name, ask the running server to run it (result in the discussion) |
 | `pr <id> [--description text \| --description-file f\|-] [--force]` | push the item's branch and open its pull request (`dispatcher.pr`), URL into `pr`; with a PR already, only push; `--force` after a rebase (with a lease) |
 | `view [name]` | saved views |
-| `lint` | consistency: unknown values, broken references, cycles, locks, malformed or overlapping touches, dispatcher worktrees, agent, actions and pull request commands (exit 1 on errors) |
+| `lint` | consistency: unknown values, broken references, cycles, locks, unfinished items in the archive, malformed or overlapping touches, dispatcher worktrees, agent, actions and pull request commands (exit 1 on errors) |
 | `instructions` | the guide for agents, in Markdown |
 | `projects`, `projects add [dir] [--id] [--name]`, `projects remove <id>`, `projects pin\|unpin <id>` | the registry of backlogs on this machine (`~/.config/kanban-ai/projects.yaml`), see below |
 | `config [--projects f]` | configuration in a terminal UI, see below |
