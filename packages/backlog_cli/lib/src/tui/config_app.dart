@@ -1,6 +1,7 @@
 import 'package:backlog_core/backlog_core.dart';
 import 'package:dart_tui/dart_tui.dart' show Cmd;
 
+import 'doctor_page.dart';
 import 'projects_page.dart';
 import 'screen.dart';
 import 'server_page.dart';
@@ -12,7 +13,17 @@ import 'workflow_pages.dart';
 /// them, and the backlog found from the current folder (null when there is
 /// none).
 final class ConfigLocations {
-  const ConfigLocations({this.registryFile, this.serverFile, this.home, this.currentBacklog, this.cwd = '.'});
+  const ConfigLocations({
+    this.registryFile,
+    this.serverFile,
+    this.home,
+    this.currentBacklog,
+    this.cwd = '.',
+    this.environment = const {},
+  });
+
+  /// The environment (`PATH`, `HOME`, …) the doctor looks at.
+  final Map<String, String> environment;
 
   /// The current folder, for folders typed relative to it.
   final String cwd;
@@ -84,7 +95,13 @@ Future<Screen> _globalScreen(ConfigLocations locations) async {
           return (navigator) => navigator.push(serverScreen(editor, draft));
         }),
       ),
-      const MenuEntry('Doctor', detail: 'not yet: check the installation and the projects', enabled: false),
+      MenuEntry(
+        'Doctor',
+        detail: 'check the tools, the server, the projects and the worktrees of their dispatchers',
+        onSelect: (_) => DoctorScreen.run(locations, (navigator, sections) {
+          navigator.push(DoctorScreen(locations, sections));
+        }),
+      ),
     ],
   );
 }

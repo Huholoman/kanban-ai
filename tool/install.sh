@@ -36,6 +36,8 @@ fi
 mkdir -p "$bin" "$state"
 echo "Building kanban-ai from $from …"
 nix build --out-link "$link" "$flake#kanban-ai"
+# What it was built from, for `backlog config` › Global › Doctor.
+echo "$from, $(date '+%Y-%m-%d %H:%M')" >"$link.txt"
 
 for tool in backlog backlog-server; do
   ln -sfn "$link/bin/$tool" "$bin/$tool$suffix"

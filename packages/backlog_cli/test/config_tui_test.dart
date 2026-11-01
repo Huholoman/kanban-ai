@@ -302,6 +302,28 @@ void main() {
     expect(parseProjectRegistryYaml(saved, baseDir: workspace.path).entries.map((e) => e.id), ['elsewhere', 'hb']);
   });
 
+  test('the doctor shows its findings and checks again with r', () async {
+    final registry = p.join(workspace.path, 'projects.yaml');
+    File(registry).writeAsStringSync('projects:\n  - id: hb\n    path: backlog\n');
+    final driver = Driver([
+      enter, down, down, enter, // Global → Doctor
+      char('r'),
+      ctrlC,
+    ]);
+    final (code, err) = await run(
+      ['config', '--projects', registry],
+      driver,
+      env: {'PATH': '', 'BACKLOG_SERVER_CONFIG': p.join(workspace.path, 'server.yaml'), 'BACKLOG_PORT': '1'},
+    );
+    expect(code, 0, reason: err);
+    expect(driver.showed('backlog config › Global › Doctor'), isTrue);
+    expect(driver.showed('! backlog  not on the PATH (mise run install)'), isTrue);
+    expect(driver.showed('! port 1  no server answers at http://127.0.0.1:1/api/health'), isTrue);
+    expect(driver.showed('✓ hb  $backlogDir opens'), isTrue);
+    expect(driver.showed('· dispatcher  no project has one'), isTrue);
+    expect(driver.showed('Checked again.'), isTrue);
+  });
+
   test('the project picker lists the registry; a missing backlog cannot be opened', () async {
     final registry = p.join(workspace.path, 'projects.yaml');
     File(registry).writeAsStringSync('projects:\n  - id: gone\n    path: nowhere\n');

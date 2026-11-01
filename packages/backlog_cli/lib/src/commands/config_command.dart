@@ -21,7 +21,7 @@ final class ConfigCommand extends BacklogCommand {
 
   @override
   String get description =>
-      'Edit the configuration in a terminal UI: Global (this machine: the project registry, the server) and Project '
+      'Edit the configuration in a terminal UI: Global (this machine: the project registry, the server, a doctor) and Project '
       "(a project's backlog.yaml). Changes are shown as a diff, validated and written only after confirmation.";
 
   @override
@@ -47,6 +47,7 @@ final class ConfigCommand extends BacklogCommand {
             home: context.environment['HOME'],
             currentBacklog: current,
             cwd: context.cwd,
+            environment: context.environment,
           ),
         ),
       ),
