@@ -779,6 +779,19 @@ dispatcher:
       expect(ids(run('not: {category: [done, active]}')), ['T-1', 'T-4']);
     });
 
+    test('a day in a filter matches created/updated instants of that UTC day', () {
+      final timed = snapshotOf([
+        item('T-1', created: '2026-10-31T20:27:12Z'),
+        item('T-2', created: '2026-10-31'),
+        item('T-3', created: '2026-11-01T00:00:01Z'),
+      ]);
+      ViewResult run(String filter) => ViewEngine.evaluate(parseViewYaml('v', 'filter: $filter'), timed);
+      expect(ids(run('{created: 2026-10-31}')), unorderedEquals(['T-1', 'T-2']));
+      expect(ids(run('{created: {in: [2026-11-01]}}')), ['T-3']);
+      expect(ids(run("{created: '2026-10-31T20:27:12Z'}")), ['T-1']);
+      expect(ids(run('{created: {not: [2026-10-31]}}')), ['T-3']);
+    });
+
     test('kanban groups by workflow statuses and counts hidden items', () {
       final result = ViewEngine.evaluate(
         parseViewYaml('board', 'layout: kanban\ngroup_by: status\ncolumns: [todo, in-progress]'),

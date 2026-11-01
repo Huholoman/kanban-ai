@@ -26,6 +26,12 @@ abstract final class ItemTime {
     return DateTime.tryParse(_zone.hasMatch(text) ? text : '${text}Z')?.toUtc();
   }
 
+  /// The UTC calendar day of [value] (`2026-10-31`); null when it is not a time.
+  static String? day(String? value) {
+    final time = parse(value);
+    return time == null ? null : format(time).substring(0, 10);
+  }
+
   /// True when [value] names an instant, not only a day.
   static bool hasTime(String? value) => value != null && !_day.hasMatch(value.trim()) && parse(value) != null;
 
