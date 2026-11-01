@@ -491,14 +491,18 @@ final class DispatcherConfig {
   static const resumePromptPlaceholders = [...promptPlaceholders, 'news'];
 
   /// How every default prompt (and the frame of prompt actions) tells the
-  /// agent to talk to people: the discussion carries questions and answers
-  /// only, no acknowledgements, progress or summaries.
+  /// agent to talk to people: the discussion carries questions, answers and
+  /// problems only, no acknowledgements, progress or summaries of work that
+  /// went well.
   static const talkRules =
-      'Talking to people: the discussion of the item is for questions and answers only. Write a comment only to ask '
-      'what you need to know (`backlog ask {id} "<your question>"`, then stop) or to answer a question a person asked '
-      'you. Never acknowledge an answer ("thanks, on it"), never report progress and never summarise your work in '
-      'comments: that belongs in commit messages (and the pull request description). Write in the language the '
-      'people in the item use.';
+      'Talking to people: the discussion of the item is for questions, answers and problems only. Write a comment '
+      'only to ask what you need to know (`backlog ask {id} "<your question>"`, then stop), to answer a question a '
+      'person asked you, or when something failed or you could not finish: a push or pull request failed, checks or '
+      'tests do not pass, a permission was denied, a tool is missing. Then write one comment '
+      '(`backlog comment {id} "…"`) with what happened and what is needed; when a person has to decide something, '
+      'ask instead. Never acknowledge an answer ("thanks, on it"), never report progress and never summarise work '
+      'that went well in comments: that belongs in commit messages (and the pull request description). Write in the '
+      'language the people in the item use.';
 
   /// How every default prompt (and the frames of prompt actions and fixes)
   /// tells the agent to tick off the item's checklist: through the CLI, since
