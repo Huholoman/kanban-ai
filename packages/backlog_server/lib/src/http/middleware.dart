@@ -2,14 +2,11 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:backlog_api/backlog_api.dart';
+import 'package:backlog_core/backlog_core.dart' show generateServerToken;
 import 'package:shelf/shelf.dart';
 
 /// A random URL-safe token for [requireToken]: 22 characters, ~130 bits.
-String generateToken({Random? random}) {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-  final source = random ?? Random.secure();
-  return String.fromCharCodes([for (var i = 0; i < 22; i++) alphabet.codeUnitAt(source.nextInt(alphabet.length))]);
-}
+String generateToken({Random? random}) => generateServerToken(random: random);
 
 /// Requires `Authorization: Bearer <token>` (or `?token=` for WebSockets,
 /// which browsers open without custom headers) on `/api/` requests.

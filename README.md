@@ -226,6 +226,19 @@ backlog-server --allow 127.0.0.1,10.77.11.22,10.77.0.0/16  # answer only these c
 | `--generate-token` | | require a random token; it is printed at start, inside the URLs |
 | `--web` | `BACKLOG_WEB`, else `packages/backlog_app/build/web` | the built web app (served with ETags and `no-cache`, so browsers pick up a new build at once; Brotli or gzip copies made by the build are sent to browsers that accept them) |
 | `-q` | | do not log requests |
+| `--config` | `BACKLOG_SERVER_CONFIG`, else `~/.config/kanban-ai/server.yaml` if it exists | settings file (below) |
+
+**Settings file:** instead of long command lines, put the settings into `~/.config/kanban-ai/server.yaml` (edit it in `backlog config` › Global › Server, which can also generate a token); options and environment variables still win:
+
+```yaml
+host: [127.0.0.1, 10.77.1.2]   # or "127.0.0.1, 10.77.1.2"
+port: 8642
+allow: [127.0.0.1, 10.77.0.0/16]
+token: 3Xk…                    # clients send it; the printed URLs include it
+web: ~/kanban-ai/web           # absolute, ~/… or relative to this file
+projects: ~/.config/kanban-ai/projects.yaml
+quiet: true
+```
 
 API responses (1 kB and more) are gzip-compressed for clients that accept it.
 
@@ -529,7 +542,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 
 **Project registry:** `backlog init` registers the new backlog by itself (`--no-register` skips it); `backlog projects add` (in a project) registers an existing backlog in `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` (default `~/.config/kanban-ai/projects.yaml`; elsewhere with `BACKLOG_PROJECTS` or `--projects <file>`). The file is plain YAML you can also edit by hand — `projects:` is a list of `{id?, name?, path}`, paths absolute, `~/…` or relative to the file; the id defaults to the project folder's name (the parent of a folder called `backlog`), the first project is the default one, and `pinned: true` puts a project into the board switcher's short list (`backlog projects pin|unpin <id>`, or the pin in the switcher's *All projects…*).
 
-**Configuration TUI:** `backlog config` opens a terminal UI with two separate parts: **Global** (this machine — for now the project registry) and **Project** (the `backlog.yaml` of the backlog here or of a registered project). *Project › Workflow* edits statuses (order, category, pickable), priorities, types, milestones (title, due date), the defaults, the id prefix and length and the claim lease; renaming a status also renames it in the defaults, colours and dispatcher actions (items keep the old one, `backlog lint` lists them). Pages for the other sections are on the way; until then *Edit a value…* changes any key (`claims.lease_minutes`, `statuses[1].pickable`, a YAML value; empty removes it). Nothing is written until *Review and save*, which shows the diff, checks that the file is still valid and saves after `y`, keeping comments and unknown keys; a file edited meanwhile by someone else is not overwritten. ↑↓ move, `/` filters, Enter choose, Esc back, `q` quit.
+**Configuration TUI:** `backlog config` opens a terminal UI with two separate parts: **Global** (this machine — the project registry and the server settings) and **Project** (the `backlog.yaml` of the backlog here or of a registered project). *Project › Workflow* edits statuses (order, category, pickable), priorities, types, milestones (title, due date), the defaults, the id prefix and length and the claim lease; renaming a status also renames it in the defaults, colours and dispatcher actions (items keep the old one, `backlog lint` lists them). Pages for the other sections are on the way; until then *Edit a value…* changes any key (`claims.lease_minutes`, `statuses[1].pickable`, a YAML value; empty removes it). Nothing is written until *Review and save*, which shows the diff, checks that the file is still valid and saves after `y`, keeping comments and unknown keys; a file edited meanwhile by someone else is not overwritten. ↑↓ move, `/` filters, Enter choose, Esc back, `q` quit.
 
 Global options are `-C <dir>` and `--json`. The agent comes from `--as` or `BACKLOG_AGENT`. **Exit codes:** 0 ok, 1 error, 2 nothing to do, 3 claim conflict, 4 not found, 64 usage. JSON fields are only ever added, never renamed.
 

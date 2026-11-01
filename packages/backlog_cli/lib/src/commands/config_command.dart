@@ -21,7 +21,7 @@ final class ConfigCommand extends BacklogCommand {
 
   @override
   String get description =>
-      'Edit the configuration in a terminal UI: Global (this machine: the project registry) and Project '
+      'Edit the configuration in a terminal UI: Global (this machine: the project registry, the server) and Project '
       "(a project's backlog.yaml). Changes are shown as a diff, validated and written only after confirmation.";
 
   @override
@@ -40,6 +40,10 @@ final class ConfigCommand extends BacklogCommand {
         configRootScreen(
           ConfigLocations(
             registryFile: registry == null ? null : p.normalize(p.join(context.cwd, registry)),
+            serverFile: switch (serverConfigFile(context.environment)) {
+              final file? => p.normalize(p.join(context.cwd, file)),
+              null => null,
+            },
             home: context.environment['HOME'],
             currentBacklog: current,
           ),

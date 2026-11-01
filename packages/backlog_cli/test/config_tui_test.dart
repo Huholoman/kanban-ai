@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:backlog_cli/backlog_cli.dart';
-import 'package:backlog_core/backlog_core.dart' show BacklogLayout, StatusCategory, parseWorkflowYaml;
+import 'package:backlog_core/backlog_core.dart'
+    show BacklogLayout, StatusCategory, parseServerConfigYaml, parseWorkflowYaml;
 import 'package:dart_tui/dart_tui.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -236,6 +237,34 @@ void main() {
     expect(code, 0, reason: err);
     expect(driver.last, contains('"soon" is not a whole number.'));
     expect(driver.last, contains('240 minutes'));
+  });
+
+  test('the server settings: port and a generated token', () async {
+    final server = p.join(workspace.path, 'server.yaml');
+    final driver = Driver([
+      enter, down, enter, // Global → Server
+      down, enter, ...type('8642'), enter, // Port
+      down, down, enter, // Token
+      enter, // Generate a new token
+      key(KeyCode.escape),
+      end, enter, // Review and save
+      char('y'),
+      ctrlC,
+    ]);
+    final (code, err) = await run(
+      ['config', '--projects', p.join(workspace.path, 'projects.yaml')],
+      driver,
+      env: {'BACKLOG_SERVER_CONFIG': server},
+    );
+    expect(code, 0, reason: err);
+    expect(driver.showed('backlog config › Global › Server'), isTrue);
+    expect(driver.showed('8640 (the default)'), isTrue);
+    expect(driver.showed('Port set (not saved yet).'), isTrue);
+    expect(driver.showed('Saved $server.'), isTrue, reason: driver.last);
+    final config = parseServerConfigYaml(File(server).readAsStringSync(), baseDir: workspace.path);
+    expect(config.port, 8642);
+    expect(config.token, matches(RegExp(r'^[A-Za-z0-9_-]{22}$')));
+    expect(driver.showed('Token: ${config.token}'), isTrue);
   });
 
   test('the global part shows the project registry', () async {

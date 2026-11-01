@@ -8,6 +8,13 @@ import 'package:path/path.dart' as p;
 Future<void> main(List<String> arguments) async {
   final parser = ArgParser()
     ..addOption(
+      'config',
+      valueHelp: 'file',
+      help:
+          'Server settings (or BACKLOG_SERVER_CONFIG; default: \$XDG_CONFIG_HOME/kanban-ai/server.yaml when it '
+          'exists); options and the environment win over them.',
+    )
+    ..addOption(
       'dir',
       abbr: 'C',
       help: 'Serve only this backlog folder (or BACKLOG_DIR), ignoring the project registry.',
@@ -53,6 +60,23 @@ Future<void> main(List<String> arguments) async {
   }
 
   final environment = Platform.environment;
+  final configOption = options.option('config') ?? environment['BACKLOG_SERVER_CONFIG'];
+  final configFile = configOption == null || configOption.trim().isEmpty
+      ? serverConfigFile(environment)
+      : p.normalize(p.absolute(configOption));
+  var settings = ServerConfig.empty;
+  if (configFile != null) {
+    if (configOption != null && !File(configFile).existsSync()) {
+      stderr.writeln('No server settings at $configFile; create them with `backlog config` (Global › Server).');
+      exit(4);
+    }
+    try {
+      settings = await loadServerConfig(configFile, home: environment['HOME']);
+    } on BacklogException catch (error) {
+      stderr.writeln(error.message);
+      exit(1);
+    }
+  }
   final dirOption = options.option('dir');
   final projectsOption = options.option('projects');
   if (dirOption != null && projectsOption != null) {
@@ -61,7 +85,9 @@ Future<void> main(List<String> arguments) async {
   // --dir beats --projects, options beat the environment, and the registry
   // beats the backlog found from the current folder.
   final explicitDir = dirOption ?? (projectsOption == null ? environment['BACKLOG_DIR'] : null);
-  final explicitRegistry = explicitDir != null ? null : projectsOption ?? environment['BACKLOG_PROJECTS'];
+  final explicitRegistry = explicitDir != null
+      ? null
+      : projectsOption ?? environment['BACKLOG_PROJECTS'] ?? settings.projects;
   String? root;
   String? projectsFile;
   if (explicitDir != null) {
@@ -84,19 +110,23 @@ Future<void> main(List<String> arguments) async {
       exit(4);
     }
   }
-  final port = int.tryParse(options.option('port')!);
+  final port = options.wasParsed('port') ? int.tryParse(options.option('port')!) : settings.port ?? 8640;
   if (port == null) {
     stderr.writeln('--port must be a number.');
     exit(64);
   }
   final token = options.flag('generate-token')
       ? generateToken()
-      : options.option('token') ?? environment['BACKLOG_TOKEN'];
-  final webRoot = options.option('web') ?? environment['BACKLOG_WEB'] ?? _defaultWebRoot();
-  final hosts = options.multiOption('host');
+      : options.option('token') ?? environment['BACKLOG_TOKEN'] ?? settings.token;
+  final webRoot = options.option('web') ?? environment['BACKLOG_WEB'] ?? settings.web ?? _defaultWebRoot();
+  final hosts = options.wasParsed('host') ? options.multiOption('host') : settings.hosts ?? const ['0.0.0.0'];
+  final allowedByEnvironment = (environment['BACKLOG_ALLOW'] ?? '').split(',').where((r) => r.trim().isNotEmpty);
   final allowed = options.multiOption('allow').isNotEmpty
       ? options.multiOption('allow')
-      : (environment['BACKLOG_ALLOW'] ?? '').split(',').where((range) => range.trim().isNotEmpty).toList();
+      : allowedByEnvironment.isNotEmpty
+      ? allowedByEnvironment.toList()
+      : settings.allow ?? const <String>[];
+  final quiet = options.wasParsed('quiet') ? options.flag('quiet') : settings.quiet ?? false;
   final List<AddressRange> allow;
   try {
     allow = [for (final range in allowed) AddressRange.parse(range)];
@@ -116,7 +146,7 @@ Future<void> main(List<String> arguments) async {
       token: token,
       allow: allow.isEmpty ? null : allow,
       webRoot: webRoot,
-      log: options.flag('quiet') ? null : stdout.writeln,
+      log: quiet ? null : stdout.writeln,
       stateDir: ProcessAgentLauncher.defaultStateDir(environment),
       launcher: (project, host, log) => WorktreeProvisioner(
         ProcessAgentLauncher(
@@ -138,6 +168,7 @@ Future<void> main(List<String> arguments) async {
     exit(1);
   }
 
+  if (configFile != null && File(configFile).existsSync()) stdout.writeln('Settings from $configFile');
   if (projectsFile != null) {
     stdout.writeln('Projects from $projectsFile (watched; the first one is the default):');
   }

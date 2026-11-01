@@ -3,16 +3,19 @@ import 'package:dart_tui/dart_tui.dart' show Cmd;
 import 'package:path/path.dart' as p;
 
 import 'screen.dart';
+import 'server_page.dart';
 import 'widgets.dart';
 import 'workflow_pages.dart';
 
-/// Where `backlog config` finds things: the project registry file (null
-/// without a location), `$HOME` for `~/` in it, and the backlog found from
-/// the current folder (null when there is none).
+/// Where `backlog config` finds things: the project registry file and the
+/// server settings file (null without a location), `$HOME` for `~/` in
+/// them, and the backlog found from the current folder (null when there is
+/// none).
 final class ConfigLocations {
-  const ConfigLocations({this.registryFile, this.home, this.currentBacklog});
+  const ConfigLocations({this.registryFile, this.serverFile, this.home, this.currentBacklog});
 
   final String? registryFile;
+  final String? serverFile;
   final String? home;
   final String? currentBacklog;
 }
@@ -63,7 +66,19 @@ Future<Screen> _globalScreen(ConfigLocations locations) async {
           return null;
         },
       ),
-      const MenuEntry('Server', detail: 'not yet: server settings of this machine', enabled: false),
+      MenuEntry(
+        'Server',
+        detail: switch (locations.serverFile) {
+          final file? => 'addresses, port, allowed clients, token of backlog-server: $file',
+          null => 'no location: set HOME or BACKLOG_SERVER_CONFIG',
+        },
+        enabled: locations.serverFile != null,
+        onSelect: (_) => Navigator.task(() async {
+          final editor = serverConfigEditor(locations.serverFile!, home: locations.home);
+          final draft = await editor.open();
+          return (navigator) => navigator.push(serverScreen(editor, draft));
+        }),
+      ),
       const MenuEntry('Doctor', detail: 'not yet: check the installation and the projects', enabled: false),
     ],
   );
@@ -158,8 +173,16 @@ MenuEntry _projectEntry(String label, String root, String? name, {String? proble
 /// is written before the review, and leaving with unsaved edits asks
 /// first.
 final class ConfigFileScreen extends MenuScreen {
-  ConfigFileScreen(super.title, this.editor, this.draft, {required List<MenuEntry> Function(ConfigFileScreen) sections})
-    : _sections = sections;
+  ConfigFileScreen(
+    super.title,
+    this.editor,
+    this.draft, {
+    required List<MenuEntry> Function(ConfigFileScreen) sections,
+    this.notes = const [],
+  }) : _sections = sections;
+
+  /// Lines about the file under its location.
+  final List<String> notes;
 
   final ConfigEditor editor;
   ConfigDraft draft;
@@ -173,6 +196,7 @@ final class ConfigFileScreen extends MenuScreen {
     final problem = editor.problem(draft);
     return [
       editor.location,
+      ...notes,
       if (problem != null) Look.red(draft.changed ? 'Not valid: $problem' : 'The file is not valid: $problem'),
       if (!draft.isYaml) Look.red('It is not even YAML, so nothing can be edited here: fix it in a text editor.'),
       if (draft.changed) Look.yellow('Unsaved changes ($_changedLines changed lines).'),
