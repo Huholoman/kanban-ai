@@ -63,7 +63,10 @@ import 'pull_request_watcher.dart';
 /// open ([PullRequestOpener]), noted in its discussion.
 /// The outcome is logged, appended to the log and kept in
 /// `agents/<project>/<id>.last.json`, with the agent's session id, which a
-/// later start of the item continues ([DispatchConditions.sessions]).
+/// later start of the item continues ([DispatchConditions.sessions]), its
+/// final message (`result`) and what went wrong (`problems`: a failed exit,
+/// an error ending, denied tool calls, a pull request it could not open),
+/// which make the item need a person ([DispatchConditions.problems]).
 final class ProcessAgentLauncher extends AgentLauncher {
   ProcessAgentLauncher({
     required this.project,
@@ -222,7 +225,31 @@ final class ProcessAgentLauncher extends AgentLauncher {
       sessions: last.sessions,
       starts: last.starts,
       branches: branches,
+      problems: await _problems(snapshot),
     );
+  }
+
+  /// The problems of the latest run ([_lastRun]) of each unfinished item
+  /// whose run ended with some.
+  Future<Map<ItemId, List<String>>> _problems(BacklogSnapshot snapshot) async {
+    final dir = Directory(agentsDir);
+    if (!await dir.exists()) return const {};
+    final ids = <ItemId>{};
+    await for (final entry in dir.list()) {
+      final name = p.basename(entry.path);
+      for (final suffix in const ['.last.json', '.action.json']) {
+        if (entry is File && name.endsWith(suffix)) ids.add(ItemId(name.substring(0, name.length - suffix.length)));
+      }
+    }
+    final problems = <ItemId, List<String>>{};
+    for (final id in ids) {
+      if (snapshot[id] case final planned? when !planned.isDone) {
+        if ((await _lastRun(id))?['problems'] case final List<Object?> list when list.isNotEmpty) {
+          problems[id] = [for (final problem in list) '$problem'];
+        }
+      }
+    }
+    return problems;
   }
 
   /// The branch checked out in the worktree at [path]; null when it is
@@ -452,7 +479,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
   /// its status, nothing is held), the run is recorded (as the item's last
   /// session unless it was a `fresh` agent, a command or a built-in) and a
   /// note with the result goes into the item's discussion.
-  Future<void> _finishAction(_Record record, int? exitCode, String reason) async {
+  Future<void> _finishAction(_Record record, int? exitCode, String reason, {required bool stopped}) async {
     final run = record.run;
     final id = run.item;
     final backlog = await _backlog();
@@ -468,9 +495,14 @@ final class ProcessAgentLauncher extends AgentLauncher {
     } else if (builtIn != null) {
       reason = builtIn.ok ? 'succeeded: ${builtIn.summary}' : 'failed: ${builtIn.summary}';
     }
-    final session = record.kind == RunKind.agent && record.output == AgentOutput.claudeStreamJson
-        ? await _claudeSession(run.log) ?? record.resumed
-        : record.resumed;
+    final claude = record.kind == RunKind.agent && record.output == AgentOutput.claudeStreamJson;
+    final session = claude ? await _claudeSession(run.log) ?? record.resumed : record.resumed;
+    final end = claude ? await _claudeEnd(run.log) : null;
+    final failed = builtIn != null ? !builtIn.ok : !stopped && exitCode != 0;
+    final problems = [
+      if (failed) record.kind == RunKind.agent ? 'the agent $reason' : 'the action "${run.action}" $reason',
+      ...?end?.problems,
+    ];
     final ended = _clock.now();
     final side = record.kind != RunKind.agent || record.side;
     await _write(side ? _actionFile(id) : _lastFile(id), {
@@ -480,6 +512,8 @@ final class ProcessAgentLauncher extends AgentLauncher {
       'reason': reason,
       'outcome': outcome,
       'session_id': session,
+      'result': end?.result,
+      'problems': problems,
     });
     try {
       await File(
@@ -790,7 +824,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
         ? 'ended without an exit code (killed?)'
         : 'exited with code $exitCode';
 
-    if (record.run.action != null) return _finishAction(record, exitCode, reason);
+    if (record.run.action != null) return _finishAction(record, exitCode, reason, stopped: stopped);
 
     final backlog = await _backlog();
     final snapshot = await backlog.planning.snapshot();
@@ -823,8 +857,13 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final session = record.output == AgentOutput.claudeStreamJson
         ? await _claudeSession(run.log) ?? record.resumed
         : record.resumed;
+    final end = record.output == AgentOutput.claudeStreamJson ? await _claudeEnd(run.log) : null;
+    final problems = [if (!stopped && exitCode != 0) 'the agent $reason', ...?end?.problems];
     if (handedOver && planned != null) {
-      if (await _pullRequestFallback(backlog, record, planned.item) case final done?) outcome = '$outcome; $done';
+      if (await _pullRequestFallback(backlog, record, planned.item, end?.result) case final done?) {
+        outcome = '$outcome; ${done.text}';
+        if (done.failed) problems.add(done.text);
+      }
     }
     final ended = _clock.now();
     await _write(_lastFile(id), {
@@ -834,6 +873,8 @@ final class ProcessAgentLauncher extends AgentLauncher {
       'reason': reason,
       'outcome': outcome,
       'session_id': session,
+      'result': end?.result,
+      'problems': problems,
     });
     try {
       await File(run.log).writeAsString(
@@ -860,8 +901,14 @@ final class ProcessAgentLauncher extends AgentLauncher {
   /// agent's last message (or its last comment, else a description made
   /// from the item) and notes the result in the discussion; on failure the
   /// note says why and the item stays where the agent put it. Returns what
-  /// happened for the log; null when there is nothing to do.
-  Future<String?> _pullRequestFallback(Backlog backlog, _Record record, Item item) async {
+  /// happened for the log and whether it failed; null when there is nothing
+  /// to do.
+  Future<({String text, bool failed})?> _pullRequestFallback(
+    Backlog backlog,
+    _Record record,
+    Item item,
+    String? result,
+  ) async {
     if (backlog.workflow.dispatcher?.pr == null) return null;
     if (item.pr case final pr? when pr.trim().isNotEmpty) return null;
     final branch = item.branch ?? record.run.branch;
@@ -870,11 +917,9 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final ahead = await Process.run('git', ['rev-list', '--count', '$base..$branch'], workingDirectory: record.path);
     if (ahead.exitCode == 0 && '${ahead.stdout}'.trim() == '0') {
       await _note(backlog, item, 'No pull request: $branch has no commits that are not in $base.');
-      return 'no pull request ($branch has no commits of its own)';
+      return (text: 'no pull request ($branch has no commits of its own)', failed: false);
     }
-    final description =
-        (record.output == AgentOutput.claudeStreamJson ? await _claudeResult(record.run.log) : null) ??
-        _lastComment(item, record.run.worktree);
+    final description = result ?? _lastComment(item, record.run.worktree);
     try {
       final opened = await PullRequestOpener(
         environment: _environment,
@@ -886,7 +931,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
             ? 'The agent handed over without a pull request; pushed $branch and opened ${opened.url}'
             : 'The agent handed over without recording its pull request; pushed $branch, found ${opened.url}',
       );
-      return 'opened its pull request ${opened.url}';
+      return (text: 'opened its pull request ${opened.url}', failed: false);
     } on BacklogException catch (error) {
       await _note(
         backlog,
@@ -894,7 +939,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
         'Could not open a pull request for $branch: ${error.message}\n\n'
         'The item stays ${item.status}; `backlog pr ${item.id}` in ${record.run.worktree} tries again.',
       );
-      return 'opening its pull request failed: ${error.message}';
+      return (text: 'opening its pull request failed: ${error.message}', failed: true);
     }
   }
 
@@ -909,23 +954,52 @@ final class ProcessAgentLauncher extends AgentLauncher {
     return own.isEmpty ? null : own.last.text;
   }
 
-  /// The agent's final message: the `result` of the last `result` event.
-  static Future<String?> _claudeResult(String log) async {
+  /// How a Claude run ended, from its last `result` event: the agent's final
+  /// message and what went wrong (an error ending, denied tool calls).
+  static Future<({String? result, List<String> problems})> _claudeEnd(String log) async {
     final file = File(log);
-    if (!await file.exists()) return null;
-    String? result;
-    for (final line in await file.readAsLines()) {
+    if (!await file.exists()) return (result: null, problems: const <String>[]);
+    Map<Object?, Object?>? end;
+    for (final line in await file.readAsLines(encoding: const Utf8Codec(allowMalformed: true))) {
       if (!line.startsWith('{') || !line.contains('"type":"result"')) continue;
       try {
-        final json = jsonDecode(line);
-        if (json is Map && json['result'] is String && (json['result'] as String).trim().isNotEmpty) {
-          result = (json['result'] as String).trim();
-        }
+        if (jsonDecode(line) case final Map<Object?, Object?> json when json['type'] == 'result') end = json;
       } on FormatException {
         continue;
       }
     }
-    return result;
+    if (end == null) return (result: null, problems: const <String>[]);
+    final result = switch (end['result']) {
+      final String text when text.trim().isNotEmpty => text.trim(),
+      _ => null,
+    };
+    final denials = [
+      if (end['permission_denials'] case final List<Object?> list)
+        for (final denial in list)
+          if (denial case final Map<Object?, Object?> denial)
+            if (denial['tool_name'] case final String tool) _denied(tool, denial['tool_input']),
+    ];
+    return (
+      result: result,
+      problems: [
+        if (end['is_error'] == true) 'the agent ended with an error (${end['subtype'] ?? 'unknown'})',
+        if (denials.isNotEmpty)
+          '${denials.length == 1 ? 'a tool call was' : '${denials.length} tool calls were'} denied: '
+              '${denials.toSet().take(5).join(', ')}${denials.toSet().length > 5 ? ', …' : ''}',
+      ],
+    );
+  }
+
+  /// `Bash(git push origin x)`, `WebFetch`: a denied tool call, shortened.
+  static String _denied(String tool, Object? input) {
+    final detail = switch (input) {
+      {'command': final String command} => command,
+      {'file_path': final String path} => path,
+      _ => null,
+    };
+    if (detail == null) return tool;
+    final line = detail.trim().split('\n').first;
+    return '$tool(${line.length > 60 ? '${line.substring(0, 60)}…' : line})';
   }
 
   static Future<String?> _claudeSession(String log) async {

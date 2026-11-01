@@ -133,6 +133,7 @@ final class WorktreeProvisioner extends AgentLauncher {
       created: created,
       spare: spare,
       branches: inner.branches,
+      problems: inner.problems,
     );
   }
 

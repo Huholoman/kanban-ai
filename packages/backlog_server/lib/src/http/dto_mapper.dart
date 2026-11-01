@@ -270,6 +270,10 @@ abstract final class DtoMapper {
           since: pending.since,
         ),
     ],
+    problems: [
+      for (final (:item, :problems) in plan.problems)
+        ProblemItemDto(item: item.id.value, title: item.item.title, problems: problems),
+    ],
   );
 
   static ItemLinkDto _link(ItemId id, BacklogSnapshot snapshot) {

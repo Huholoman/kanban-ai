@@ -286,6 +286,10 @@ dispatcher:
       expect((note.author, note.note), ('dispatcher', true));
       expect(note.text, contains('opened https://git.example/o/r/pulls/5'));
       expect(logs.last, contains('opened its pull request https://git.example/o/r/pulls/5'));
+      final last = (await launcher.agentLog(ItemId('T-0001')))!.last!;
+      expect(last['result'], 'Adds a usage section.\n\nChecked the README renders.');
+      expect(last['problems'], isEmpty);
+      expect((await plan()).problems, isEmpty);
     });
 
     test('when that fails, a note says why and the item stays in review', () async {
@@ -299,6 +303,12 @@ dispatcher:
       expect(note.note, isTrue, reason: 'a note does not wake the agent');
       expect(note.text, allOf(contains('Could not open a pull request'), contains('unable to connect')));
       expect(note.text, contains('`backlog pr T-0001` in wt-1 tries again'));
+      final problem = (await plan()).problems.single;
+      expect(problem.item.id, ItemId('T-0001'));
+      expect(
+        problem.problems.single,
+        allOf(startsWith('opening its pull request failed'), contains('unable to connect')),
+      );
     });
 
     test('no pull request for a branch without commits, nor for an item that has one', () async {
@@ -323,6 +333,52 @@ dispatcher:
     });
   });
 
+  test('the end of a run keeps the final message and the problems: denied tools, an error ending', () async {
+    await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
+    await launcher.launch((await plan()).assignmentFor('T-0001'));
+    await waitForLog('T-0001', 'agent wt-1');
+    final log = (await launcher.agentLogSource(ItemId('T-0001')))!.path;
+    File(log).writeAsStringSync(
+      '${jsonEncode({
+        'type': 'result',
+        'subtype': 'error_max_turns',
+        'is_error': true,
+        'result': 'Could not push: permission denied.',
+        'permission_denials': [
+          {
+            'tool_name': 'Bash',
+            'tool_input': {'command': 'git push origin agent/T-0001'},
+          },
+          {'tool_name': 'WebFetch', 'tool_input': <String, Object?>{}},
+        ],
+      })}\n',
+      mode: FileMode.append,
+    );
+    await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+    await finish('T-0001', 0);
+
+    final last = (await launcher.agentLog(ItemId('T-0001')))!.last!;
+    expect(last['result'], 'Could not push: permission denied.');
+    final problems = [
+      'the agent ended with an error (error_max_turns)',
+      '2 tool calls were denied: Bash(git push origin agent/T-0001), WebFetch',
+    ];
+    expect(last['problems'], problems);
+    final again = await plan();
+    expect(again.problems.single.item.id, ItemId('T-0001'));
+    expect(again.problems.single.problems, problems);
+
+    // A new run replaces them; one that went well has none.
+    await backlog.items.update('T-0001', [FieldChange.parse('status=todo')]);
+    clock.advance(const Duration(minutes: 1));
+    File(path('go-T-0001')).deleteSync();
+    await launcher.launch((await plan()).assignmentFor('T-0001'));
+    expect((await plan()).problems, isEmpty, reason: 'it runs');
+    await backlog.items.update('T-0001', [FieldChange.parse('status=review')]);
+    await finish('T-0001', 0);
+    expect((await plan()).problems, isEmpty);
+  });
+
   test('an agent that ends without finishing releases and holds its item', () async {
     await backlog.items.create(const NewItem(title: 'A', status: 'todo'));
     await launcher.launch((await plan()).assignmentFor('T-0001'));
@@ -334,6 +390,8 @@ dispatcher:
     final again = await plan();
     expect(again.assignments, isEmpty, reason: 'held items are not started by themselves');
     expect(again.held.single.reason, contains('exited with code 3'));
+    expect((await launcher.agentLog(ItemId('T-0001')))!.last!['problems'], ['the agent exited with code 3']);
+    expect(again.problems, isEmpty, reason: 'held says so already');
     expect(logs.last, contains('released and held'));
     expect(again.starts[ItemId('T-0001')]?.worktree, 'wt-1', reason: 'the start is known for replies');
 
@@ -652,6 +710,7 @@ dispatcher:
       expect((after.item.status, after.claim), ('review', null));
       expect((await launcher.agentLog(ItemId('T-0001')))!.lines, contains('out-line'));
       expect((await plan()).sessions[ItemId('T-0001')]!.id, 'sess-T-0001');
+      expect((await plan()).problems.single.problems, ['the action "Check" exited with code 3']);
     });
 
     test('a built-in runs inside the server; after a restart it counts as interrupted', () async {
