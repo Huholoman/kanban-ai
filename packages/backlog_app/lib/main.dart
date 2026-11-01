@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'app/app_scope.dart';
 import 'app/backlog_app.dart';
+import 'app/draft_store.dart';
 import 'app/project_memory_store.dart';
 
 /// Served by backlog_server, the app talks to the origin it was loaded from.
@@ -21,6 +22,7 @@ void main() {
       // A server without projects serves its one backlog on the old paths.
       api: HttpBacklogApi(base, token: token),
       memory: projectMemoryStore(),
+      drafts: draftStore(),
       config: AppConfig(agent: agent == null || agent.isEmpty ? null : agent),
     ),
   );

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../features/board/presentation/board_page.dart';
 import '../features/dashboard/application/dashboard_controller.dart';
+import '../features/item/application/drafts.dart';
 import '../features/projects/application/preview_controller.dart';
 import '../features/projects/application/project_memory.dart';
 import '../features/projects/application/project_route.dart';
@@ -25,6 +26,7 @@ class BacklogApp extends StatefulWidget {
     this.api,
     this.config = const AppConfig(),
     this.memory,
+    this.drafts,
     this.initialRoute,
   }) : assert(projects != null || api != null, 'Needs projects or a single backlog.');
 
@@ -38,6 +40,9 @@ class BacklogApp extends StatefulWidget {
 
   /// Where the last opened project is remembered.
   final ProjectMemory? memory;
+
+  /// Where unsent text (replies) is kept; by default for the app's lifetime.
+  final DraftStore? drafts;
 
   /// Route the page was opened with (`/p/<id>` names the project); by
   /// default the platform's (on the web the URL fragment).
@@ -60,6 +65,8 @@ class _BacklogAppState extends State<BacklogApp> with WidgetsBindingObserver {
 
   /// The server's local preview, whichever project is open.
   late final _preview = PreviewController(widget.projects);
+
+  late final _drafts = widget.drafts ?? InMemoryDraftStore();
 
   @override
   void initState() {
@@ -98,6 +105,7 @@ class _BacklogAppState extends State<BacklogApp> with WidgetsBindingObserver {
         projects: _projects,
         dashboard: _dashboard,
         preview: _preview,
+        drafts: _drafts,
         config: widget.config,
       ),
       null => _ProjectsStatus(controller: _projects),
@@ -113,6 +121,7 @@ class _ProjectSession extends StatefulWidget {
     required this.projects,
     required this.dashboard,
     required this.preview,
+    required this.drafts,
     required this.config,
   });
 
@@ -120,6 +129,7 @@ class _ProjectSession extends StatefulWidget {
   final ProjectsController projects;
   final DashboardController dashboard;
   final PreviewController preview;
+  final DraftStore drafts;
   final AppConfig config;
 
   @override
@@ -128,6 +138,7 @@ class _ProjectSession extends StatefulWidget {
 
 class _ProjectSessionState extends State<_ProjectSession> {
   late final _appearance = AppearanceController(widget.api);
+  late final _drafts = Drafts(widget.drafts, widget.projects.current?.id);
 
   /// Named after the project, so that the Navigator puts it into the URL.
   late final _route = switch (widget.projects.current) {
@@ -160,6 +171,7 @@ class _ProjectSessionState extends State<_ProjectSession> {
     projects: widget.projects,
     dashboard: widget.dashboard,
     preview: widget.preview,
+    drafts: _drafts,
     child: ListenableBuilder(
       listenable: Listenable.merge([_appearance, widget.dashboard]),
       builder: (context, _) => MaterialApp(
