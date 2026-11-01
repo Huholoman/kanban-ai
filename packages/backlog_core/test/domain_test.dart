@@ -313,6 +313,12 @@ dispatcher:
       expect(byDefault.agent.name, 'claude');
       expect(byDefault.agent.output, AgentOutput.claudeStreamJson);
       expect(byDefault.prompt.text, DispatcherConfig.defaultPrompt);
+      for (final prompt in [DispatcherConfig.defaultPrompt, DispatcherConfig.defaultPullRequestPrompt]) {
+        expect(
+          prompt,
+          allOf(contains("read the comments in the item's `## Discussion`"), contains('backlog ask {id}')),
+        );
+      }
       final claude = byDefault.command.arguments;
       expect(claude.take(3), ['claude', '-p', '{prompt}']);
       expect(claude, containsAllInOrder(['--permission-mode', 'acceptEdits', '--allowedTools']));

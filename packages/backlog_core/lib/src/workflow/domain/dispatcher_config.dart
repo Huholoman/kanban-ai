@@ -550,11 +550,20 @@ final class DispatcherConfig {
   /// (`info/exclude`), so the worktree stays clean.
   static const scratchFolder = '.kanban-ai';
 
+  /// How the default prompts tell an agent starting on an item to read the
+  /// discussion first: the comments are part of the assignment, and a point
+  /// it cannot settle on its own goes back to a person before any work.
+  static const readCommentsRule =
+      'Before you start, read the comments in the item\'s `## Discussion` (`backlog show {id}` prints them): they '
+      'are part of the assignment, so take them into account. If a comment asks you something or raises a point '
+      'you cannot settle on your own, answer it with `backlog ask {id} "<your answer and question>"` (it hands the '
+      'item to a person) and stop before changing anything.';
+
   /// The prompt every agent gets unless `dispatcher.prompt` replaces it.
   static const defaultPrompt =
       'You are the coding agent {worktree}, working on backlog item {id} ("{title}") in this git worktree.\n'
       '1. First run `backlog instructions` and `backlog show {id}` and follow them. The item is already claimed '
-      'for you (BACKLOG_AGENT={worktree}); do not take other items.\n'
+      'for you (BACKLOG_AGENT={worktree}); do not take other items. $readCommentsRule\n'
       '2. The worktree is on branch {branch}, prepared for this item: commit there and do not switch branches. '
       'Make small commits; every commit message contains {id}.\n'
       '3. When the work is finished, run `backlog set {id} status={handover}`.\n'
@@ -598,7 +607,7 @@ final class DispatcherConfig {
   static const defaultPullRequestPrompt =
       'You are the coding agent {worktree}, working on backlog item {id} ("{title}") in this git worktree.\n'
       '1. First run `backlog instructions` and `backlog show {id}` and follow them. The item is already claimed '
-      'for you (BACKLOG_AGENT={worktree}); do not take other items.\n'
+      'for you (BACKLOG_AGENT={worktree}); do not take other items. $readCommentsRule\n'
       '2. The worktree is on branch {branch}, prepared for this item: commit there and do not switch branches. '
       'Make small commits; every commit message contains {id}.\n'
       '3. When the work is finished, open a pull request: write its description yourself (what changed and why, '
