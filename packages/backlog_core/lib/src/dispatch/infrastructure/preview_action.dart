@@ -81,7 +81,7 @@ final class PreviewAction implements BuiltInAction {
 
     final work = p.join(p.dirname(repo), preview.worktreeName(p.basename(repo)));
     if (await Directory(work).exists()) {
-      if (await _notPreviewWorktree(context, work, repo, git) case final why?) {
+      if (await MergeAction.notHelperWorktree(context, work, repo, git) case final why?) {
         throw _Failed('$work is not the preview\'s helper worktree: $why; nothing was changed there');
       }
       // Whatever an earlier preview left: an unfinished rebase, changes.
@@ -172,53 +172,6 @@ final class PreviewAction implements BuiltInAction {
         }
       },
     );
-  }
-
-  /// Why [work] must not be force-checked-out as the preview worktree:
-  /// it is the primary clone, a worktree of the dispatcher (listed or
-  /// created), not a worktree of [repo], or has a branch checked out (a
-  /// preview worktree is always detached); null when it is the helper.
-  static Future<String?> _notPreviewWorktree(
-    BuiltInActionContext context,
-    String work,
-    String repo,
-    Future<CommandOutput> Function(List<String> arguments, String path) git,
-  ) async {
-    if (MergeAction.samePath(work, repo)) return 'it is the primary clone';
-    for (final worktree in context.config.worktrees) {
-      if (MergeAction.samePath(worktree.resolvePath(context.backlogRoot), work)) {
-        return 'it is the dispatcher worktree ${worktree.name}';
-      }
-    }
-    if (context.stateDir case final state? when context.project != null) {
-      final records = Directory(p.join(state, 'worktrees', context.project!));
-      if (await records.exists()) {
-        await for (final entry in records.list()) {
-          if (entry is! File || !entry.path.endsWith('.json')) continue;
-          try {
-            final json = jsonDecode(await entry.readAsString());
-            if (json is Map && json['path'] is String && MergeAction.samePath(json['path'] as String, work)) {
-              return 'the dispatcher created it for agents';
-            }
-          } on FormatException {
-            continue;
-          }
-        }
-      }
-    }
-    final listed = await git(['worktree', 'list', '--porcelain'], repo);
-    String? path;
-    var known = false;
-    for (final line in LineSplitter.split(listed.output)) {
-      if (line.startsWith('worktree ')) path = line.substring('worktree '.length);
-      if (path == null || !MergeAction.samePath(path, work)) continue;
-      known = true;
-      if (line.startsWith('branch refs/heads/')) {
-        return 'it has the branch ${line.substring('branch refs/heads/'.length)} checked out';
-      }
-    }
-    if (!known) return 'it is not a worktree of $repo';
-    return null;
   }
 
   static String _tail(String text, int count) {

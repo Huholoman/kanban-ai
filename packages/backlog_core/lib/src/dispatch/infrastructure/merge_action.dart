@@ -189,9 +189,18 @@ final class MergeAction implements BuiltInAction {
           }
           steps.add('rebased onto $base');
         }
-        final checkValues = {...values, 'worktree': temporary == null ? context.worktree ?? '' : '', 'path': work};
         if (merge.check case final check?) {
-          final result = await context.capture(check.render(checkValues), workingDirectory: work);
+          // The check sees exactly what is merged: files an agent left
+          // untracked in its worktree would be checked too.
+          final where = temporary == null && await git.untrackedFiles(work)
+              ? await _checkWorktree(context, git, repo, (await git.value(['rev-parse', 'HEAD'], work))!)
+              : work;
+          final checkValues = {
+            ...values,
+            'worktree': temporary == null && where == work ? context.worktree ?? '' : '',
+            'path': where,
+          };
+          final result = await context.capture(check.render(checkValues), workingDirectory: where);
           if (!result.ok) {
             throw _Failed(
               'the check `${CommandTemplate.join(check.render(checkValues))}` failed with exit code '
@@ -243,6 +252,27 @@ final class MergeAction implements BuiltInAction {
       if (temporary != null) await git.capture(['worktree', 'remove', '--force', temporary], repo);
     }
     return 'merged $branch into $base (fast-forward${steps.isEmpty ? '' : ', ${steps.join(', ')}'})';
+  }
+
+  /// The helper worktree `{repo}-check` next to the primary clone with
+  /// [commit] checked out (detached) and nothing else: added on first use,
+  /// later forced to [commit] and cleaned of untracked files (ignored ones,
+  /// such as fetched dependencies, stay).
+  Future<String> _checkWorktree(BuiltInActionContext context, _Git git, String repo, String commit) async {
+    final work = p.join(p.dirname(repo), '${p.basename(repo)}-check');
+    if (await Directory(work).exists()) {
+      if (await notHelperWorktree(context, work, repo, git.capture) case final why?) {
+        throw _Failed('$work is not the helper worktree of the check: $why; nothing was changed there.', setup: true);
+      }
+      await git.capture(['rebase', '--abort'], work);
+      final checkout = await git.capture(['checkout', '--quiet', '--force', '--detach', commit], work);
+      if (!checkout.ok) throw _Failed('cannot check out $commit in $work: ${_tail(checkout.output, 3)}', setup: true);
+      await git.capture(['clean', '--force', '-d', '--quiet'], work);
+    } else {
+      final added = await git.capture(['worktree', 'add', '--quiet', '--detach', work, commit], repo);
+      if (!added.ok) throw _Failed('cannot add the check worktree $work: ${_tail(added.output, 3)}', setup: true);
+    }
+    return work;
   }
 
   Future<String> _pullRequest(BuiltInActionContext context, Map<String, String> values) async {
@@ -420,6 +450,54 @@ final class MergeAction implements BuiltInAction {
     return branches;
   }
 
+  /// Why [work] must not be force-checked-out as a helper worktree (of
+  /// the preview, of the merge check): it is the primary clone, a worktree
+  /// of the dispatcher (listed or created), not a worktree of [repo], or
+  /// has a branch checked out (a helper is always detached); null when it
+  /// is a helper.
+  static Future<String?> notHelperWorktree(
+    BuiltInActionContext context,
+    String work,
+    String repo,
+    Future<CommandOutput> Function(List<String> arguments, String path) git,
+  ) async {
+    if (samePath(work, repo)) return 'it is the primary clone';
+    for (final worktree in context.config.worktrees) {
+      if (samePath(worktree.resolvePath(context.backlogRoot), work)) {
+        return 'it is the dispatcher worktree ${worktree.name}';
+      }
+    }
+    if (context.stateDir case final state? when context.project != null) {
+      final records = Directory(p.join(state, 'worktrees', context.project!));
+      if (await records.exists()) {
+        await for (final entry in records.list()) {
+          if (entry is! File || !entry.path.endsWith('.json')) continue;
+          try {
+            final json = jsonDecode(await entry.readAsString());
+            if (json is Map && json['path'] is String && samePath(json['path'] as String, work)) {
+              return 'the dispatcher created it for agents';
+            }
+          } on FormatException {
+            continue;
+          }
+        }
+      }
+    }
+    final listed = await git(['worktree', 'list', '--porcelain'], repo);
+    String? path;
+    var known = false;
+    for (final line in LineSplitter.split(listed.output)) {
+      if (line.startsWith('worktree ')) path = line.substring('worktree '.length);
+      if (path == null || !samePath(path, work)) continue;
+      known = true;
+      if (line.startsWith('branch refs/heads/')) {
+        return 'it has the branch ${line.substring('branch refs/heads/'.length)} checked out';
+      }
+    }
+    if (!known) return 'it is not a worktree of $repo';
+    return null;
+  }
+
   /// Whether [a] and [b] are the same folder (symbolic links resolved).
   static bool samePath(String a, String b) {
     String real(String path) {
@@ -595,4 +673,8 @@ final class _Git {
 
   Future<bool> trackedChanges(String path) async =>
       (await capture(['status', '--porcelain', '--untracked-files=no'], path)).output.trim().isNotEmpty;
+
+  /// Whether [path] has untracked files that are not ignored.
+  Future<bool> untrackedFiles(String path) async =>
+      (await capture(['ls-files', '--others', '--exclude-standard'], path)).output.trim().isNotEmpty;
 }

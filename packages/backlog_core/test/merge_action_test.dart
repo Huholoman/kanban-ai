@@ -289,6 +289,47 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       expect((await current()).status, 'done');
     });
 
+    test('untracked files in the worktree do not reach the check: it runs in the clean {repo}-check', () async {
+      await configure(
+        merge: '{strategy: local, check: [sh, -c, "test -f feature.txt && test ! -e junk.txt && pwd > ../where"]}',
+      );
+      await item();
+      File(path('wt-1/junk.txt')).writeAsStringSync('an agent\'s leftover\n');
+
+      final result = await merge();
+      expect(result.ok, isTrue, reason: '${result.summary}\n${log.join('\n')}');
+      expect(result.summary, contains('(fast-forward, checked)'));
+      expect(File(path('where')).readAsStringSync().trim(), endsWith('repo-check'));
+      expect(File(path('wt-1/junk.txt')).existsSync(), isTrue, reason: 'the agent\'s files stay');
+      expect((await current()).status, 'done');
+    });
+
+    test('the check worktree is cleaned before it is used again', () async {
+      await configure(merge: '{strategy: local, check: [sh, -c, "test ! -e stale.txt"]}');
+      await item();
+      File(path('wt-1/junk.txt')).writeAsStringSync('leftover\n');
+      await git(path('repo'), ['worktree', 'add', '-q', '--detach', path('repo-check'), 'main']);
+      File(path('repo-check/stale.txt')).writeAsStringSync('from the last check\n');
+
+      final result = await merge();
+      expect(result.ok, isTrue, reason: '${result.summary}\n${log.join('\n')}');
+      expect(File(path('repo-check/stale.txt')).existsSync(), isFalse);
+    });
+
+    test('a folder {repo}-check that is not its helper worktree is left alone', () async {
+      await configure(merge: '{strategy: local, check: [sh, -c, "true"]}');
+      final tip = await item();
+      File(path('wt-1/junk.txt')).writeAsStringSync('leftover\n');
+      Directory(path('repo-check')).createSync();
+      File(path('repo-check/mine.txt')).writeAsStringSync('mine\n');
+
+      final result = await merge();
+      expect(result.ok, isFalse);
+      expect(result.summary, contains('repo-check is not the helper worktree of the check: it is not a worktree of'));
+      expect(File(path('repo-check/mine.txt')).existsSync(), isTrue);
+      expect(await git(path('wt-1'), ['rev-parse', 'HEAD']), tip);
+    });
+
     test('a conflict aborts the rebase and sends the item back to review with a comment', () async {
       final tip = await item(file: 'README.md', text: 'one\nTWO\nthree\n');
       await commit(path('repo'), 'README.md', 'one\n2\nthree\n', 'Conflicting change');

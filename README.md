@@ -517,7 +517,7 @@ dispatcher:
   merge: {strategy: local, check: mise run check, push: true}   # or strategy: pr with pr.merge
 ```
 
-- `local`: in the item's worktree (or a temporary one next to the primary clone) the branch is rebased onto `base` when needed, `check` runs, `push` pushes the new base (never forced), and `base` is fast-forwarded in the primary clone — which must have no uncommitted changes to tracked files.
+- `local`: in the item's worktree (or a temporary one next to the primary clone) the branch is rebased onto `base` when needed, `check` runs (in a clean helper worktree `<repo>-check` when the item's worktree has untracked files, so an agent's leftovers never decide it), `push` pushes the new base (never forced), and `base` is fast-forwarded in the primary clone — which must have no uncommitted changes to tracked files.
 - `pr`: `dispatcher.pr.merge` merges the pull request: `tea pulls merge --style rebase {pr_number}` (Gitea) or `gh pr merge --rebase {pr}` (GitHub); `{pr}` is the item's `pr` URL, `{pr_number}` the number at its end.
 - `command`: your own `merge.command` (exit code 0 = merged).
 
