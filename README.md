@@ -520,7 +520,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 
 **Project registry:** `backlog init` registers the new backlog by itself (`--no-register` skips it); `backlog projects add` (in a project) registers an existing backlog in `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` (default `~/.config/kanban-ai/projects.yaml`; elsewhere with `BACKLOG_PROJECTS` or `--projects <file>`). The file is plain YAML you can also edit by hand — `projects:` is a list of `{id?, name?, path}`, paths absolute, `~/…` or relative to the file; the id defaults to the project folder's name (the parent of a folder called `backlog`), the first project is the default one, and `pinned: true` puts a project into the board switcher's short list (`backlog projects pin|unpin <id>`, or the pin in the switcher's *All projects…*).
 
-**Configuration TUI:** `backlog config` opens a terminal UI with two separate parts: **Global** (this machine — for now the project registry) and **Project** (the `backlog.yaml` of the backlog here or of a registered project). Pages for the individual sections are on the way; until then *Edit a value…* changes any key (`claims.lease_minutes`, `statuses[1].pickable`, a YAML value; empty removes it). Nothing is written until *Review and save*, which shows the diff, checks that the file is still valid and saves after `y`, keeping comments and unknown keys; a file edited meanwhile by someone else is not overwritten. ↑↓ move, Enter choose, Esc back, `q` quit.
+**Configuration TUI:** `backlog config` opens a terminal UI with two separate parts: **Global** (this machine — for now the project registry) and **Project** (the `backlog.yaml` of the backlog here or of a registered project). Pages for the individual sections are on the way; until then *Edit a value…* changes any key (`claims.lease_minutes`, `statuses[1].pickable`, a YAML value; empty removes it). Nothing is written until *Review and save*, which shows the diff, checks that the file is still valid and saves after `y`, keeping comments and unknown keys; a file edited meanwhile by someone else is not overwritten. ↑↓ move, `/` filters, Enter choose, Esc back, `q` quit.
 
 Global options are `-C <dir>` and `--json`. The agent comes from `--as` or `BACKLOG_AGENT`. **Exit codes:** 0 ok, 1 error, 2 nothing to do, 3 claim conflict, 4 not found, 64 usage. JSON fields are only ever added, never renamed.
 
@@ -531,7 +531,7 @@ A Dart pub workspace, plus the Flutter app:
 ```
 packages/
   backlog_core/    domain, use cases, file-system adapters
-  backlog_cli/     CLI adapter (args), text/JSON output, the TUI of `backlog config` (own, over dart:io raw mode)
+  backlog_cli/     CLI adapter (args), text/JSON output, the TUI of `backlog config` (on dart_tui)
   backlog_api/     HTTP contract: DTOs, the BacklogApi interface, an HTTP client (pure Dart, runs on the web)
   backlog_server/  shelf: REST over the core, folder watcher + WebSocket, serves the web app
   backlog_app/     Flutter (web, linux): board, detail, editing; outside the workspace, own pubspec.lock

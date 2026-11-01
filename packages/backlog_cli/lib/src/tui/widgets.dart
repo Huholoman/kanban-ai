@@ -1,21 +1,33 @@
-import 'package:backlog_core/backlog_core.dart';
+import 'package:backlog_core/backlog_core.dart' show ConfigDraft, ConfigEditor, DiffKind;
+import 'package:dart_tui/dart_tui.dart';
 
-import 'keys.dart';
 import 'screen.dart';
 
-/// One line of a [MenuScreen]; disabled entries are shown dimmed with
-/// their [detail] and cannot be chosen.
+/// One entry of a [MenuScreen]; disabled entries say why in their
+/// [detail] and cannot be chosen.
 final class MenuEntry {
   const MenuEntry(this.label, {this.detail, this.onSelect, this.enabled = true});
 
   final String label;
   final String? detail;
   final bool enabled;
-  final Future<void> Function(Navigator navigator)? onSelect;
+
+  /// Pushes the next screen or returns work for [Navigator.task].
+  final Cmd? Function(Navigator navigator)? onSelect;
 }
 
-/// A list to move through with ↑/↓ (or j/k) and choose with Enter (or →);
-/// Escape, ← or `q` go back.
+const _listStyles = FullListStyles(
+  selectedTitle: Style(isReverse: true),
+  description: Style(isDim: true),
+  cursor: Style(isBold: true),
+  filterPrompt: Style(isBold: true),
+  statusBar: Style(isDim: true),
+  noResults: Style(isDim: true),
+);
+
+/// A `dart_tui` [ListModel] of entries with their details: ↑/↓ (j/k),
+/// PgUp/PgDn and Home/End move, `/` filters, Enter or → chooses; Escape,
+/// ← or `q` go back.
 class MenuScreen extends Screen {
   MenuScreen(this.title, {List<MenuEntry> Function()? entries, List<String> Function()? intro})
     : _entries = entries,
@@ -26,7 +38,8 @@ class MenuScreen extends Screen {
 
   final List<MenuEntry> Function()? _entries;
   final List<String> Function()? _intro;
-  int selected = 0;
+  ListModel _list = ListModel(items: const [], showStatusBar: false, styles: _listStyles);
+  List<MenuEntry> _shown = const [];
 
   /// The entries, built anew for every frame so that they can show state.
   List<MenuEntry> get entries => _entries?.call() ?? const [];
@@ -34,78 +47,79 @@ class MenuScreen extends Screen {
   /// Lines above the entries.
   List<String> get intro => _intro?.call() ?? const [];
 
+  /// The list in sync with [entries], [height] rows high.
+  ListModel _synced(int height) {
+    _shown = entries;
+    final items = [
+      for (final entry in _shown)
+        ListItem(title: entry.label, description: entry.detail ?? '', filterValue: entry.label),
+    ];
+    return _list = ListModel(
+      items: items,
+      cursor: _list.selectedIndex,
+      height: height,
+      filter: _list.filter,
+      filterMode: _list.filterMode,
+      showStatusBar: false,
+      styles: _listStyles,
+    );
+  }
+
+  int _height = 10;
+
   @override
-  String get hints => '↑↓ move · Enter choose · Esc back · q quit';
+  String get hints => _list.filterMode
+      ? 'type to filter · Enter done · Esc clear'
+      : '↑↓ move · Enter choose · / filter · Esc back · q quit';
 
   @override
   List<String> body(int width, int height) {
-    final entries = this.entries;
-    if (entries.isNotEmpty) selected = selected.clamp(0, entries.length - 1);
-    final labelWidth = entries.fold(0, (w, e) => e.label.length > w ? e.label.length : w);
-    final header = [for (final line in intro) Style.fit(line, width), if (intro.isNotEmpty) ''];
-    final room = height - header.length;
-    final first = room <= 0 || selected < room ? 0 : selected - room + 1;
-    return [
-      ...header,
-      for (final (index, entry) in entries.indexed.skip(first).take(room < 1 ? 1 : room))
-        _row(entry, index == selected, labelWidth, width),
-    ];
-  }
-
-  String _row(MenuEntry entry, bool current, int labelWidth, int width) {
-    final text = Style.fit(
-      '${current ? '›' : ' '} ${entry.label.padRight(labelWidth)}${entry.detail == null ? '' : '  ${entry.detail}'}',
-      width,
-      pad: current,
-    );
-    if (current) return Style.reverse(text);
-    return entry.enabled ? text : Style.dim(text);
+    final header = [...intro, if (intro.isNotEmpty) ''];
+    // Two rows per entry (label and detail).
+    _height = ((height - header.length - 2) ~/ 2).clamp(1, 1 << 20);
+    return [...header, ..._lines(_synced(_height).view().content)];
   }
 
   @override
-  Future<void> handle(Key key, Navigator navigator) async {
-    final entries = this.entries;
-    switch (key.kind) {
-      case KeyKind.up:
-        selected = entries.isEmpty ? 0 : (selected - 1) % entries.length;
-      case KeyKind.down || KeyKind.tab:
-        selected = entries.isEmpty ? 0 : (selected + 1) % entries.length;
-      case KeyKind.home:
-        selected = 0;
-      case KeyKind.end:
-        selected = entries.isEmpty ? 0 : entries.length - 1;
-      case KeyKind.enter || KeyKind.right:
-        if (selected < entries.length) await _choose(entries[selected], navigator);
-      case KeyKind.escape || KeyKind.left:
-        await navigator.leave();
-      case KeyKind.char when key.char == 'k':
-        selected = entries.isEmpty ? 0 : (selected - 1) % entries.length;
-      case KeyKind.char when key.char == 'j':
-        selected = entries.isEmpty ? 0 : (selected + 1) % entries.length;
-      case KeyKind.char when key.char == 'q':
-        await quitAll(navigator);
-      default:
+  Cmd? update(Msg msg, Navigator navigator) {
+    final list = _synced(_height);
+    final filtering = list.filterMode;
+    if (msg is KeyMsg && !filtering) {
+      switch (msg.key) {
+        case 'enter' || 'right':
+          final selected = list.selected;
+          if (selected == null) return null;
+          return _choose(_shown[list.items.indexOf(selected)], navigator);
+        case 'esc' when list.filter.isEmpty:
+          navigator.leave();
+          return null;
+        case 'left':
+          navigator.leave();
+          return null;
+        case 'q':
+          navigator.leaveAll();
+          return null;
+        case 'tab':
+          return _move('down');
+      }
     }
+    final (next, cmd) = list.update(msg);
+    _list = next as ListModel;
+    return cmd;
   }
 
-  Future<void> _choose(MenuEntry entry, Navigator navigator) async {
+  Cmd? _move(String key) {
+    final (next, _) = _list.update(KeyPressMsg(TeaKey(code: key == 'down' ? KeyCode.down : KeyCode.up)));
+    _list = next as ListModel;
+    return null;
+  }
+
+  Cmd? _choose(MenuEntry entry, Navigator navigator) {
     if (!entry.enabled || entry.onSelect == null) {
       navigator.say(entry.detail ?? 'Not available.', error: true);
-      return;
+      return null;
     }
-    await entry.onSelect!(navigator);
-  }
-}
-
-/// Leaves screen after screen while each agrees ([Screen.mayLeave]); stops
-/// at the first one that does not.
-Future<void> quitAll(Navigator navigator) async {
-  while (await navigator.top.mayLeave(navigator)) {
-    if (navigator.stack.length == 1) {
-      navigator.quit();
-      return;
-    }
-    await navigator.pop();
+    return entry.onSelect!(navigator);
   }
 }
 
@@ -116,33 +130,35 @@ final class ConfirmScreen extends Screen {
   @override
   final String title;
   final String question;
-  final Future<void> Function(Navigator navigator) onYes;
-  final Future<void> Function(Navigator navigator)? onNo;
+  final Apply onYes;
+  final Apply? onNo;
 
   @override
   String get hints => 'y yes · n no';
 
   @override
-  List<String> body(int width, int height) => [Style.fit(question, width)];
+  List<String> body(int width, int height) => [question];
 
   @override
-  Future<void> handle(Key key, Navigator navigator) async {
-    if (key.isChar('y') || key.isChar('Y')) {
-      await navigator.pop();
-      await onYes(navigator);
-    } else if (key.isChar('n') || key.isChar('N') || key.kind == KeyKind.escape) {
-      await navigator.pop();
-      await onNo?.call(navigator);
+  Cmd? update(Msg msg, Navigator navigator) {
+    if (msg is! KeyMsg) return null;
+    switch (msg.key) {
+      case 'y' || 'Y':
+        navigator.pop();
+        onYes(navigator);
+      case 'n' || 'N' || 'esc':
+        navigator.pop();
+        onNo?.call(navigator);
     }
+    return null;
   }
 }
 
-/// One line of text to edit: ←/→, Home/End, Backspace/Delete; Enter
-/// submits, Escape cancels.
+/// One line of text in a `dart_tui` [TextInputModel] (←/→, Home/End,
+/// readline keys); Enter submits, Escape cancels.
 final class PromptScreen extends Screen {
   PromptScreen(this.title, this.label, {String initial = '', this.help = const [], required this.onSubmit})
-    : _text = initial.runes.toList(),
-      _cursor = initial.runes.length;
+    : _input = TextInputModel(value: initial, styles: const InputStyles()).moveToEnd();
 
   @override
   final String title;
@@ -150,109 +166,98 @@ final class PromptScreen extends Screen {
   final List<String> help;
 
   /// Called with the text after the prompt is popped.
-  final Future<void> Function(String text, Navigator navigator) onSubmit;
+  final Cmd? Function(String text, Navigator navigator) onSubmit;
 
-  final List<int> _text;
-  int _cursor;
+  TextInputModel _input;
 
-  String get text => String.fromCharCodes(_text);
+  String get text => _input.value;
+
+  static const _prompt = '> ';
 
   @override
   String get hints => 'Enter confirm · Esc cancel';
 
   @override
-  List<String> body(int width, int height) {
-    final before = String.fromCharCodes(_text.take(_cursor));
-    final at = _cursor < _text.length ? String.fromCharCode(_text[_cursor]) : ' ';
-    final after = _cursor < _text.length ? String.fromCharCodes(_text.skip(_cursor + 1)) : '';
-    return [
-      Style.fit(label, width),
-      '> $before${Style.reverse(at)}$after',
-      if (help.isNotEmpty) '',
-      for (final line in help) Style.dim(Style.fit(line, width)),
-    ];
-  }
+  List<String> body(int width, int height) => [
+    label,
+    '$_prompt${_input.view().content}',
+    if (help.isNotEmpty) '',
+    for (final line in help) Look.dim(line),
+  ];
 
   @override
-  Future<void> handle(Key key, Navigator navigator) async {
-    switch (key.kind) {
-      case KeyKind.char:
-        final runes = key.char!.runes;
-        _text.insertAll(_cursor, runes);
-        _cursor += runes.length;
-      case KeyKind.backspace when _cursor > 0:
-        _text.removeAt(--_cursor);
-      case KeyKind.delete when _cursor < _text.length:
-        _text.removeAt(_cursor);
-      case KeyKind.left when _cursor > 0:
-        _cursor--;
-      case KeyKind.right when _cursor < _text.length:
-        _cursor++;
-      case KeyKind.home:
-        _cursor = 0;
-      case KeyKind.end:
-        _cursor = _text.length;
-      case KeyKind.enter:
-        await navigator.pop();
-        await onSubmit(text, navigator);
-      case KeyKind.escape:
-        await navigator.pop();
-      default:
+  Cursor? get cursor => switch (_input.view().cursor) {
+    final cursor? => Cursor(x: _prompt.length + cursor.x, y: 1, shape: cursor.shape),
+    null => null,
+  };
+
+  @override
+  Cmd? update(Msg msg, Navigator navigator) {
+    if (msg is KeyMsg) {
+      switch (msg.key) {
+        case 'enter':
+          navigator.pop();
+          return onSubmit(text, navigator);
+        case 'esc':
+          navigator.pop();
+          return null;
+      }
     }
+    final (next, cmd) = _input.update(msg);
+    _input = next as TextInputModel;
+    return cmd;
   }
 }
 
-/// Read-only lines to scroll through (↑/↓, PgUp/PgDn, Home/End).
+/// Read-only lines in a `dart_tui` [ViewportModel] (↑/↓, PgUp/PgDn,
+/// Home/End); Escape, ← or `q` go back.
 class TextScreen extends Screen {
-  TextScreen(this.title, this._lines);
+  TextScreen(this.title, this._source);
 
   @override
   final String title;
-  final List<String> Function() _lines;
-  int offset = 0;
-  int _height = 10;
+  final List<String> Function() _source;
+  ViewportModel? _viewport;
 
   @override
   String get hints => '↑↓ PgUp PgDn scroll · Esc back';
 
-  List<String> get lines => _lines();
+  List<String> get lines => _source();
 
   @override
   List<String> body(int width, int height) {
-    _height = height;
-    final lines = this.lines;
-    offset = offset.clamp(0, lines.length > height ? lines.length - height : 0);
-    return [for (final line in lines.skip(offset).take(height)) line];
+    final content = lines.join('\n');
+    final previous = _viewport;
+    final viewport = previous == null || previous.width != width || previous.height != height
+        ? ViewportModel(
+            content: content,
+            width: width,
+            height: height,
+            softWrap: false,
+            yOffset: previous?.yOffset ?? 0,
+          )
+        : previous.setContent(content);
+    _viewport = viewport;
+    return _lines(viewport.view().content);
   }
 
-  /// Scrolls for the movement keys; true when [key] was one of them.
-  bool scroll(Key key) {
-    switch (key.kind) {
-      case KeyKind.up:
-        offset--;
-      case KeyKind.down:
-        offset++;
-      case KeyKind.pageUp:
-        offset -= _height;
-      case KeyKind.pageDown:
-        offset += _height;
-      case KeyKind.char when key.char == ' ':
-        offset += _height;
-      case KeyKind.home:
-        offset = 0;
-      case KeyKind.end:
-        offset = 1 << 30;
-      default:
-        return false;
+  /// Scrolls for the movement keys; true when [msg] was one of them.
+  bool scroll(Msg msg) {
+    final viewport = _viewport;
+    if (viewport == null || msg is! KeyMsg) return false;
+    if (!const {'up', 'down', 'k', 'j', 'pgup', 'pgdown', 'space', 'home', 'end', 'g', 'G'}.contains(msg.key)) {
+      return false;
     }
-    if (offset < 0) offset = 0;
+    final (next, _) = viewport.update(msg);
+    _viewport = next as ViewportModel;
     return true;
   }
 
   @override
-  Future<void> handle(Key key, Navigator navigator) async {
-    if (scroll(key)) return;
-    if (key.kind == KeyKind.escape || key.kind == KeyKind.left || key.isChar('q')) await navigator.leave();
+  Cmd? update(Msg msg, Navigator navigator) {
+    if (scroll(msg)) return null;
+    if (msg is KeyMsg && const {'esc', 'left', 'q'}.contains(msg.key)) navigator.leave();
+    return null;
   }
 }
 
@@ -266,7 +271,7 @@ final class ReviewScreen extends TextScreen {
   final ConfigDraft draft;
 
   /// Called with the saved draft after a successful save.
-  final Future<void> Function(ConfigDraft saved, Navigator navigator) onSaved;
+  final void Function(ConfigDraft saved) onSaved;
 
   @override
   String get hints => draft.changed
@@ -282,40 +287,46 @@ final class ReviewScreen extends TextScreen {
       '',
       for (final line in draft.diff)
         switch (line.kind) {
-          DiffKind.added => Style.green(line.marked),
-          DiffKind.removed => Style.red(line.marked),
-          DiffKind.skipped => Style.cyan(line.marked),
+          DiffKind.added => Look.green(line.marked),
+          DiffKind.removed => Look.red(line.marked),
+          DiffKind.skipped => Look.cyan(line.marked),
           DiffKind.same => line.marked,
         },
       '',
-      if (problem == null) Style.green('Valid. Save?') else Style.red('Cannot save: $problem'),
+      if (problem == null) Look.green('Valid. Save?') else Look.red('Cannot save: $problem'),
     ];
   }
 
   @override
-  List<String> body(int width, int height) => [for (final line in super.body(width, height)) _cut(line, width)];
-
-  /// Diff lines are styled whole; cut the visible text only.
-  static String _cut(String line, int width) {
-    final match = RegExp(r'^(\x1b\[\d+m)(.*)(\x1b\[\d+m)$').firstMatch(line);
-    if (match == null) return Style.fit(line, width);
-    return '${match[1]}${Style.fit(match[2]!, width)}${match[3]}';
-  }
-
-  @override
-  Future<void> handle(Key key, Navigator navigator) async {
-    if (scroll(key)) return;
-    if ((key.isChar('y') || key.isChar('s')) && draft.changed) {
-      final saved = await editor.save(draft); // a BacklogException keeps the screen, with the message
-      await navigator.pop();
-      navigator.say('Saved ${editor.location}.');
-      await onSaved(saved, navigator);
-    } else if (key.isChar('d') && draft.changed) {
-      draft.reset();
-      await navigator.pop();
-      navigator.say('Changes discarded.');
-    } else if (key.isChar('n') || key.kind == KeyKind.escape || key.kind == KeyKind.left) {
-      await navigator.pop();
+  Cmd? update(Msg msg, Navigator navigator) {
+    if (scroll(msg) || msg is! KeyMsg) return null;
+    switch (msg.key) {
+      case 'y' || 's' when draft.changed:
+        // A failure keeps this screen and the draft, with the message.
+        return Navigator.task(() async {
+          final saved = await editor.save(draft);
+          return (navigator) {
+            navigator
+              ..pop()
+              ..say('Saved ${editor.location}.');
+            onSaved(saved);
+          };
+        });
+      case 'd' when draft.changed:
+        draft.reset();
+        navigator
+          ..pop()
+          ..say('Changes discarded.');
+      case 'n' || 'esc' || 'left':
+        navigator.pop();
     }
+    return null;
   }
+}
+
+/// The lines of a component's rendered view, without the trailing newline.
+List<String> _lines(String content) {
+  final lines = content.split('\n');
+  if (lines.isNotEmpty && lines.last.isEmpty) lines.removeLast();
+  return lines;
 }
