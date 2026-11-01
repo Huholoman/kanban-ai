@@ -301,15 +301,20 @@ class BoardController extends ChangeNotifier {
   }
 
   /// Drops [item] into the column [key]: sets the `group_by` field to it.
+  /// Also works for an item the view leaves out but shows as the header of
+  /// its children (an epic): it changes the field without moving a card.
   Future<void> move(ItemDto item, String key) async {
     final current = result;
     final field = current?.groupBy;
     if (current == null || field == null || !canMove) return;
     final from = current.groups.where((group) => group.items.any((i) => i.id == item.id)).firstOrNull;
-    if (from == null || from.key == key) return;
-
-    result = _moved(current, item, key);
-    notifyListeners();
+    if (from == null) {
+      if (valueOf(item, field) == key) return;
+    } else {
+      if (from.key == key) return;
+      result = _moved(current, item, key);
+      notifyListeners();
+    }
     try {
       await _api.updateItem(item.id, ItemUpdateRequest(changes: [ItemUpdateRequest.set(field, key)]));
     } catch (e) {
@@ -328,6 +333,19 @@ class BoardController extends ChangeNotifier {
       return null;
     }
   }
+
+  /// The value of one of the [movableFields] of [item] (`''` for none, like
+  /// the key of the column without a value).
+  static String valueOf(ItemDto item, String field) =>
+      switch (field) {
+        'status' => item.status,
+        'priority' => item.priority,
+        'type' => item.type,
+        'milestone' => item.milestone,
+        'assignee' => item.assignee,
+        _ => null,
+      } ??
+      '';
 
   String? _pickView(List<ViewSummaryDto> available) {
     if (available.isEmpty) return null;
