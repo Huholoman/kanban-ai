@@ -728,13 +728,15 @@ final class ProcessAgentLauncher extends AgentLauncher {
           .split('\n')
           .lastWhereOrNull((line) => line.startsWith('${prefix}the ') && line != first)
           ?.substring(prefix.length);
-      final action = header == null ? null : RegExp(r'^action "([^"]+)"').firstMatch(header)?.group(1);
+      // `action "Merge" (…) for X …` or `claude for X (action "AI review", …) …`.
+      final named = header == null ? null : RegExp(r'^action "([^"]+)"|\(action "([^"]+)"').firstMatch(header);
+      final action = named?.group(1) ?? named?.group(2);
       runs.add(
         RunRecord(
           startedAt: started,
           log: entity.path,
           action: action,
-          agent: header == null || action != null ? null : header.split(' ').first,
+          agent: header == null || header.startsWith('action ') ? null : header.split(' ').first,
           worktree: header == null ? null : RegExp(r' in (\S+) \(').firstMatch(header)?.group(1),
           started: header,
           ended: ended,

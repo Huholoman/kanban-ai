@@ -344,7 +344,7 @@ void main() {
     expect(text.out, contains('created (todo)'));
     expect(text.out, contains('m2'));
     expect(text.out, contains('question: CSV or JSON?'));
-    expect(text.out, contains('wt-1  agent: claude for $id'));
+    expect(text.out, contains('wt-1  agent: the agent exited with code 0; $id stays todo'));
 
     final json = (await backlog(['--json', 'history', id, '--only', 'runs'], env: env)).json! as List;
     expect(json.single, containsPair('kind', 'run'));
