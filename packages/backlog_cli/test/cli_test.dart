@@ -600,6 +600,15 @@ statuses: [{id: open, category: open, pickable: true}, {id: doing, category: act
     expect(json['needs_human'], isTrue, reason: 'the open question stays');
     expect((await backlog(['describe', id, '--section', 'Discussion', 'x'])).exitCode, isNot(0));
     expect((await backlog(['describe', id])).exitCode, ExitCode.usage);
+    final shown = (await backlog(['show', id])).out;
+    final withDiscussion = await backlog(['describe', id, '--file', '-'], input: 'New.\n\n## Discussion\n\nx\n');
+    expect(withDiscussion.exitCode, isNot(0));
+    expect(withDiscussion.err, contains('## Discussion'));
+    expect(
+      (await backlog(['describe', id, '-s', 'Plan', '--file', '-'], input: 'a\n\n## Discussion\n')).exitCode,
+      isNot(0),
+    );
+    expect((await backlog(['show', id])).out, shown, reason: 'a rejected text changes nothing');
   });
 
   test('comment --note keeps an open question open', () async {

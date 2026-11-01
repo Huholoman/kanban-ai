@@ -163,6 +163,11 @@ final class ItemService {
         '"$section" is not a section of the description (not empty, one line, not the discussion).',
       );
     }
+    if (!ItemBody.isDescription(text)) {
+      throw InvalidInputException(
+        'The text contains a "## Discussion" heading; give only the description, without the discussion.',
+      );
+    }
     return update(
       item.id.value,
       const [],
