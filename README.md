@@ -422,6 +422,9 @@ dispatcher:
     check: mise run check   # local: after the rebase onto base
     push: false         # local: push the merged base
     cleanup: true       # remove branch, created worktree and session afterwards (default)
+  preview:              # optional: how the built-in action preview deploys locally (see Deploying locally below)
+    install: [mise, run, install-dev]
+    server: backlog-server-dev
 ```
 
 **Agent profiles.** A profile is a command template, extra environment (`env`) and the format of its output. Built in:
@@ -493,6 +496,24 @@ dispatcher:
 - `command`: your own `merge.command` (exit code 0 = merged).
 
 On success the item is **done** — an epic implemented on one branch together with its items on that branch; an epic with unfinished items left (todo items without work on the branch) stays open instead, goes back to review without its `pr` (the next *Implement epic* starts a new branch from `base`) and the note says what was deployed and what remains —, and (`cleanup: true`, the default) the worktree the dispatcher created for it is removed (a listed worktree only goes back to `base`, detached; anything with uncommitted changes stays), its branch is deleted when nothing is lost (merged into `base`, or exactly what was pushed to the pull request) and its agent session is dropped; the note says what happened. On failure (a rebase conflict, a failing check, a refused merge or push) nothing is left half done (the rebase is aborted, the branch keeps its commits), the item goes **back to review** (the status it came from) and gets a **comment** with the reason, the end of the output and numbered steps to fix it, each allowed by the agent's whitelist (`git fetch`, `git rebase <base>`, resolve, `git add`, `git rebase --continue`, the check, `backlog pr <id> --force`, leave the status; then move it to deploy again). Being a comment, it resumes the item's agent session like a reply from a person — at once, in `manual` mode too — so "fix the conflicts" needs no extra configuration. Problems for a person (uncommitted changes in the primary clone, no pull request) are only a note. A single item whose work is on its epic's branch together with other unfinished items is not merged on its own: it goes back with a note to deploy the epic (its detail offers *Deploy epic*, which opens the epic); the only item on that branch is merged as usual. The run shows in the plan like any action.
+
+**Deploying locally** (`run: preview`). A button that runs the board itself from an item's branch, to try the work before merging it — nothing is merged, the branch and its pull request stay:
+
+```yaml
+dispatcher:
+  actions:
+    - name: Deploy locally
+      statuses: [review]
+      run: preview
+  preview:
+    # worktree: "{repo}-preview"                       # helper worktree next to the primary clone (default)
+    check: [sh, -c, "mise run get && mise run check"]  # optional
+    install: [mise, run, install-dev]                  # builds and installs the preview
+    server: backlog-server-dev                         # the server restarts as this program (none: no restart)
+    main_server: backlog-server                        # what Back to main restarts it as
+```
+
+In the helper worktree a copy of the branch is rebased onto `base` (a conflict stops it with a note, nothing changes), `check` and `install` run (the live log of the action), and once the result note is written the server restarts as `server` with the same arguments and environment — detached from the terminal, its output in `~/.local/state/kanban-ai/server.log`; running agents carry on. The board and the dashboard then show a banner *Preview of X-7f3a running · branch @ commit · since …* with **Back to main**, which restarts the server as `main_server`. One preview at a time; a new one replaces it.
 
 **Merged elsewhere.** With `dispatcher.pr.state` the server notices pull requests merged on the forge itself: every `state_every` minutes (default 2) it asks for the state of the pull request of each item in an active status with a `pr` (and nothing running for it). Merged → the item is done (an epic with items left stays open, as above) and cleaned up as above, with a note; closed without merge → one note, the item stays. The command prints `merged`/`closed`/`open` or JSON with `state`/`merged`: `gh pr view {pr} --json state --jq .state` for GitHub, `tea api repos/{{owner}}/{{repo}}/pulls/{pr_number}` for Gitea.
 
