@@ -239,9 +239,16 @@ final class ProcessAgentLauncher extends AgentLauncher {
       branches: branches,
       problems: await _problems(snapshot),
       epics: {
-        ...last.epics,
+        ...last.epics.keys,
         for (final record in runs)
           if (record.run.epic) record.run.item,
+      },
+      epicMilestones: {
+        for (final MapEntry(:key, :value) in last.epics.entries)
+          if (!runs.any((r) => r.run.epic && r.run.item == key)) key: ?value,
+        // A running epic's own scope wins over its last run's.
+        for (final record in runs)
+          if (record.run.epic) record.run.item: ?record.run.milestone,
       },
     );
   }
@@ -282,18 +289,23 @@ final class ProcessAgentLauncher extends AgentLauncher {
   }
 
   /// The sessions and starts of the last runs (`<id>.last.json`) of items
-  /// that are still open or in progress, and which of them ran as epics.
-  Future<({Map<ItemId, AgentSession> sessions, Map<ItemId, AgentStart> starts, Set<ItemId> epics})> _sessions(
+  /// that are still open or in progress, and which of them ran as epics
+  /// (with the milestone the run was limited to).
+  Future<({Map<ItemId, AgentSession> sessions, Map<ItemId, AgentStart> starts, Map<ItemId, String?> epics})> _sessions(
     BacklogSnapshot snapshot,
   ) async {
     final dir = Directory(agentsDir);
     if (!await dir.exists()) {
-      return (sessions: const <ItemId, AgentSession>{}, starts: const <ItemId, AgentStart>{}, epics: const <ItemId>{});
+      return (
+        sessions: const <ItemId, AgentSession>{},
+        starts: const <ItemId, AgentStart>{},
+        epics: const <ItemId, String?>{},
+      );
     }
     const suffix = '.last.json';
     final sessions = <ItemId, AgentSession>{};
     final starts = <ItemId, AgentStart>{};
-    final epics = <ItemId>{};
+    final epics = <ItemId, String?>{};
     await for (final entry in dir.list()) {
       final name = p.basename(entry.path);
       if (entry is! File || !name.endsWith(suffix)) continue;
@@ -303,7 +315,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
       try {
         final json = (jsonDecode(await entry.readAsString()) as Map).cast<String, Object?>();
         starts[id] = (at: DateTime.parse(json['started_at']! as String), worktree: json['worktree']! as String);
-        if (json['epic'] == true) epics.add(id);
+        if (json['epic'] == true) epics[id] = json['milestone'] as String?;
         if (json['session_id'] case final String session when session.isNotEmpty) {
           sessions[id] = AgentSession(
             item: id,
@@ -611,10 +623,10 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final ended = _clock.now();
     final side = record.kind != RunKind.agent || record.side;
     // An action that becomes the item's session keeps it an epic.
-    final epic = !side && await _lastWasEpic(id);
+    final epic = side ? null : await _lastEpic(id);
     await _write(side ? _actionFile(id) : _lastFile(id), {
       ...record.toJson(),
-      if (epic) 'epic': true,
+      if (epic != null) ...{'epic': true, 'milestone': ?epic.milestone},
       'ended_at': ended.toUtc().toIso8601String(),
       'exit_code': exitCode,
       'reason': reason,
@@ -927,8 +939,11 @@ final class ProcessAgentLauncher extends AgentLauncher {
     await _delete(_exitFile(id));
     await _delete(_stopFile(id));
     final action = assignment.action;
-    // Once an epic, the item's own runs stay the epic's (replies, fixes).
-    final epic = action == null && (assignment.epic || await _lastWasEpic(id));
+    // Once an epic, the item's own runs stay the epic's (replies, fixes),
+    // within the scope of its last run unless a new epic run says otherwise.
+    final last = action == null && !assignment.epic ? await _lastEpic(id) : null;
+    final epic = action == null && (assignment.epic || last != null);
+    final milestone = assignment.epic ? assignment.milestone : last?.milestone;
     await ignoreScratch(assignment.path);
     await File(log).writeAsString(
       '# kanban-ai: ${assignment.agentProfile.name} for ${epic ? 'the epic ' : ''}$id'
@@ -957,6 +972,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
         branch: assignment.branch,
         action: action?.name,
         epic: epic,
+        milestone: epic ? milestone : null,
       ),
       path: assignment.path,
       pgid: await _processGroup(process.pid),
@@ -1326,14 +1342,16 @@ final class ProcessAgentLauncher extends AgentLauncher {
     }
   }
 
-  /// The last run of [id]'s own agent implemented it as an epic.
-  Future<bool> _lastWasEpic(ItemId id) async {
+  /// How the last run of [id]'s own agent implemented it as an epic (the
+  /// milestone it was limited to); null when it did not.
+  Future<({String? milestone})?> _lastEpic(ItemId id) async {
     final text = await _read(_lastFile(id));
-    if (text == null) return false;
+    if (text == null) return null;
     try {
-      return (jsonDecode(text) as Map)['epic'] == true;
+      final json = jsonDecode(text) as Map;
+      return json['epic'] == true ? (milestone: json['milestone'] as String?) : null;
     } on FormatException {
-      return false;
+      return null;
     }
   }
 
@@ -1463,6 +1481,7 @@ final class _Record {
       action: json['action'] as String?,
       kind: RunKind.parse(json['kind']),
       epic: json['epic'] == true,
+      milestone: json['milestone'] as String?,
     ),
     path: json['path']! as String,
     pgid: json['pgid'] as int?,
@@ -1511,6 +1530,7 @@ final class _Record {
     'branch': run.branch,
     'resumed': resumed,
     if (run.epic) 'epic': true,
+    if (run.epic) 'milestone': ?run.milestone,
     'return_to': ?returnTo,
     if (run.action != null) ...{'action': run.action, 'kind': run.kind.id, 'side': side, 'trigger': trigger},
   };
