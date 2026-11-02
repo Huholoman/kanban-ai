@@ -58,18 +58,26 @@ final class ItemCacheFile {
     'defaults': [defaults.type, defaults.status, defaults.priority],
   });
 
+  /// The text of the cache as this object last read or wrote it, so that
+  /// [write] can skip writing the same again.
+  String? _known;
+
   /// The entries by absolute path; empty when the cache is missing or in
   /// doubt.
   Map<String, ItemCacheEntry> read() {
+    _known = null;
     try {
       final file = File(path);
       if (!file.existsSync()) return {};
-      final json = jsonDecode(file.readAsStringSync());
+      final text = file.readAsStringSync();
+      final json = jsonDecode(text);
       if (json is! Map<String, Object?> || jsonEncode(json['key']) != _key) return {};
       final files = json['files'] as Map<String, Object?>;
-      return {
+      final entries = {
         for (final MapEntry(:key, :value) in files.entries) p.join(root, key): _entry(value as Map<String, Object?>),
       };
+      _known = text;
+      return entries;
     } on Object {
       return {}; // in doubt: build it again
     }
@@ -77,21 +85,27 @@ final class ItemCacheFile {
 
   /// Replaces the cache with [entries] (by absolute path). Entries that
   /// cannot be stored (e.g. a number YAML reads as infinity) are left out;
-  /// a failed write leaves no cache rather than a broken one.
+  /// a failed write leaves no cache rather than a broken one. Nothing is
+  /// written when the text would be the same as the one last read or
+  /// written (e.g. only entries that cannot be stored changed).
   void write(Map<String, ItemCacheEntry> entries) {
     final files = <String, Object?>{};
     for (final MapEntry(:key, :value) in entries.entries) {
       final json = _json(value);
       if (json != null) files[p.relative(key, from: root)] = json;
     }
+    final text = '{"key":$_key,"files":${jsonEncode(files)}}';
+    if (text == _known) return;
+    _known = null;
     final file = File(path);
     final temp = File('$path.${pid}_${Random().nextInt(1 << 32)}.tmp');
     try {
       file.parent.createSync(recursive: true);
       final ignore = File(p.join(file.parent.path, '.gitignore'));
       if (!ignore.existsSync()) ignore.writeAsStringSync('# a cache of the backlog, never committed\n*\n');
-      temp.writeAsStringSync('{"key":$_key,"files":${jsonEncode(files)}}');
+      temp.writeAsStringSync(text);
       temp.renameSync(path);
+      _known = text;
     } on FileSystemException {
       for (final stale in [temp, file]) {
         try {

@@ -297,6 +297,12 @@ Body.
     final items = (await repository.load()).items;
     expect(items.first.extra['odd'], double.infinity);
     expect(repository.parsed, 1);
+
+    // ... without writing the cache again each time
+    final written = cacheFile().lastModifiedSync().subtract(const Duration(minutes: 1));
+    cacheFile().setLastModifiedSync(written);
+    await process().load();
+    expect(cacheFile().lastModifiedSync(), written);
   });
 
   test('a long-running process writes the cache only when what it trusts changes', () async {
