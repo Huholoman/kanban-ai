@@ -77,7 +77,19 @@ Workflow parseWorkflowYaml(String source, {String origin = 'backlog.yaml'}) {
     appearance: _appearance(document['appearance'], origin),
     dispatcher: _dispatcher(document['dispatcher'], origin),
     git: _git(document['git'], origin),
+    persistentItemCache: _cacheItems(document['cache'], origin),
   );
+}
+
+bool _cacheItems(Object? node, String origin) {
+  if (node == null) return false;
+  final yaml = _map(node, 'cache', origin);
+  for (final key in yaml.keys) {
+    if (key != 'items') throw ConfigurationException('$origin: unknown key "cache.$key" (expected items).');
+  }
+  final items = yaml['items'];
+  if (items != null && items is! bool) throw ConfigurationException('$origin: cache.items must be true or false.');
+  return items == true;
 }
 
 BacklogGit _git(Object? node, String origin) {

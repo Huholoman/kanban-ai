@@ -55,6 +55,7 @@ final class Workflow {
     Appearance appearance = Appearance.none,
     DispatcherConfig? dispatcher,
     BacklogGit git = BacklogGit.standard,
+    bool persistentItemCache = false,
   }) {
     _require(statuses.isNotEmpty, 'At least one status is required.');
     _requireUnique(statuses.map((s) => s.id), 'status');
@@ -105,6 +106,7 @@ final class Workflow {
       appearance: appearance,
       dispatcher: dispatcher,
       git: git,
+      persistentItemCache: persistentItemCache,
     );
   }
 
@@ -122,6 +124,7 @@ final class Workflow {
     required this.appearance,
     required this.dispatcher,
     required this.git,
+    required this.persistentItemCache,
   });
 
   /// The workflow `backlog init` writes out.
@@ -166,6 +169,10 @@ final class Workflow {
 
   /// How the server keeps the backlog's own git repository (`git`).
   final BacklogGit git;
+
+  /// Keep parsed item files in the backlog's `.cache/` between processes
+  /// (`cache.items`), so that the CLI starts faster on big backlogs.
+  final bool persistentItemCache;
 
   StatusDefinition? status(String id) {
     for (final status in statuses) {
