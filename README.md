@@ -177,6 +177,7 @@ backlog history MA-7f3a         # who changed what when (git history, comments, 
 backlog heartbeat MA-7f3a       # renew the claim (default lease 4 h)
 backlog set MA-7f3a branch=feat/x status=review
 backlog check MA-7f3a 2         # tick checklist item 2 (or by its text); `uncheck` undoes, no number lists them
+backlog attach MA-7f3a out.log  # attach files (or --text - --name n.md); `show` lists them with paths, `detach` deletes
 backlog pr MA-7f3a --description "What, why, how verified"   # push the branch, open the PR (with dispatcher.pr)
 backlog done MA-7f3a            # finished: drops the claim, prints what got unblocked
 backlog release MA-7f3a         # give it back unfinished
@@ -282,8 +283,9 @@ backlog/
   backlog.yaml                # workflow: statuses, priorities, types, milestones, id prefix, lease
   items/
     MA-7f3a-production-db-backups.md
-    MA-8m2x-content-reporting/   # a folder only when the item needs attachments
+    MA-8m2x-content-reporting/   # a folder only when the item has attachments
       index.md
+      screenshot.png             # an attachment (`backlog attach`, or the board)
   archive/ finished items moved out of items/ by `backlog archive`, same layout
   views/   board.yaml, ready.yaml, hot.yaml, blocked.yaml, dependencies.yaml, …
   docs/    design documents that items link to (docs: [moderation])
@@ -580,6 +582,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `show <id>`, `path <id>` | details, path of the file |
 | `archive [<id>…] [--older-than 30] [--dry-run]`, `archive --restore <id>…` | move finished items (the named ones, else those unchanged for 30 days) to `archive/` so that `items/` stays small; they are still found by id, references and history keep working, and one that becomes unfinished moves back |
 | `set <id> status=review labels+=x touches+=lib/a/ depends_on-=MA-1 milestone=` | edit fields (`=` sets, `+=`/`-=` for lists, empty clears) |
+| `attach <id> [<file>… \| --text "…"] [--name n] [--replace]`, `detach <id> <name>…` | attach files or a text to an item (stored next to its file, which becomes a folder); without files list them with their paths; `detach` deletes them |
 | `describe <id> --file f [--section "Acceptance criteria"]` | replace the description above `## Discussion` (or only one `##` section) without editing the file; the discussion stays — how agents update what their item asks for |
 | `ready`, `blocked` | what can be done / what is waiting |
 | `next [-w …] --as <agent>` | claim the most urgent ready item |

@@ -110,10 +110,11 @@ abstract class BacklogCommand extends Command<int> {
     snapshot ??= await backlog.planning.snapshot();
     final planned = snapshot[id]!;
     final path = await backlog.items.locationOf(id);
+    final attachments = detail ? await backlog.items.attachmentsOf(id) : null;
     if (json) {
-      emitJson(JsonOutput.item(planned, path: path, withBody: detail));
+      emitJson(JsonOutput.item(planned, path: path, withBody: detail, attachments: attachments));
     } else if (detail) {
-      lines(TextOutput.detail(planned, snapshot, path: path));
+      lines(TextOutput.detail(planned, snapshot, path: path, attachments: attachments!));
     } else {
       if (message != null) line(message);
       lines(TextOutput.rows([planned]));
