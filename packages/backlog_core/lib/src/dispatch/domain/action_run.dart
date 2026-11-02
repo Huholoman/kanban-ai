@@ -23,7 +23,7 @@ enum RunKind {
 
 /// Why an action runs.
 enum ActionTrigger {
-  /// A person: a button on the board, the API or `backlog action`.
+  /// A person: a button on the board, the API or `kanban-ai action`.
   request('request'),
 
   /// The item entered the action's `on_enter` status.
@@ -78,7 +78,7 @@ enum StartKind {
   /// `dispatch/epic`).
   epic,
 
-  /// An action (`…/actions/<name>`, `backlog action`).
+  /// An action (`…/actions/<name>`, `kanban-ai action`).
   action;
 
   static StartKind parse(Object? value) => values.firstWhere((k) => k.name == value, orElse: () => agent);
@@ -315,7 +315,7 @@ final class MemoryActionStateStore implements ActionStateStore {
   Future<void> save(ActionState state) async => _state = state;
 }
 
-/// A request to run an action, written by `backlog action` (which has no
+/// A request to run an action, written by `kanban-ai action` (which has no
 /// dispatcher of its own) for the server to pick up.
 final class ActionRequest {
   const ActionRequest({required this.item, required this.action, required this.at, this.by});

@@ -39,7 +39,7 @@ final class InitCommand extends BacklogCommand {
       ..addFlag(
         'register',
         defaultsTo: true,
-        help: 'Add the new backlog to the project registry (see `backlog projects`).',
+        help: 'Add the new backlog to the project registry (see `kanban-ai projects`).',
       );
   }
 
@@ -51,7 +51,7 @@ final class InitCommand extends BacklogCommand {
       'Create a backlog (backlog.yaml, items/, views/, docs/) in a folder, optionally from a preset.';
 
   @override
-  String get invocation => 'backlog init [folder] [--preset name|folder | --from backlog] [--prefix X]';
+  String get invocation => 'kanban-ai init [folder] [--preset name|folder | --from backlog] [--prefix X]';
 
   PresetCatalog get _catalog => PresetCatalog(userDir: PresetCatalog.userDirFor(context.environment));
 
@@ -196,7 +196,7 @@ final class NewCommand extends BacklogCommand {
   String get description => 'Create an item.';
 
   @override
-  String get invocation => 'backlog new <title> [options]';
+  String get invocation => 'kanban-ai new <title> [options]';
 
   @override
   Future<int> run() async {
@@ -282,7 +282,7 @@ final class ShowCommand extends BacklogCommand {
   String get description => 'Show an item with its relations, claim and body.';
 
   @override
-  String get invocation => 'backlog show <id>';
+  String get invocation => 'kanban-ai show <id>';
 
   @override
   Future<int> run() async {
@@ -318,7 +318,7 @@ final class HistoryCommand extends BacklogCommand {
       'comments, and the agent and action runs of the dispatcher.';
 
   @override
-  String get invocation => 'backlog history <id> [--only status|fields|comments|runs]';
+  String get invocation => 'kanban-ai history <id> [--only status|fields|comments|runs]';
 
   @override
   Future<int> run() async {
@@ -361,7 +361,7 @@ final class PathCommand extends BacklogCommand {
   String get description => 'Print the file of an item (to open or edit it).';
 
   @override
-  String get invocation => 'backlog path <id>';
+  String get invocation => 'kanban-ai path <id>';
 
   @override
   Future<int> run() async {
@@ -389,7 +389,7 @@ final class ArchiveCommand extends BacklogCommand {
       'Archived items are still found by id.';
 
   @override
-  String get invocation => 'backlog archive [<id> …] [--older-than <days>] [--dry-run] | --restore <id> …';
+  String get invocation => 'kanban-ai archive [<id> …] [--older-than <days>] [--dry-run] | --restore <id> …';
 
   @override
   Future<int> run() async {
@@ -441,7 +441,7 @@ final class SetCommand extends BacklogCommand {
       'Change fields: status=review  labels+=infra  depends_on-=T-7f3a  touches+=lib/a/  milestone=  (empty clears).';
 
   @override
-  String get invocation => 'backlog set <id> <field=value>...';
+  String get invocation => 'kanban-ai set <id> <field=value>...';
 
   @override
   Future<int> run() async {
@@ -454,7 +454,7 @@ final class SetCommand extends BacklogCommand {
   }
 }
 
-/// `backlog suggest-touches <id> [--add | --replace]`: asks the model of
+/// `kanban-ai suggest-touches <id> [--add | --replace]`: asks the model of
 /// `touches.suggest` which files the item will change; saves the
 /// suggestion only when told to.
 final class SuggestTouchesCommand extends BacklogCommand {
@@ -473,7 +473,7 @@ final class SuggestTouchesCommand extends BacklogCommand {
       'backlog.yaml, e.g. a cheap or local model). Prints the suggestion; --add or --replace saves it.';
 
   @override
-  String get invocation => 'backlog suggest-touches <id> [--add | --replace]';
+  String get invocation => 'kanban-ai suggest-touches <id> [--add | --replace]';
 
   @override
   Future<int> run() async {
@@ -523,7 +523,7 @@ final class SuggestTouchesCommand extends BacklogCommand {
   }
 }
 
-/// `backlog describe <id> (<text…> | --file f) [--section name]`: replaces
+/// `kanban-ai describe <id> (<text…> | --file f) [--section name]`: replaces
 /// the item's description or one of its sections without editing its file
 /// (agents cannot: it lies outside their worktree).
 final class DescribeCommand extends BacklogCommand {
@@ -547,7 +547,7 @@ final class DescribeCommand extends BacklogCommand {
 
   @override
   String get invocation =>
-      'backlog describe <id> ("<text>" | --file <path>) [--section "<name>"]   (text - or --file - reads standard input)';
+      'kanban-ai describe <id> ("<text>" | --file <path>) [--section "<name>"]   (text - or --file - reads standard input)';
 
   @override
   Future<int> run() async {

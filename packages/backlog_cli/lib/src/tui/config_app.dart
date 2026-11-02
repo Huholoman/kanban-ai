@@ -11,7 +11,7 @@ import 'server_page.dart';
 import 'widgets.dart';
 import 'workflow_pages.dart';
 
-/// Where `backlog config` finds things: the project registry file and the
+/// Where `kanban-ai config` finds things: the project registry file and the
 /// server settings file (null without a location), `$HOME` for `~/` in
 /// them, and the backlog found from the current folder (null when there is
 /// none).
@@ -37,10 +37,10 @@ final class ConfigLocations {
   final String? currentBacklog;
 }
 
-/// The first screen of `backlog config`: the two separate parts, Global
+/// The first screen of `kanban-ai config`: the two separate parts, Global
 /// (this machine) and Project (one backlog's `backlog.yaml`).
 Screen configRootScreen(ConfigLocations locations) => MenuScreen(
-  'backlog config',
+  'kanban-ai config',
   intro: () => [
     'Global settings belong to this machine; project settings live in the',
     "project's backlog.yaml and are shared through its repository.",
@@ -88,7 +88,7 @@ Future<Screen> _globalScreen(ConfigLocations locations) async {
       MenuEntry(
         'Server',
         detail: switch (locations.serverFile) {
-          final file? => 'addresses, port, allowed clients, token of backlog-server: $file',
+          final file? => 'addresses, port, allowed clients, token of kanban-ai-server: $file',
           null => 'no location: set HOME or KANBAN_AI_SERVER_CONFIG',
         },
         enabled: locations.serverFile != null,

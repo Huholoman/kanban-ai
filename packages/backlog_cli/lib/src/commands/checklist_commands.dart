@@ -4,7 +4,7 @@ import 'package:backlog_core/backlog_core.dart';
 import '../render/json_output.dart';
 import 'backlog_command.dart';
 
-/// `backlog check|uncheck <id> [<n>… | <text…>]`: ticks checklist items of
+/// `kanban-ai check|uncheck <id> [<n>… | <text…>]`: ticks checklist items of
 /// an item's body without editing its file (agents work outside the backlog
 /// folder); without a selector it lists the numbered checklist.
 abstract class _ChecklistCommand extends BacklogCommand {

@@ -26,7 +26,7 @@ final class BacklogCommit {
 /// the backlog.
 ///
 /// One commit takes everything that changed (claim locks and temp files are
-/// left out; `backlog init` also ignores them); its message names the
+/// left out; `kanban-ai init` also ignores them); its message names the
 /// items and what happened to them, e.g. `Backlog: KA-7f3a status review,
 /// comment by wt-2; KA-9k2d new`.
 final class BacklogCommits {

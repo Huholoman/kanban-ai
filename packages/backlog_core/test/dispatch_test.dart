@@ -567,7 +567,7 @@ dispatcher:
       expect(start.epic, isTrue);
       expect(start.branch, 'agent/E-1');
       expect(start.prompt, contains('implementing the epic E-1 ("Item E-1")'));
-      expect(start.prompt, contains('`backlog epic E-1 --next`'));
+      expect(start.prompt, contains('`kanban-ai epic E-1 --next`'));
       expect(start.prompt, contains('Never push and never open pull requests.'));
 
       final during = _plan(
@@ -597,7 +597,7 @@ dispatcher:
       expect(start.milestone, 'v0.2');
       expect(start.branch, 'agent/E-1');
       expect(start.prompt, contains('the items of the milestone v0.2 and those without a milestone'));
-      expect(start.prompt, contains('`backlog epic E-1 --milestone v0.2 --next`'));
+      expect(start.prompt, contains('`kanban-ai epic E-1 --milestone v0.2 --next`'));
       expect(_plan(items).epicStart('E-1').prompt, contains('all of its items'));
 
       // v0.3 alone would wait for T-1 of v0.2.
@@ -618,7 +618,7 @@ dispatcher:
       );
       final again = replied.assignments.single;
       expect(again.key, 'E-1@w1+reply+epic@v0.2');
-      expect(again.prompt, contains('`backlog epic E-1 --milestone v0.2 --next`'));
+      expect(again.prompt, contains('`kanban-ai epic E-1 --milestone v0.2 --next`'));
       expect(replied.epicMilestones, {ItemId('E-1'): 'v0.2'});
 
       final queued = QueuedStart(
@@ -741,10 +741,10 @@ dispatcher:
           expect(repair.branch, 'agent/E-1');
           expect(plan.isReply(repair), isTrue, reason: 'starts in manual mode too');
           expect(repair.prompt, contains(body.contains('Rebase pls.') ? 'Rebase pls.' : 'conflicts in SPEC.md'));
-          expect(repair.prompt, contains('never run `backlog epic E-1 --next`'));
+          expect(repair.prompt, contains('never run `kanban-ai epic E-1 --next`'));
           expect(repair.prompt, contains('`git rebase main`'));
           expect(repair.prompt, contains('`git rebase --continue`'));
-          expect(repair.prompt, contains('`backlog ask E-1'));
+          expect(repair.prompt, contains('`kanban-ai ask E-1'));
           expect(repair.prompt, isNot(contains('implementing the epic')));
           // By hand too.
           expect(plan.assignmentFor('E-1').key, 'E-1@w3+reply+epic+repair');
@@ -767,7 +767,7 @@ dispatcher:
         expect(repair.prompt, contains('conflicts in SPEC.md'));
       });
 
-      test('with pull requests it publishes with backlog pr --force', () {
+      test('with pull requests it publishes with kanban-ai pr --force', () {
         final workflow = parseWorkflowYaml('''
 dispatcher:
   worktrees: [w1]
@@ -783,7 +783,7 @@ dispatcher:
           workflow: workflow,
           conditions: DispatchConditions(starts: {ItemId('E-1'): start}),
         );
-        expect(plan.assignments.single.prompt, contains('`backlog pr E-1 --force`'));
+        expect(plan.assignments.single.prompt, contains('`kanban-ai pr E-1 --force`'));
       });
 
       test('without a reply there is nothing to start', () {

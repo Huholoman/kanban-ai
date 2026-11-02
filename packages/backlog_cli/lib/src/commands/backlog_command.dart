@@ -30,7 +30,7 @@ abstract class BacklogCommand extends Command<int> {
         : Backlog.locate(context.cwd) ??
               (throw const NotFoundException(
                 'No backlog found here or in any parent folder (looked for backlog.yaml and backlog/backlog.yaml). '
-                'Use --dir, KANBAN_AI_DIR or `backlog init`.',
+                'Use --dir, KANBAN_AI_DIR or `kanban-ai init`.',
               ));
   }
 

@@ -54,12 +54,12 @@ final class PreviewConfig {
   final CommandTemplate? install;
 
   /// The server program to restart the board with after [install] (e.g.
-  /// `backlog-server-dev`): it starts with the running server's arguments
+  /// `kanban-ai-server-dev`): it starts with the running server's arguments
   /// and environment. Null: the server does not restart.
   final String? server;
 
   /// The server program "Back to main" restarts the board with (e.g.
-  /// `backlog-server`); null: the program the server was started as.
+  /// `kanban-ai-server`); null: the program the server was started as.
   final String? mainServer;
 
   /// The folder name of the preview worktree for the primary clone named

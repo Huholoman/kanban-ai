@@ -22,10 +22,10 @@ void main() {
   test('tools, server, projects and dispatcher worktrees', () async {
     // A tool on the PATH, installed from a recorded ref.
     Directory(path('state/release/bin')).createSync(recursive: true);
-    File(path('state/release/bin/backlog')).writeAsStringSync('');
+    File(path('state/release/bin/kanban-ai')).writeAsStringSync('');
     File(path('state/release.txt')).writeAsStringSync('main (0123456789ab) of /src/kanban-ai\n');
     Directory(path('bin')).createSync();
-    Link(path('bin/backlog')).createSync(path('state/release/bin/backlog'));
+    Link(path('bin/kanban-ai')).createSync(path('state/release/bin/kanban-ai'));
 
     // A server answering on the configured port.
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -58,11 +58,11 @@ void main() {
     );
     expect(sections.map((s) => s.title), ['Tools', 'Server', 'Projects', 'Dispatcher worktrees']);
 
-    final tool = _finding(sections, 'Tools', 'backlog');
+    final tool = _finding(sections, 'Tools', 'kanban-ai');
     expect(tool.level, DoctorLevel.ok);
     expect(tool.detail, contains('from main (0123456789ab) of /src/kanban-ai'));
-    expect(_finding(sections, 'Tools', 'backlog-server').level, DoctorLevel.warning);
-    expect(_finding(sections, 'Tools', 'backlog-dev').level, DoctorLevel.info);
+    expect(_finding(sections, 'Tools', 'kanban-ai-server').level, DoctorLevel.warning);
+    expect(_finding(sections, 'Tools', 'kanban-ai-dev').level, DoctorLevel.info);
 
     expect(_finding(sections, 'Server', 'port ${server.port}').detail, contains('a server answers'));
 

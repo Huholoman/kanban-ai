@@ -282,7 +282,7 @@ final class MergeAction implements BuiltInAction {
     if (command == null) throw _Failed('dispatcher.pr.merge is not configured.', setup: true);
     if (pr.isEmpty) {
       throw _Failed(
-        '$id has no pull request to merge (its pr field is empty; `backlog pr $id` opens one).',
+        '$id has no pull request to merge (its pr field is empty; `kanban-ai pr $id` opens one).',
         setup: true,
       );
     }
@@ -375,13 +375,13 @@ final class MergeAction implements BuiltInAction {
       'resolve the conflicts git reports, `git add <file>` for each resolved file, then `git rebase --continue` '
           '(repeat until the rebase is done; never `git rebase --abort` or `--skip`)',
       '$check and commit what it needs',
-      if (config.pr != null) 'publish the branch with `backlog pr $id --force` (never `git push`)',
+      if (config.pr != null) 'publish the branch with `kanban-ai pr $id --force` (never `git push`)',
       if (hook == null)
         'leave $id in ${back ?? 'its status'}: do not change its status'
       else
-        '`backlog set $id status=$hook` to merge it again — unless a person has to decide something (how to '
+        '`kanban-ai set $id status=$hook` to merge it again — unless a person has to decide something (how to '
             'resolve a conflict, a check you cannot fix): then leave it in ${back ?? 'its status'} and ask with '
-            '`backlog ask $id "…"`',
+            '`kanban-ai ask $id "…"`',
     ];
     final numbered = [for (final (i, step) in steps.indexed) '${i + 1}. $step'].join('\n');
     switch (failure.kind) {

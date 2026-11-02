@@ -98,7 +98,7 @@ final class EpicCommand extends BacklogCommand {
       'is next.';
 
   @override
-  String get invocation => 'backlog epic <id> [--milestone <m>] [--next --as <agent>]';
+  String get invocation => 'kanban-ai epic <id> [--milestone <m>] [--next --as <agent>]';
 
   @override
   Future<int> run() async {
@@ -157,7 +157,7 @@ final class ClaimCommand extends BacklogCommand {
   String get description => 'Take an item: lock it for you and move it to in-progress.';
 
   @override
-  String get invocation => 'backlog claim <id> --as <agent>';
+  String get invocation => 'kanban-ai claim <id> --as <agent>';
 
   @override
   Future<int> run() async {
@@ -181,7 +181,7 @@ final class HeartbeatCommand extends BacklogCommand {
   String get description => 'Extend your claim during long work so that it does not expire.';
 
   @override
-  String get invocation => 'backlog heartbeat <id> --as <agent>';
+  String get invocation => 'kanban-ai heartbeat <id> --as <agent>';
 
   @override
   Future<int> run() async {
@@ -208,7 +208,7 @@ final class ReleaseCommand extends BacklogCommand {
   String get description => 'Give an unfinished item back.';
 
   @override
-  String get invocation => 'backlog release <id> [--as <agent>]';
+  String get invocation => 'kanban-ai release <id> [--as <agent>]';
 
   @override
   Future<int> run() async {
@@ -239,7 +239,7 @@ final class DoneCommand extends BacklogCommand {
   String get description => 'Finish an item and drop its claim.';
 
   @override
-  String get invocation => 'backlog done <id> [--as <agent>]';
+  String get invocation => 'kanban-ai done <id> [--as <agent>]';
 
   @override
   Future<int> run() async {
@@ -319,7 +319,7 @@ final class PrCommand extends BacklogCommand {
       'When the item has one already, it only pushes. Run it in the item\'s worktree.';
 
   @override
-  String get invocation => 'backlog pr <id> [--description "<text>" | --description-file <file|->] [--force]';
+  String get invocation => 'kanban-ai pr <id> [--description "<text>" | --description-file <file|->] [--force]';
 
   @override
   Future<int> run() async {

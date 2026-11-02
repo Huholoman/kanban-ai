@@ -251,14 +251,15 @@ final class AgentProfile {
   /// Tried with the real CLI; unverified presets may need adjusting.
   final bool verified;
 
-  /// Tools Claude Code may use without asking: the backlog CLI, git, mise,
+  /// Tools Claude Code may use without asking: the kanban-ai CLI (also by its
+  /// older name `backlog`), git, mise,
   /// dart and flutter, the project's own scripts (`./greet.sh`,
   /// `./tool/x.sh`), common read-only commands, the web and the file tools.
   /// Everything else is refused (nobody answers permission prompts in
   /// headless mode) unless `dispatcher.allow` adds it; pushing is forbidden
   /// outright ([claudeDisallowedTools]).
   static const claudeAllowedTools =
-      'Bash(backlog *) Bash(git *) Bash(mise *) Bash(dart *) Bash(flutter *) Bash(./*) '
+      'Bash(kanban-ai *) Bash(backlog *) Bash(git *) Bash(mise *) Bash(dart *) Bash(flutter *) Bash(./*) '
       'Bash(ls *) Bash(cat *) Bash(head *) Bash(tail *) Bash(wc *) Bash(find *) Bash(grep *) Bash(rg *) '
       'Bash(jq *) Bash(diff *) Bash(sort *) '
       'Read Edit Write Grep Glob TodoWrite WebFetch WebSearch';
@@ -269,7 +270,7 @@ final class AgentProfile {
   /// all of which a `Bash(git push *)` rule alone lets through, verified
   /// with Claude Code 2.1.312), the plumbing `git send-pack`, and aliases
   /// that would rename push. An agent's work leaves the worktree only
-  /// through `backlog pr`, which pushes the item's branch and nothing else.
+  /// through `kanban-ai pr`, which pushes the item's branch and nothing else.
   static const claudeDisallowedTools = 'Bash(git push *) Bash(git -*) Bash(git send-pack *) Bash(git config *alias*)';
 
   /// The options of Claude Code that take tool rules.
@@ -518,10 +519,10 @@ final class DispatcherConfig {
   /// went well.
   static const talkRules =
       'Talking to people: the discussion of the item is for questions, answers and problems only. Write a comment '
-      'only to ask what you need to know (`backlog ask {id} "<your question>"`, then stop), to answer a question a '
+      'only to ask what you need to know (`kanban-ai ask {id} "<your question>"`, then stop), to answer a question a '
       'person asked you, or when something failed or you could not finish: a push or pull request failed, checks or '
       'tests do not pass, a permission was denied, a tool is missing. Then write one comment '
-      '(`backlog comment {id} "…"`) with what happened and what is needed; when a person has to decide something, '
+      '(`kanban-ai comment {id} "…"`) with what happened and what is needed; when a person has to decide something, '
       'ask instead. Never acknowledge an answer ("thanks, on it"), never report progress and never summarise work '
       'that went well in comments: that belongs in commit messages (and the pull request description). Write in the '
       'language the people in the item use.';
@@ -532,11 +533,11 @@ final class DispatcherConfig {
   /// where it finds the item's attachments ([attachmentsFolder]).
   static const checklistRules =
       'The checklist of the item (`- [ ]` lines in its body): tick off what you finished with '
-      '`backlog check {id} <number or text>` (`backlog check {id}` lists it numbered, `backlog uncheck` undoes); '
-      'never edit the item file for that. Files attached to the item (`backlog show {id}` lists them) are copied to '
+      '`kanban-ai check {id} <number or text>` (`kanban-ai check {id}` lists it numbered, `kanban-ai uncheck` undoes); '
+      'never edit the item file for that. Files attached to the item (`kanban-ai show {id}` lists them) are copied to '
       '$scratchFolder/attachments/{id}/ in your worktree before you start: read them there (the Read tool shows '
-      'images); `backlog attach <id> --export` copies those of another item next to them. Attach a file for people '
-      'with `backlog attach {id} <file>`.';
+      'images); `kanban-ai attach <id> --export` copies those of another item next to them. Attach a file for people '
+      'with `kanban-ai attach {id} <file>`.';
 
   /// How every default prompt tells the agent to run things so that its tool
   /// whitelist lets them through (nobody can approve anything else).
@@ -546,10 +547,10 @@ final class DispatcherConfig {
       'mise, dart, flutter, common read-only commands (ls, cat, grep, find, …) and web search/fetch, only what the '
       'project allows runs: anything else needs an approval nobody can give and is denied. Keep every command on '
       'one line: for a long or multi-line text write it with your Write tool to a file in $scratchFolder/ (git '
-      'ignores that folder in your worktree) and pass the file: `backlog comment {id} --file $scratchFolder/x.md` '
+      'ignores that folder in your worktree) and pass the file: `kanban-ai comment {id} --file $scratchFolder/x.md` '
       '(also `ask` and `review`). The backlog (item files, its own git repository outside your worktree) is '
       'committed by the board: never commit it and never report its uncommitted changes as a problem; look at it '
-      'with `backlog`, never with git. Run git only in your worktree, without `-C <dir>` (denied).';
+      'with `kanban-ai`, never with git. Run git only in your worktree, without `-C <dir>` (denied).';
 
   /// The folder (relative to an agent's worktree) for texts an agent writes
   /// for the backlog CLI ([runRules]); the launcher makes git ignore it
@@ -564,30 +565,30 @@ final class DispatcherConfig {
   /// discussion first: the comments are part of the assignment, and a point
   /// it cannot settle on its own goes back to a person before any work.
   static const readCommentsRule =
-      'Before you start, read the comments in the item\'s `## Discussion` (`backlog show {id}` prints them): they '
+      'Before you start, read the comments in the item\'s `## Discussion` (`kanban-ai show {id}` prints them): they '
       'are part of the assignment, so take them into account. If a comment asks you something or raises a point '
-      'you cannot settle on your own, answer it with `backlog ask {id} "<your answer and question>"` (it hands the '
+      'you cannot settle on your own, answer it with `kanban-ai ask {id} "<your answer and question>"` (it hands the '
       'item to a person) and stop before changing anything.';
 
   /// The prompt every agent gets unless `dispatcher.prompt` replaces it.
   static const defaultPrompt =
       'You are the coding agent {worktree}, working on backlog item {id} ("{title}") in this git worktree.\n'
-      '1. First run `backlog instructions` and `backlog show {id}` and follow them. The item is already claimed '
+      '1. First run `kanban-ai instructions` and `kanban-ai show {id}` and follow them. The item is already claimed '
       'for you (KANBAN_AI_AGENT={worktree}); do not take other items. $readCommentsRule\n'
       '2. The worktree is on branch {branch}, prepared for this item: commit there and do not switch branches. '
       'Make small commits; every commit message contains {id}.\n'
-      '3. When the work is finished, run `backlog set {id} status={handover}`.\n'
+      '3. When the work is finished, run `kanban-ai set {id} status={handover}`.\n'
       '4. Never push and never open pull requests.\n'
-      '5. If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"`, leave the status as '
+      '5. If something is unclear or blocks you, ask with `kanban-ai ask {id} "<your question>"`, leave the status as '
       'it is and stop; you will be resumed with the answer.\n'
       '6. If a discussion in the item changes what it asks for, $describeRule\n'
       '$checklistRules\n$talkRules\n$runRules';
 
   /// How the default prompts tell the agent to update what its item asks
-  /// for: through `backlog describe`, since the item file lies outside its
+  /// for: through `kanban-ai describe`, since the item file lies outside its
   /// worktree.
   static const describeRule =
-      'update its description or acceptance criteria with `backlog describe {id} --file $scratchFolder/item-{id}.md` '
+      'update its description or acceptance criteria with `kanban-ai describe {id} --file $scratchFolder/item-{id}.md` '
       '(the text written with your Write tool replaces the description above `## Discussion`; add '
       '`--section "Acceptance criteria"` to replace only that section). Never edit the item file or the comments; '
       'no comment about it is needed.';
@@ -599,36 +600,36 @@ final class DispatcherConfig {
       'The item is claimed for you again (it shows as in progress while you work) and the worktree is on branch '
       '{branch}.\n'
       'Since your last run: {news}\n'
-      'Run `backlog show {id}` to see the item as it is now. Then:\n'
+      'Run `kanban-ai show {id}` to see the item as it is now. Then:\n'
       '- If the new comments only ask you something (e.g. why you did something), answer with '
-      '`backlog comment {id} "…"` and stop: change no code and no status (an item you had handed over goes back '
+      '`kanban-ai comment {id} "…"` and stop: change no code and no status (an item you had handed over goes back '
       'to {handover} by itself).\n'
       '- If they answer your question or ask for changes, continue the work (no comment to acknowledge it) under the same rules as before: small commits containing {id} on {branch}, '
-      '`backlog set {id} status={handover}` when finished (unless the comments name another status, e.g. to merge '
+      '`kanban-ai set {id} status={handover}` when finished (unless the comments name another status, e.g. to merge '
       'again after a failed merge), never push.\n'
       '- Without new comments, continue the work under the same rules.\n'
       '- If the discussion changed what the item asks for, $describeRule\n'
-      '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.\n'
+      '- If something is still unclear, ask with `kanban-ai ask {id} "<your question>"` and stop.\n'
       '$checklistRules\n$talkRules\n$runRules';
 
   /// The prompt every agent gets when the project opens pull requests
   /// (`dispatcher.pr`) unless `dispatcher.prompt` replaces it: the agent
-  /// hands its work over with `backlog pr`, which pushes only its branch.
+  /// hands its work over with `kanban-ai pr`, which pushes only its branch.
   static const defaultPullRequestPrompt =
       'You are the coding agent {worktree}, working on backlog item {id} ("{title}") in this git worktree.\n'
-      '1. First run `backlog instructions` and `backlog show {id}` and follow them. The item is already claimed '
+      '1. First run `kanban-ai instructions` and `kanban-ai show {id}` and follow them. The item is already claimed '
       'for you (KANBAN_AI_AGENT={worktree}); do not take other items. $readCommentsRule\n'
       '2. The worktree is on branch {branch}, prepared for this item: commit there and do not switch branches. '
       'Make small commits; every commit message contains {id}.\n'
       '3. When the work is finished, open a pull request: write its description yourself (what changed and why, '
       'how you verified it, and that it implements backlog item {id}) with your Write tool to '
-      '$scratchFolder/pr-{id}.md and run `backlog pr {id} --description-file $scratchFolder/pr-{id}.md`. It pushes '
+      '$scratchFolder/pr-{id}.md and run `kanban-ai pr {id} --description-file $scratchFolder/pr-{id}.md`. It pushes '
       '{branch} and opens the pull request (when one exists already, it only pushes). Then run '
-      '`backlog set {id} status={handover}`.\n'
-      '4. Never run `git push` yourself, never push other branches and never merge: `backlog pr {id}` is the only '
-      'way your work leaves this worktree. If it fails, say why with `backlog comment {id} "…"` and still set the '
+      '`kanban-ai set {id} status={handover}`.\n'
+      '4. Never run `git push` yourself, never push other branches and never merge: `kanban-ai pr {id}` is the only '
+      'way your work leaves this worktree. If it fails, say why with `kanban-ai comment {id} "…"` and still set the '
       'status to {handover}.\n'
-      '5. If something is unclear or blocks you, ask with `backlog ask {id} "<your question>"`, leave the status as '
+      '5. If something is unclear or blocks you, ask with `kanban-ai ask {id} "<your question>"`, leave the status as '
       'it is and stop; you will be resumed with the answer.\n'
       '6. If a discussion in the item changes what it asks for, $describeRule\n'
       '$checklistRules\n$talkRules\n$runRules';
@@ -639,18 +640,18 @@ final class DispatcherConfig {
       'The item is claimed for you again (it shows as in progress while you work) and the worktree is on branch '
       '{branch}.\n'
       'Since your last run: {news}\n'
-      'Run `backlog show {id}` to see the item as it is now. Then:\n'
+      'Run `kanban-ai show {id}` to see the item as it is now. Then:\n'
       '- If the new comments only ask you something (e.g. why you did something), answer with '
-      '`backlog comment {id} "…"` and stop: change no code and no status (an item you had handed over goes back '
+      '`kanban-ai comment {id} "…"` and stop: change no code and no status (an item you had handed over goes back '
       'to {handover} by itself).\n'
       '- If they answer your question or ask for changes, continue the work (no comment to acknowledge it) under the same rules as before: small commits containing {id} on {branch}; when finished, '
-      '`backlog pr {id}` (it pushes {branch} and opens the pull request when there is none yet; give '
+      '`kanban-ai pr {id}` (it pushes {branch} and opens the pull request when there is none yet; give '
       '`--description-file $scratchFolder/pr-{id}.md` then, written with your Write tool) and '
-      '`backlog set {id} status={handover}` (unless the comments name another status, e.g. to merge again after a '
+      '`kanban-ai set {id} status={handover}` (unless the comments name another status, e.g. to merge again after a '
       'failed merge); never run `git push` yourself.\n'
       '- Without new comments, continue the work under the same rules.\n'
       '- If the discussion changed what the item asks for, $describeRule\n'
-      '- If something is still unclear, ask with `backlog ask {id} "<your question>"` and stop.\n'
+      '- If something is still unclear, ask with `kanban-ai ask {id} "<your question>"` and stop.\n'
       '$checklistRules\n$talkRules\n$runRules';
 
   /// In order of preference: free work goes to the first free worktree.
@@ -910,7 +911,7 @@ final class PullRequestConfig {
   /// default 2).
   final Duration stateEvery;
 
-  /// Posts the summary of a review (`backlog review`) to the item's pull
+  /// Posts the summary of a review (`kanban-ai review`) to the item's pull
   /// request as a comment (`dispatcher.pr.review`); null when not
   /// configured.
   final CommandTemplate? review;

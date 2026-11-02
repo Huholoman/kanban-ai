@@ -131,7 +131,7 @@ final class Workflow {
     required this.persistentItemCache,
   });
 
-  /// The workflow `backlog init` writes out.
+  /// The workflow `kanban-ai init` writes out.
   factory Workflow.standard() => Workflow(
     statuses: const [
       StatusDefinition('backlog', StatusCategory.open),

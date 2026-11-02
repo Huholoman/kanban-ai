@@ -272,7 +272,7 @@ final class DispatchAssignment {
   /// [DispatchPlan.isRepair]) it is the epic's agent too, but its prompt is
   /// [repairFrame]: take up the replies on the epic's branch (typically a
   /// rebase after a failed merge) without taking items. A [milestone] limits
-  /// the epic's agent to the items of that milestone (`backlog epic
+  /// the epic's agent to the items of that milestone (`kanban-ai epic
   /// --milestone`).
   ///
   /// The item's own agent and the agent of an action that changes code
@@ -327,13 +327,13 @@ final class DispatchAssignment {
         ...values,
         'status': item.item.status,
         'context': session == null
-            ? 'Run `backlog instructions` and `backlog show ${item.id}` first.'
-            : 'You continue your earlier session on this item; run `backlog show ${item.id}` to see it as it is now.',
+            ? 'Run `kanban-ai instructions` and `kanban-ai show ${item.id}` first.'
+            : 'You continue your earlier session on this item; run `kanban-ai show ${item.id}` to see it as it is now.',
         'round': '${fix.round}',
         'rounds': '${fix.rounds}',
         'publish': config.pr == null
             ? 'Never push.'
-            : 'Publish your commits with `backlog pr ${item.id}` (it pushes your branch and updates the pull '
+            : 'Publish your commits with `kanban-ai pr ${item.id}` (it pushes your branch and updates the pull '
                   'request); never run `git push`.',
         'reviewer': fix.review.author,
         'reviewed': fix.review.commit == null ? 'no commit named' : 'of commit ${fix.review.commit}',
@@ -341,8 +341,8 @@ final class DispatchAssignment {
         'decide': fix.then == null
             ? ''
             : ' If a finding needs a person\'s decision or you are not sure how to fix it, do not guess: leave it, '
-                  'say which and why in one comment (or ask with `backlog ask ${item.id} "…"`), run '
-                  '`backlog set ${item.id} status=${fix.then}` instead (a person looks at it there) and stop.',
+                  'say which and why in one comment (or ask with `kanban-ai ask ${item.id} "…"`), run '
+                  '`kanban-ai set ${item.id} status=${fix.then}` instead (a person looks at it there) and stop.',
       });
     } else if (repair) {
       prompt = repairFrame.render({
@@ -350,12 +350,12 @@ final class DispatchAssignment {
         'base': config.base,
         'context': session != null
             ? 'You continue your earlier session on this epic. Since your last run: $news\n'
-                  'Run `backlog show ${item.id}` to see it as it is now.'
+                  'Run `kanban-ai show ${item.id}` to see it as it is now.'
             : 'Since the last agent on this epic: ${replies ?? 'no new comments.'}\n'
-                  'Run `backlog show ${item.id}` and `backlog epic ${item.id}$scope` first.',
+                  'Run `kanban-ai show ${item.id}` and `kanban-ai epic ${item.id}$scope` first.',
         'publish': config.pr == null
             ? 'Never push and never open pull requests.'
-            : 'Publish the branch with `backlog pr ${item.id} --force` (it pushes $branch and keeps the pull '
+            : 'Publish the branch with `kanban-ai pr ${item.id} --force` (it pushes $branch and keeps the pull '
                   'request); never run `git push` and never merge.',
       });
     } else if (epic) {
@@ -367,23 +367,23 @@ final class DispatchAssignment {
             : 'the items of the milestone $milestone and those without a milestone (leave the others as they are)',
         'context': session != null
             ? 'You continue your earlier session on this epic. Since your last run: $news\n'
-                  'Run `backlog show ${item.id}` to see it as it is now. If the new comments only ask you '
-                  'something, answer with `backlog comment ${item.id} "…"` and stop; otherwise go on as below.'
+                  'Run `kanban-ai show ${item.id}` to see it as it is now. If the new comments only ask you '
+                  'something, answer with `kanban-ai comment ${item.id} "…"` and stop; otherwise go on as below.'
             : replies != null
             ? 'Since the last agent on this epic: $replies'
-            : 'First run `backlog instructions`, `backlog show ${item.id}` and `backlog epic ${item.id}$scope`.',
+            : 'First run `kanban-ai instructions`, `kanban-ai show ${item.id}` and `kanban-ai epic ${item.id}$scope`.',
         'finish': config.pr == null
-            ? 'run `backlog set ${item.id} status=${values['handover']}` and stop.'
+            ? 'run `kanban-ai set ${item.id} status=${values['handover']}` and stop.'
             : 'write the description of one pull request for the whole epic (what changed and why, the items it '
                   'implements with their ids, how you verified it) and run '
-                  '`backlog pr ${item.id} --description "<description>"`: it pushes $branch and opens the pull '
+                  '`kanban-ai pr ${item.id} --description "<description>"`: it pushes $branch and opens the pull '
                   'request (when one exists already, it only pushes). Then run '
-                  '`backlog set ${item.id} status=${values['handover']}` and stop.',
+                  '`kanban-ai set ${item.id} status=${values['handover']}` and stop.',
         'publish': config.pr == null
             ? 'Never push and never open pull requests.'
-            : 'Never run `git push` yourself, never push other branches and never merge: `backlog pr ${item.id}` '
+            : 'Never run `git push` yourself, never push other branches and never merge: `kanban-ai pr ${item.id}` '
                   'is the only way your work leaves this worktree. If it fails, say why with '
-                  '`backlog comment ${item.id} "…"` and still set the epic to ${values['handover']}.',
+                  '`kanban-ai comment ${item.id} "…"` and still set the epic to ${values['handover']}.',
       });
     } else if (action == null) {
       prompt = session != null
@@ -408,14 +408,14 @@ final class DispatchAssignment {
             : 'it stays in status ${item.item.status} unless the action asks you to change it (never set it to '
                   'in-progress)',
         'context': session == null
-            ? 'Run `backlog show ${item.id}` first to see the item and its discussion.'
+            ? 'Run `kanban-ai show ${item.id}` first to see the item and its discussion.'
             : 'You continue your earlier session on this item. Since your last run: $news\n'
-                  'Run `backlog show ${item.id}` to see the item as it is now.',
+                  'Run `kanban-ai show ${item.id}` to see the item as it is now.',
         'task': action.review
             ? ActionDefinition.reviewTask(actionValues, extra: action.prompt?.render(actionValues))
             : action.prompt!.render(actionValues),
         'finish': action.review
-            ? 'When you are done, record your verdict with `backlog review` as described (that is your one '
+            ? 'When you are done, record your verdict with `kanban-ai review` as described (that is your one '
                   'comment) and stop.'
             : 'Comment only when the action asks you to (then in exactly one comment) or to answer a question a '
                   'person asked; otherwise finish without a comment.',
@@ -423,7 +423,7 @@ final class DispatchAssignment {
             ? 'Never push.'
             : config.pr == null
             ? 'Never push.'
-            : 'Never run `git push`: to publish your commits run `backlog pr ${item.id}` (it pushes your branch '
+            : 'Never run `git push`: to publish your commits run `kanban-ai pr ${item.id}` (it pushes your branch '
                   'and updates the item\'s pull request).',
       });
     }
@@ -466,11 +466,11 @@ final class DispatchAssignment {
   static final repairFrame = TextTemplate(
     'You are the coding agent {worktree} on the epic {id} ("{title}") in this git worktree, on its branch {branch} '
     '(commit there and do not switch branches). Every item of the epic is implemented already (handed over or '
-    'done): take no items (never run `backlog epic {id} --next`) and change no status of the epic or its items. '
+    'done): take no items (never run `kanban-ai epic {id} --next`) and change no status of the epic or its items. '
     'The epic is claimed for you (KANBAN_AI_AGENT={worktree}).\n'
     '{context}\n\n'
     'Do what the new comments ask for, on {branch}. If they only ask you something, answer with '
-    '`backlog comment {id} "…"` and stop. Typically a merge of the epic failed (conflicts, checks) and its comment '
+    '`kanban-ai comment {id} "…"` and stop. Typically a merge of the epic failed (conflicts, checks) and its comment '
     'lists the steps; follow them. In short:\n'
     '1. Bring {branch} up to date: `git rebase {base}` (after `git fetch` when the base is remote, as the comment '
     'says).\n'
@@ -482,7 +482,7 @@ final class DispatchAssignment {
     '5. Leave every status as it is and stop; a person deploys the epic again.\n'
     'If you cannot resolve a conflict, or how to resolve it is not clear-cut (both sides changed the same thing in '
     'different ways, a decision is needed), run `git rebase --abort` so that {branch} stays as it was, ask with '
-    '`backlog ask {id} "<which files conflict and what has to be decided>"` and stop; you will be resumed with the '
+    '`kanban-ai ask {id} "<which files conflict and what has to be decided>"` and stop; you will be resumed with the '
     'answer.\n'
     '${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}',
     known: const [...DispatcherConfig.promptPlaceholders, 'base', 'context', 'publish'],
@@ -490,7 +490,7 @@ final class DispatchAssignment {
   );
 
   /// What the agent implementing an epic is told: work through {items}
-  /// with `backlog epic {id}{scope} --next` (`{scope}`: ` --milestone <m>`
+  /// with `kanban-ai epic {id}{scope} --next` (`{scope}`: ` --milestone <m>`
   /// for a run limited to one milestone), one after another on {branch}, each
   /// handed over to review; ask on the epic and stop when the rest waits
   /// for something outside it; finish the epic (`{finish}`: review, with
@@ -501,17 +501,17 @@ final class DispatchAssignment {
     'one after another, in this one session and on the one branch {branch} (commit there and do not switch '
     'branches). The epic is claimed for you (KANBAN_AI_AGENT={worktree}); take no items outside it.\n'
     '{context}\n\n'
-    '1. Run `backlog epic {id}{scope} --next`. It claims the next item of the epic for you (the one you have in '
-    'progress, else the first that can start), puts it on {branch} and shows it. `backlog epic {id}{scope}` shows '
+    '1. Run `kanban-ai epic {id}{scope} --next`. It claims the next item of the epic for you (the one you have in '
+    'progress, else the first that can start), puts it on {branch} and shows it. `kanban-ai epic {id}{scope}` shows '
     'the whole plan.\n'
     '2. Implement that item in small commits whose messages contain its id, tick off its checklist with '
-    '`backlog check <item id> <number or text>` (never edit item files), then run '
-    '`backlog set <item id> status=review` and go back to step 1. Items unblocked meanwhile come up by themselves.\n'
-    '3. When `backlog epic {id}{scope} --next` says nothing is left (every item handed over or done): {finish}\n'
+    '`kanban-ai check <item id> <number or text>` (never edit item files), then run '
+    '`kanban-ai set <item id> status=review` and go back to step 1. Items unblocked meanwhile come up by themselves.\n'
+    '3. When `kanban-ai epic {id}{scope} --next` says nothing is left (every item handed over or done): {finish}\n'
     '4. When it says nothing can start although items are left (they wait for something outside the epic: a '
-    'dependency, an answer, overlapping work), ask on the epic with `backlog ask {id} "<what blocks which items, '
+    'dependency, an answer, overlapping work), ask on the epic with `kanban-ai ask {id} "<what blocks which items, '
     'what is done>"`, leave every status as it is and stop; you will be resumed in this session with the answer.\n'
-    '5. If something about one item is unclear, ask on the epic too (`backlog ask {id} "…"`, naming the item) and '
+    '5. If something about one item is unclear, ask on the epic too (`kanban-ai ask {id} "…"`, naming the item) and '
     'stop.\n'
     '6. If a discussion changes what an item asks for, update its description or acceptance criteria in the body '
     'above the `## Discussion` section (never edit the comments).\n'
@@ -532,9 +532,9 @@ final class DispatchAssignment {
     '{context}\n\n'
     'An AI review of your work asks for changes (automatic fix round {round} of {rounds}). Fix its findings '
     'below in small commits whose messages contain {id}. Where a finding is wrong, do not change the code; say '
-    'why in exactly one comment (`backlog comment {id} "…"`); what you fixed belongs in the commit messages, not '
-    'in a comment. {publish} Then run `backlog set {id} status={status}` (that reviews it again) and stop.{decide} '
-    'If something is unclear, ask with `backlog ask {id} "<your question>"` and stop.\n'
+    'why in exactly one comment (`kanban-ai comment {id} "…"`); what you fixed belongs in the commit messages, not '
+    'in a comment. {publish} Then run `kanban-ai set {id} status={status}` (that reviews it again) and stop.{decide} '
+    'If something is unclear, ask with `kanban-ai ask {id} "<your question>"` and stop.\n'
     '${DispatcherConfig.checklistRules}\n${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}\n\n'
     'The review by {reviewer} ({reviewed}):\n\n{review}',
     known: const [
@@ -556,8 +556,8 @@ final class DispatchAssignment {
   /// happens to the item's status (`{state}`: it keeps it, or it shows in
   /// progress while an action that changes code runs), the item's context, the action's text
   /// (`{task}`, for a review the built-in review task), how to finish
-  /// (`{finish}`: `backlog comment`, a review `backlog review`) and how it
-  /// may publish commits (`{publish}`: `backlog pr` with `dispatcher.pr`,
+  /// (`{finish}`: `kanban-ai comment`, a review `kanban-ai review`) and how it
+  /// may publish commits (`{publish}`: `kanban-ai pr` with `dispatcher.pr`,
   /// else — and always for a review — never push).
   static final actionFrame = TextTemplate(
     'You are the agent {worktree}, started for the action "{action}" on backlog item {id} ("{title}") in this '
@@ -565,7 +565,7 @@ final class DispatchAssignment {
     'action runs; {state}, and you take no other items.\n'
     '{context}\n\n'
     'The action:\n{task}\n\n'
-    '{finish} If something is unclear, ask with `backlog ask {id} "<your question>"` and stop. {publish}\n'
+    '{finish} If something is unclear, ask with `kanban-ai ask {id} "<your question>"` and stop. {publish}\n'
     '${DispatcherConfig.checklistRules}\n${DispatcherConfig.talkRules}\n${DispatcherConfig.runRules}',
     known: const [...ActionDefinition.promptPlaceholders, 'state', 'context', 'task', 'finish', 'publish'],
     label: 'action prompt',
@@ -686,7 +686,7 @@ final class ReviewFix {
 /// What the dispatcher would do with one [BacklogSnapshot]: which ready items
 /// go to which free worktrees, within the limit of concurrent agents.
 ///
-/// Pure and deterministic: ready items in the order of `backlog next`
+/// Pure and deterministic: ready items in the order of `kanban-ai next`
 /// (priority, age, id), free worktrees in the configured order.
 extension on String {
   String ifEmpty(String other) => isEmpty ? other : this;

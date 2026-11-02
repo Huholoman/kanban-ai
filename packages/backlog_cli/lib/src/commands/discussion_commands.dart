@@ -93,7 +93,7 @@ final class AskCommand extends _DiscussionCommand {
   bool get question => true;
 }
 
-/// `backlog review <id> --ok|--changes "<text>"`: the verdict of a review as
+/// `kanban-ai review <id> --ok|--changes "<text>"`: the verdict of a review as
 /// a review comment (with the reviewed commit) in the item's discussion.
 final class ReviewCommand extends BacklogCommand {
   ReviewCommand(super.context) {
@@ -119,7 +119,7 @@ final class ReviewCommand extends BacklogCommand {
 
   @override
   String get invocation =>
-      'backlog review <id> (--ok ["<summary>"] | --changes "<summary and numbered findings>") [--file <path>]   '
+      'kanban-ai review <id> (--ok ["<summary>"] | --changes "<summary and numbered findings>") [--file <path>]   '
       '(text - or --file - reads standard input)';
 
   @override

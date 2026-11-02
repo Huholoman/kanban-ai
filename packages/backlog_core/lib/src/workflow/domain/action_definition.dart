@@ -134,7 +134,7 @@ final class ActionDefinition {
 
   /// An AI review (`review: true`): an agent in a new session with the
   /// built-in review task ([reviewTask]; [prompt], when given, adds to it)
-  /// that changes nothing and ends with `backlog review`. Its runs show as
+  /// that changes nothing and ends with `kanban-ai review`. Its runs show as
   /// the item's review state `running`.
   final bool review;
 
@@ -163,7 +163,7 @@ final class ActionDefinition {
 
   /// The task of a [review] agent for an item with the action prompt's
   /// [values] (`id`, `branch`, `base`, `pr`, …): review the branch against
-  /// the base, change nothing, finish with `backlog review`. [extra] (the
+  /// the base, change nothing, finish with `kanban-ai review`. [extra] (the
   /// rendered [prompt]) is added as further instructions.
   static String reviewTask(Map<String, String> values, {String? extra}) {
     const reviewFolder = DispatcherConfig.scratchFolder;
@@ -171,7 +171,7 @@ final class ActionDefinition {
     final pr = values['pr'] ?? '';
     return 'Review the work on backlog item $id: the changes of branch $branch against $base '
         '(`git log $base..$branch`, `git diff $base...$branch`)${pr.isEmpty ? '' : ', proposed as pull request $pr'}. '
-        'Read the item\'s assignment and discussion (`backlog show $id`) and the project\'s rules for contributors '
+        'Read the item\'s assignment and discussion (`kanban-ai show $id`) and the project\'s rules for contributors '
         'where the repository has them (CLAUDE.md, AGENTS.md, CONTRIBUTING.md, README.md). Check:\n'
         '1. correctness: does it do what the item asks; bugs, edge cases, error handling;\n'
         '2. tests: is the new behaviour tested, do the tests really check it; run the project\'s checks when its '
@@ -183,8 +183,8 @@ final class ActionDefinition {
         'fields or status. You approve nothing; a person decides and merges.\n'
         '${extra == null || extra.trim().isEmpty ? '' : '\nAlso: ${extra.trim()}\n'}'
         '\nFinish with exactly one of\n'
-        '  backlog review $id --ok "<what you checked, in one or two sentences>"\n'
-        '  backlog review $id --changes --file $reviewFolder/review-$id.md\n'
+        '  kanban-ai review $id --ok "<what you checked, in one or two sentences>"\n'
+        '  kanban-ai review $id --changes --file $reviewFolder/review-$id.md\n'
         'For --changes first write the review with your Write tool to $reviewFolder/review-$id.md in this worktree '
         '(git ignores $reviewFolder/): a one-line summary, a blank line, then the findings as a numbered list, one '
         'per line: 1. <file:line> – what is wrong and what to do. Keep every command on one line: a command with '

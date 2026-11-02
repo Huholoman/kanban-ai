@@ -43,16 +43,16 @@
             autoPubspecLock = ./packages/backlog_app/pubspec.lock;
             targetFlutterPlatform = "web";
             # CanvasKit from the build instead of Google's CDN, no service
-            # worker (backlog-server revalidates by ETag).
+            # worker (kanban-ai-server revalidates by ETag).
             flutterBuildFlags = [
               "--no-web-resources-cdn"
               "--pwa-strategy=none"
             ];
-            # Brotli and gzip copies that backlog-server sends to browsers
+            # Brotli and gzip copies that kanban-ai-server sends to browsers
             # accepting them.
             nativeBuildInputs = [ pkgs.brotli ];
             postInstall = "bash tool/precompress.sh $out";
-            meta.description = "Web board of kanban-ai (static files, served by backlog-server)";
+            meta.description = "Web board of kanban-ai (static files, served by kanban-ai-server)";
           };
 
           # The programs alone, so that they build in parallel with the web app.
@@ -61,8 +61,8 @@
             inherit version src;
             autoPubspecLock = ./pubspec.lock;
             dartEntryPoints = {
-              "bin/backlog" = "packages/backlog_cli/bin/backlog.dart";
-              "bin/backlog-server" = "packages/backlog_server/bin/backlog_server.dart";
+              "bin/kanban-ai" = "packages/backlog_cli/bin/backlog.dart";
+              "bin/kanban-ai-server" = "packages/backlog_server/bin/backlog_server.dart";
             };
             preBuild = "mkdir -p bin";
           };
@@ -71,14 +71,17 @@
             name = "kanban-ai-${version}";
             paths = [ programs ];
             nativeBuildInputs = [ pkgs.makeWrapper ];
-            # The server serves the web app from the store unless told otherwise.
+            # The server serves the web app from the store unless told otherwise;
+            # `backlog` and `backlog-server` are the older names of the programs.
             postBuild = ''
-              wrapProgram $out/bin/backlog-server --set-default KANBAN_AI_WEB ${web}
+              wrapProgram $out/bin/kanban-ai-server --set-default KANBAN_AI_WEB ${web}
+              ln -s kanban-ai $out/bin/backlog
+              ln -s kanban-ai-server $out/bin/backlog-server
             '';
             meta = {
-              description = "File-based backlog for parallel AI coding agents: `backlog` CLI and `backlog-server`";
+              description = "File-based backlog for parallel AI coding agents: `kanban-ai` CLI and `kanban-ai-server`";
               homepage = "https://github.com/Huholoman/kanban-ai";
-              mainProgram = "backlog";
+              mainProgram = "kanban-ai";
             };
           };
         in
@@ -99,12 +102,13 @@
         {
           default = {
             type = "app";
-            program = "${tools}/bin/backlog";
+            program = "${tools}/bin/kanban-ai";
           };
-          backlog = self.apps.${pkgs.stdenv.hostPlatform.system}.default;
+          kanban-ai = self.apps.${pkgs.stdenv.hostPlatform.system}.default;
+          backlog = self.apps.${pkgs.stdenv.hostPlatform.system}.default; # the older name
           server = {
             type = "app";
-            program = "${tools}/bin/backlog-server";
+            program = "${tools}/bin/kanban-ai-server";
           };
         }
       );

@@ -55,7 +55,7 @@ final class FileWorkflowSource implements WorkflowSource {
   }
 
   NotFoundException _missing() =>
-      NotFoundException('No ${BacklogLayout.configFileName} in ${_layout.root}; run `backlog init` first.');
+      NotFoundException('No ${BacklogLayout.configFileName} in ${_layout.root}; run `kanban-ai init` first.');
 
   /// FNV-1a (64 bit) of [bytes], stable across processes.
   static WorkflowRevision _revision(List<int> bytes) {

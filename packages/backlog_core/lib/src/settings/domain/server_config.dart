@@ -5,7 +5,7 @@ import 'package:yaml/yaml.dart';
 
 import '../../shared/errors.dart';
 
-/// The settings of `backlog-server` on this machine (`server.yaml`), used
+/// The settings of `kanban-ai-server` on this machine (`server.yaml`), used
 /// where neither an option nor an environment variable says otherwise.
 /// Every field is optional; null means the server's own default.
 final class ServerConfig {

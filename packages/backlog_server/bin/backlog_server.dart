@@ -51,7 +51,7 @@ Future<void> main(List<String> arguments) async {
     exit(64);
   }
   if (options.flag('help')) {
-    stdout.writeln('Usage: backlog_server [options]\n\n${parser.usage}');
+    stdout.writeln('Usage: kanban-ai-server [options]\n\n${parser.usage}');
     return;
   }
   if (options.flag('generate-token') && options.option('token') != null) {
@@ -67,7 +67,7 @@ Future<void> main(List<String> arguments) async {
   var settings = ServerConfig.empty;
   if (configFile != null) {
     if (configOption != null && !File(configFile).existsSync()) {
-      stderr.writeln('No server settings at $configFile; create them with `backlog config` (Global › Server).');
+      stderr.writeln('No server settings at $configFile; create them with `kanban-ai config` (Global › Server).');
       exit(4);
     }
     try {
@@ -95,7 +95,9 @@ Future<void> main(List<String> arguments) async {
   } else if (explicitRegistry != null) {
     projectsFile = p.absolute(explicitRegistry);
     if (!File(projectsFile).existsSync()) {
-      stderr.writeln('No project registry at $projectsFile; create it with `backlog projects add --projects <file>`.');
+      stderr.writeln(
+        'No project registry at $projectsFile; create it with `kanban-ai projects add --projects <file>`.',
+      );
       exit(4);
     }
   } else if (projectRegistryFile(environment) case final file? when File(file).existsSync()) {
@@ -105,7 +107,7 @@ Future<void> main(List<String> arguments) async {
     if (root == null) {
       stderr.writeln(
         'No backlog found from ${Directory.current.path} and no project registry; '
-        'pass --dir or register backlogs with `backlog projects add`.',
+        'pass --dir or register backlogs with `kanban-ai projects add`.',
       );
       exit(4);
     }
@@ -189,7 +191,7 @@ Future<void> main(List<String> arguments) async {
     stdout.writeln('Projects from $projectsFile (watched; the first one is the default):');
   }
   final projects = server.projects.projects;
-  if (projects.isEmpty) stdout.writeln('  (none yet; add some with `backlog projects add`)');
+  if (projects.isEmpty) stdout.writeln('  (none yet; add some with `kanban-ai projects add`)');
   for (final project in projects) {
     final dto = await project.describe();
     stdout.writeln(

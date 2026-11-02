@@ -6,8 +6,8 @@ import 'package:path/path.dart' as p;
 
 import 'backlog_command.dart';
 
-/// `backlog projects [list | add [<path>] | remove <id> | pin <id> | unpin <id>]`:
-/// the registry of backlogs that `backlog-server` hosts.
+/// `kanban-ai projects [list | add [<path>] | remove <id> | pin <id> | unpin <id>]`:
+/// the registry of backlogs that `kanban-ai-server` hosts.
 final class ProjectsCommand extends BacklogCommand {
   ProjectsCommand(super.context) {
     argParser
@@ -25,11 +25,11 @@ final class ProjectsCommand extends BacklogCommand {
 
   @override
   String get description =>
-      'List, add, remove, pin or unpin the backlogs backlog-server hosts (the first one is the default project; '
+      'List, add, remove, pin or unpin the backlogs kanban-ai-server hosts (the first one is the default project; '
       'the board lists pinned ones first).';
 
   @override
-  String get invocation => 'backlog projects [list | add [<path>] | remove <id> | pin <id> | unpin <id>]';
+  String get invocation => 'kanban-ai projects [list | add [<path>] | remove <id> | pin <id> | unpin <id>]';
 
   ProjectService get _service =>
       projectService(args.option('projects')) ??
@@ -69,7 +69,7 @@ final class ProjectsCommand extends BacklogCommand {
       return 0;
     }
     if (registry.isEmpty) {
-      line('No projects in ${service.location}; register one with `backlog projects add [<path>]`.');
+      line('No projects in ${service.location}; register one with `kanban-ai projects add [<path>]`.');
       return 0;
     }
     final idWidth = registry.entries.map((e) => e.id.length).reduce((a, b) => a > b ? a : b);

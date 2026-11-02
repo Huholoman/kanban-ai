@@ -9,7 +9,7 @@ import '../render/json_output.dart';
 import '../render/text_output.dart';
 import 'backlog_command.dart';
 
-/// `backlog attach <id> [<file>…] [--text t --name n] [--replace]`: attaches
+/// `kanban-ai attach <id> [<file>…] [--text t --name n] [--replace]`: attaches
 /// files or a text to an item (stored next to its file); without them lists
 /// its attachments.
 final class AttachCommand extends BacklogCommand {
@@ -46,7 +46,7 @@ final class AttachCommand extends BacklogCommand {
 
   @override
   String get invocation =>
-      'backlog attach <id> [<file>… | --text "<text>"] [--name <name>] [--replace] | <id> --export [--to <folder>]';
+      'kanban-ai attach <id> [<file>… | --text "<text>"] [--name <name>] [--replace] | <id> --export [--to <folder>]';
 
   @override
   Future<int> run() async {
@@ -129,7 +129,7 @@ extension on AttachCommand {
   }
 }
 
-/// `backlog detach <id> <name>…`: deletes attachments of an item.
+/// `kanban-ai detach <id> <name>…`: deletes attachments of an item.
 final class DetachCommand extends BacklogCommand {
   DetachCommand(super.context);
 
@@ -140,7 +140,7 @@ final class DetachCommand extends BacklogCommand {
   String get description => 'Delete attachments of an item by name.';
 
   @override
-  String get invocation => 'backlog detach <id> <name>…';
+  String get invocation => 'kanban-ai detach <id> <name>…';
 
   @override
   Future<int> run() async {

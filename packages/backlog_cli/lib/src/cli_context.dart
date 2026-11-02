@@ -25,6 +25,6 @@ final class CliContext {
   final Future<String> Function()? readInput;
 
   /// Runs a `dart_tui` model in the interactive terminal until it quits
-  /// (`backlog config`); null when the process does not run in one.
+  /// (`kanban-ai config`); null when the process does not run in one.
   final Future<void> Function(Model app)? runTui;
 }

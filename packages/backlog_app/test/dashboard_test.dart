@@ -281,8 +281,8 @@ void main() {
           commit: '1234567890',
           base: 'main',
           since: DateTime.utc(2026, 11, 1, 12),
-          server: 'backlog-server-dev',
-          mainServer: 'backlog-server',
+          server: 'kanban-ai-server-dev',
+          mainServer: 'kanban-ai-server',
         ),
       );
       await openDashboard(tester);

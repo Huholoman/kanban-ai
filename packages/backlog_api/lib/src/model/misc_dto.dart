@@ -113,7 +113,7 @@ enum BacklogPart {
   plan,
 }
 
-/// An error answered by the server, in the same shape as `backlog --json`.
+/// An error answered by the server, in the same shape as `kanban-ai --json`.
 final class BacklogApiException implements Exception {
   const BacklogApiException(this.statusCode, this.type, this.message, {this.candidates = const []});
 

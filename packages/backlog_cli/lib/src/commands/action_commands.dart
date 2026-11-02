@@ -3,10 +3,10 @@ import 'package:backlog_core/backlog_core.dart';
 
 import 'backlog_command.dart';
 
-/// `backlog action <id> [<name>]`: lists the actions an item offers, or asks
+/// `kanban-ai action <id> [<name>]`: lists the actions an item offers, or asks
 /// the server's dispatcher to run one. The CLI has no dispatcher of its
 /// own: it writes a request into the backlog's `.locks/actions/`, which a
-/// running `backlog-server` picks up and starts (or explains in the item's
+/// running `kanban-ai-server` picks up and starts (or explains in the item's
 /// discussion why it could not).
 final class ActionCommand extends BacklogCommand {
   ActionCommand(super.context) {
@@ -21,7 +21,7 @@ final class ActionCommand extends BacklogCommand {
       'List the actions of an item (dispatcher.actions), or request one for the running server to start.';
 
   @override
-  String get invocation => 'backlog action <id> ["<action name>"]';
+  String get invocation => 'kanban-ai action <id> ["<action name>"]';
 
   @override
   Future<int> run() async {
@@ -90,7 +90,7 @@ final class ActionCommand extends BacklogCommand {
       emitJson({'requested': true, 'item': planned.id.value, 'action': action.name});
     } else {
       line(
-        'Requested "${action.name}" for ${planned.id}. A running backlog-server serving this backlog starts it; '
+        'Requested "${action.name}" for ${planned.id}. A running kanban-ai-server serving this backlog starts it; '
         'its result (or why it could not start) appears in the item\'s discussion.',
       );
     }

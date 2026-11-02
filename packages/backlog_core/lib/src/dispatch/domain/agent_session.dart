@@ -93,7 +93,7 @@ List<Comment> repliesWithoutSession(Item item, AgentStart? start, {required bool
 String newSessionNews(List<Comment> comments) {
   const fresh =
       'there is no earlier session of yours to continue here (it ran elsewhere or is gone), so this is a new '
-      'session: first run `backlog instructions`, read the item and look at the commits on its branch.';
+      'session: first run `kanban-ai instructions`, read the item and look at the commits on its branch.';
   if (comments.isEmpty) return '$fresh No new comments in the discussion.';
   final listed = [for (final comment in comments) '${comment.heading}\n\n${comment.text}'].join('\n\n');
   final notes = comments.any((c) => c.isContext)

@@ -5,7 +5,7 @@ import 'package:backlog_cli/backlog_cli.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-/// `backlog suggest-touches`: the answer of the `touches.suggest` command,
+/// `kanban-ai suggest-touches`: the answer of the `touches.suggest` command,
 /// checked against the files of the code repository, saved on request.
 void main() {
   late Directory workspace;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Writes Brotli (.br) and gzip (.gz) copies next to the compressible files of
-# a built web app (default: build/web), which backlog-server sends to browsers
+# a built web app (default: build/web), which kanban-ai-server sends to browsers
 # that accept them. Files under 1 kB and debug symbols are skipped. Brotli is
 # optional: without the `brotli` tool only gzip copies are made.
 #

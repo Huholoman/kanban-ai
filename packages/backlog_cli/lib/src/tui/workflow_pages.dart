@@ -286,7 +286,7 @@ final class _EntryScreen extends MenuScreen {
           'Rename $id',
           'New id of ${list.singular} $id:',
           initial: id,
-          help: const ['backlog lint lists the items that still use the old one.'],
+          help: const ['kanban-ai lint lists the items that still use the old one.'],
           onSubmit: (text) {
             _settings.rename(list, index, text.trim());
             return 'Renamed $id to ${text.trim()} (not saved yet).';

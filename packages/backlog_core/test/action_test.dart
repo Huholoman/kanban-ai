@@ -172,17 +172,17 @@ void main() {
       expect(reply.returnTo, 'review');
       expect(reply.prompt, contains('it shows as in progress while you work'));
       expect(reply.prompt, contains('an item you had handed over goes back to review by itself'));
-      expect(reply.prompt, contains('`backlog set T-1 status=review` when finished (unless the comments name'));
+      expect(reply.prompt, contains('`kanban-ai set T-1 status=review` when finished (unless the comments name'));
       final fresh = plan.assignments.firstWhere((a) => a.id == ItemId('T-2'));
       expect(fresh.returnTo, isNull);
-      expect(fresh.prompt, contains('When the work is finished, run `backlog set T-2 status=review`.'));
+      expect(fresh.prompt, contains('When the work is finished, run `kanban-ai set T-2 status=review`.'));
       expect(plan.actionStart('T-1', 'Fix comments').agent!.returnTo, isNull, reason: 'it changes no code');
     });
 
-    test('with dispatcher.pr a prompt action publishes its commits with backlog pr', () {
+    test('with dispatcher.pr a prompt action publishes its commits with kanban-ai pr', () {
       final plan = _plan([_review('T-1', pr: '42')], workflow: _workflow(repo: 'pr: {create: tea pulls create}'));
       final prompt = plan.actionStart('T-1', 'Fix comments').agent!.prompt;
-      expect(prompt, contains('Never run `git push`: to publish your commits run `backlog pr T-1`'));
+      expect(prompt, contains('Never run `git push`: to publish your commits run `kanban-ai pr T-1`'));
       expect(prompt, isNot(contains('Never push.')));
     });
 
@@ -197,7 +197,7 @@ void main() {
       final agent = plan.actionStart('T-1', 'AI review').agent!;
       expect(agent.worktree.name, 'w2');
       expect(agent.resume, isNull);
-      expect(agent.prompt, contains('Run `backlog show T-1` first'));
+      expect(agent.prompt, contains('Run `kanban-ai show T-1` first'));
       expect(agent.prompt, contains('Review feat/x'));
 
       final noBranch = _plan([
@@ -206,7 +206,7 @@ void main() {
       expect(noBranch.actionStart('T-1', 'AI review').agent!.worktree.name, 'w2', reason: 'the session worktree');
     });
 
-    test('a review action gets the built-in review task, changes nothing and finishes with backlog review', () {
+    test('a review action gets the built-in review task, changes nothing and finishes with kanban-ai review', () {
       final workflow = parseWorkflowYaml('''
 dispatcher:
   worktrees: [w1, w2]
@@ -232,12 +232,12 @@ dispatcher:
       expect(prompt, contains('proposed as pull request https://git.example/o/r/pulls/7'));
       expect(prompt, contains('CLAUDE.md, AGENTS.md'));
       expect(prompt, contains('Change nothing'));
-      expect(prompt, contains('backlog review T-1 --ok'));
-      expect(prompt, contains('backlog review T-1 --changes'));
-      expect(prompt, contains('record your verdict with `backlog review`'));
+      expect(prompt, contains('kanban-ai review T-1 --ok'));
+      expect(prompt, contains('kanban-ai review T-1 --changes'));
+      expect(prompt, contains('record your verdict with `kanban-ai review`'));
       expect(prompt, contains('Never push.'));
-      expect(prompt, isNot(contains('backlog pr T-1')));
-      expect(prompt, isNot(contains('backlog comment T-1 "…"` and stop')));
+      expect(prompt, isNot(contains('kanban-ai pr T-1')));
+      expect(prompt, isNot(contains('kanban-ai comment T-1 "…"` and stop')));
       expect(prompt, isNot(contains('Also:')));
       expect(plan.actionStart('T-1', 'Strict review').agent!.prompt, contains('Also: Be strict about main.'));
     });
@@ -617,7 +617,7 @@ dispatcher:
       expect(prompt, contains('An AI review of your work asks for changes (automatic fix round 1 of 2)'));
       expect(prompt, contains('1. Off by one.\n2. No test.'));
       expect(prompt, contains('The review by w2 (of commit ${first.substring(0, 12)})'));
-      expect(prompt, contains('run `backlog set T-0001 status=review` (that reviews it again) and stop. If'));
+      expect(prompt, contains('run `kanban-ai set T-0001 status=review` (that reviews it again) and stop. If'));
       expect(prompt, isNot(contains('a person looks at it there')), reason: 'review is where a person looks');
       expect(prompt, contains('Never push.'));
       expect(notes.last, contains('started the agent in w1 to fix them (automatic round 1 of 2)'));
@@ -673,7 +673,7 @@ dispatcher:
       expect(launcher.started, hasLength(2));
 
       await dispatcher.runAction('T-0001', 'AI review');
-      await launcher.finish('T-0001'); // ended without backlog review
+      await launcher.finish('T-0001'); // ended without kanban-ai review
       await tick();
       expect(launcher.started, hasLength(3));
     });
@@ -722,8 +722,8 @@ dispatcher:
       await launcher.finish('T-0001');
       await tick();
       expect(launcher.started.last, 'T-0001 fix 1 resumed');
-      expect(launcher.prompts.last, contains('run `backlog set T-0001 status=review` instead (a person looks at it'));
-      expect(launcher.prompts.last, contains('run `backlog set T-0001 status=ai-review` (that reviews it again)'));
+      expect(launcher.prompts.last, contains('run `kanban-ai set T-0001 status=review` instead (a person looks at it'));
+      expect(launcher.prompts.last, contains('run `kanban-ai set T-0001 status=ai-review` (that reviews it again)'));
 
       // The agent fixes, gives it back for the review; still changes, no round left: to a person.
       final second = await commit('Fix');

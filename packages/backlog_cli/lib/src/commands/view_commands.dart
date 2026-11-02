@@ -15,7 +15,7 @@ final class ViewCommand extends BacklogCommand {
   String get description => 'Run a saved view from views/; without a name, list them.';
 
   @override
-  String get invocation => 'backlog view [name]';
+  String get invocation => 'kanban-ai view [name]';
 
   @override
   Future<int> run() async {

@@ -104,7 +104,7 @@ final class WorkflowSettings {
   /// Renames entry [index] of [list] to [id], and with it the references in
   /// the file: the default, the colour under `appearance` and, for a
   /// status, `on_enter` and `statuses` of the dispatcher's actions. Items
-  /// keep the old value (`backlog lint` reports them).
+  /// keep the old value (`kanban-ai lint` reports them).
   void rename(WorkflowList list, int index, String id) {
     final old = _entry(list, index).id;
     if (old == id) return;

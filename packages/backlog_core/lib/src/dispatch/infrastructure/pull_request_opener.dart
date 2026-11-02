@@ -89,7 +89,7 @@ final class PullRequestOpener {
       final rejected = !force && '${push.stderr}'.contains(RegExp('non-fast-forward|fetch first|rejected'));
       throw UnavailableException(
         'git push ${config.remote} $branch failed: ${lastLines('${push.stderr}')}'
-        '${rejected ? ' (after a rebase, push with `backlog pr ${item.id} --force`)' : ''}',
+        '${rejected ? ' (after a rebase, push with `kanban-ai pr ${item.id} --force`)' : ''}',
       );
     }
     PullRequestOutcome outcome(String url, {required bool created}) =>
@@ -132,7 +132,7 @@ final class PullRequestOpener {
     if (url == null) {
       throw UnavailableException(
         'Pushed $branch and ran dispatcher.pr.create, but its output has no pull request URL '
-        '(adjust dispatcher.pr.url_pattern, or set it with `backlog set ${item.id} pr=<url>`): '
+        '(adjust dispatcher.pr.url_pattern, or set it with `kanban-ai set ${item.id} pr=<url>`): '
         '${lastLines(created.output)}',
       );
     }

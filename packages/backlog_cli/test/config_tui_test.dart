@@ -127,7 +127,7 @@ void main() {
     ]);
     final (code, err) = await run(['config'], driver);
     expect(code, 0, reason: err);
-    expect(driver.showed('backlog config › Project › ${p.basename(workspace.path)}'), isTrue);
+    expect(driver.showed('kanban-ai config › Project › ${p.basename(workspace.path)}'), isTrue);
     expect(driver.showed('statuses, priorities, types, milestones'), isTrue);
     expect(driver.showed('> 240'), isTrue);
     expect(driver.showed('-  lease_minutes: 240'), isTrue);
@@ -160,7 +160,7 @@ void main() {
     expect(driver.showed('claims.lease_minutes must be an integer'), isTrue);
     expect(driver.showed('Unsaved changes (2 changed lines).'), isTrue);
     expect(driver.showed('without saving 2 changed lines?'), isTrue);
-    expect(driver.frames.last.first, 'backlog config › Project');
+    expect(driver.frames.last.first, 'kanban-ai config › Project');
     expect(config().readAsStringSync(), before);
   });
 
@@ -183,7 +183,7 @@ void main() {
     final (code, err) = await run(['config'], driver);
     expect(code, 0, reason: err);
     expect(
-      driver.showed('backlog config › Project › ${p.basename(workspace.path)} › Workflow › Statuses › in-progress'),
+      driver.showed('kanban-ai config › Project › ${p.basename(workspace.path)} › Workflow › Statuses › in-progress'),
       isTrue,
     );
     expect(driver.showed('backlog, todo, in-progress, review, done, cancelled'), isTrue);
@@ -277,7 +277,7 @@ void main() {
       env: {'KANBAN_AI_SERVER_CONFIG': server},
     );
     expect(code, 0, reason: err);
-    expect(driver.showed('backlog config › Global › Server'), isTrue);
+    expect(driver.showed('kanban-ai config › Global › Server'), isTrue);
     expect(driver.showed('8640 (the default)'), isTrue);
     expect(driver.showed('Port set (not saved yet).'), isTrue);
     expect(driver.showed('Saved $server.'), isTrue, reason: driver.last);
@@ -301,7 +301,7 @@ void main() {
     ]);
     final (code, err) = await run(['config'], driver);
     expect(code, 0, reason: err);
-    expect(driver.showed('backlog config › Project › ${p.basename(workspace.path)} › Views › v03'), isTrue);
+    expect(driver.showed('kanban-ai config › Project › ${p.basename(workspace.path)} › Views › v03'), isTrue);
     expect(driver.showed('New view v03 (not saved yet).'), isTrue);
     final file = File(p.join(backlogDir, 'views', 'v03.yaml'));
     expect(driver.showed('Saved ${file.path}.'), isTrue, reason: driver.last);
@@ -387,7 +387,7 @@ void main() {
     final driver = Driver([enter, enter, ctrlC]);
     final (code, err) = await run(['config', '--projects', registry], driver);
     expect(code, 0, reason: err);
-    expect(driver.last, contains('backlog config › Global › Projects'));
+    expect(driver.last, contains('kanban-ai config › Global › Projects'));
     expect(driver.last, contains('Hobby  $backlogDir  default  pinned  opens'));
     expect(driver.quit, isTrue);
   });
@@ -430,8 +430,8 @@ void main() {
       env: {'PATH': '', 'KANBAN_AI_SERVER_CONFIG': p.join(workspace.path, 'server.yaml'), 'KANBAN_AI_PORT': '1'},
     );
     expect(code, 0, reason: err);
-    expect(driver.showed('backlog config › Global › Doctor'), isTrue);
-    expect(driver.showed('! backlog  not on the PATH (mise run install)'), isTrue);
+    expect(driver.showed('kanban-ai config › Global › Doctor'), isTrue);
+    expect(driver.showed('! kanban-ai  not on the PATH (mise run install)'), isTrue);
     expect(driver.showed('! port 1  no server answers at http://127.0.0.1:1/api/health'), isTrue);
     expect(driver.showed('✓ hb  $backlogDir opens'), isTrue);
     expect(driver.showed('· dispatcher  no project has one'), isTrue);
@@ -447,7 +447,7 @@ void main() {
     expect(driver.showed('This folder'), isTrue);
     expect(driver.showed('gone'), isTrue);
     expect(driver.last, contains('does not exist'));
-    expect(driver.last.split('\n').first, 'backlog config › Project');
+    expect(driver.last.split('\n').first, 'kanban-ai config › Project');
   });
 
   test('a file that cannot be written keeps the review screen and the draft', () async {
@@ -464,7 +464,7 @@ void main() {
     final (code, err) = await run(['config', '--projects', registry], driver);
     expect(code, 0, reason: err);
     expect(driver.last, contains('Cannot write $registry'));
-    expect(driver.last.split('\n').first, 'backlog config › Global › Review changes');
+    expect(driver.last.split('\n').first, 'kanban-ai config › Global › Review changes');
     expect(driver.last, contains('+projects: []'));
     expect(driver.quit, isTrue);
   });
@@ -506,6 +506,6 @@ void main() {
       ),
     );
     expect(code, 0, reason: '$err');
-    expect(seen.any((frame) => frame.contains('backlog config › Project › ${p.basename(workspace.path)}')), isTrue);
+    expect(seen.any((frame) => frame.contains('kanban-ai config › Project › ${p.basename(workspace.path)}')), isTrue);
   }, timeout: const Timeout(Duration(seconds: 10)));
 }

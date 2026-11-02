@@ -48,7 +48,7 @@ final class ActionDto {
   final bool fresh;
 
   /// An AI review (`review: true`): a prompt action with the built-in review
-  /// task that ends with `backlog review`.
+  /// task that ends with `kanban-ai review`.
   final bool review;
 
   /// For a [review]: at most this many automatic fix rounds by the item's

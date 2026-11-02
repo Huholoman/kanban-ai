@@ -27,7 +27,7 @@ final class ReviewOutcome {
   final String? postError;
 }
 
-/// Records the verdict of a review of an item's work (`backlog review`): a
+/// Records the verdict of a review of an item's work (`kanban-ai review`): a
 /// review comment in the item's discussion that names the commit it looked
 /// at — the head of the item's branch, read from git in the working
 /// directory — so that later commits make it outdated. With

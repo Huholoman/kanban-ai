@@ -126,7 +126,7 @@ final class ProjectHub {
       return project.handler(request.change(path: 'api/p/${segments[2]}'));
     }
     final fallback = defaultProject;
-    if (fallback == null) return _notFound('No projects registered; add one with `backlog projects add`.');
+    if (fallback == null) return _notFound('No projects registered; add one with `kanban-ai projects add`.');
     return fallback.handler(request.change(path: 'api'));
   };
 

@@ -56,7 +56,7 @@ final class Progress {
 }
 
 /// One item with its derived planning state. The same fields as
-/// `backlog --json`, so agents and the UI see one shape.
+/// `kanban-ai --json`, so agents and the UI see one shape.
 final class ItemDto {
   const ItemDto({
     required this.id,

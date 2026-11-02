@@ -33,7 +33,7 @@ final class ProjectsScreen extends MenuScreen {
   List<String> get intro => [
     if (file.editor.problem(file.draft) case final problem?) Look.red('Not valid: $problem'),
     if (file.draft.changed) Look.yellow('Unsaved changes.'),
-    'The backlogs backlog-server hosts; the first one is the default project.',
+    'The backlogs kanban-ai-server hosts; the first one is the default project.',
   ];
 
   @override

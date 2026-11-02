@@ -71,7 +71,7 @@ abstract interface class PreviewStore {
 /// The running server, as far as actions may control it: they may replace
 /// it with another build of itself.
 abstract interface class ServerControl {
-  /// The program this server was started as (e.g. `backlog-server`).
+  /// The program this server was started as (e.g. `kanban-ai-server`).
   String get program;
 
   /// The preview this server was started for ([restart] with `preview`):

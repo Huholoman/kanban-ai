@@ -31,7 +31,7 @@ void main() {
         item('T-2', parent: 'S-1', priority: 'p3'),
         item('T-3', parent: 'E-1', priority: 'p1'),
       ]);
-      // Like `backlog next`: the most urgent item that can be done first.
+      // Like `kanban-ai next`: the most urgent item that can be done first.
       expect(plan.members.map((m) => m.id.value), ['T-3', 'T-2', 'T-1', 'S-1']);
       expect(plan.verdict, EpicVerdict.ok);
       expect(plan.branch, 'agent/E-1');

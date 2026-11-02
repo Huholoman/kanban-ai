@@ -625,7 +625,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final session = claude ? await _claudeSession(run.log) ?? record.resumed : record.resumed;
     final end = claude ? await _claudeEnd(run.log) : null;
     final failed = builtIn != null ? !builtIn.ok : !stopped && exitCode != 0;
-    // An AI review that ended without its verdict (`backlog review`) is lost work.
+    // An AI review that ended without its verdict (`kanban-ai review`) is lost work.
     final unrecorded =
         planned != null &&
         !stopped &&
@@ -637,7 +637,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final ending = _deniedIsProblem(end, failed: failed || unrecorded);
     final problems = [
       if (failed) record.kind == RunKind.agent ? 'the agent $reason' : 'the action "${run.action}" $reason',
-      if (unrecorded) 'the review was not recorded (no `backlog review`)',
+      if (unrecorded) 'the review was not recorded (no `kanban-ai review`)',
       ...ending.problems,
     ];
     final ended = _clock.now();
@@ -679,7 +679,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
     final where = record.kind == RunKind.agent ? 'agent ${run.agent} in ${run.worktree}' : run.worktree;
     final text = StringBuffer('The action "${run.action}" ($where) $reason after $took.');
     if (unrecorded) {
-      text.write(' It recorded no review (`backlog review`), so the review is lost; run the action again.');
+      text.write(' It recorded no review (`kanban-ai review`), so the review is lost; run the action again.');
     }
     if (record.kind == RunKind.command) {
       final tail = await _outputTail(run.log);
@@ -1184,7 +1184,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
 
   /// The safety net for `dispatcher.pr`: an agent handed its item over
   /// (e.g. to `review`) without a pull request — it did not run
-  /// `backlog pr`, or that failed. Pushes the branch and opens one with the
+  /// `kanban-ai pr`, or that failed. Pushes the branch and opens one with the
   /// agent's last message (or its last comment, else a description made
   /// from the item) and notes the result in the discussion; on failure the
   /// note says why and the item stays where the agent put it. Returns what
@@ -1224,7 +1224,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
         backlog,
         item,
         'Could not open a pull request for $branch: ${error.message}\n\n'
-        'The item stays ${item.status}; `backlog pr ${item.id}` in ${record.run.worktree} tries again.',
+        'The item stays ${item.status}; `kanban-ai pr ${item.id}` in ${record.run.worktree} tries again.',
       );
       return (text: 'opening its pull request failed: ${error.message}', failed: true);
     }

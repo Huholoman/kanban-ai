@@ -1,4 +1,4 @@
-/// What `backlog init` writes: a `backlog.yaml`, the saved views and,
+/// What `kanban-ai init` writes: a `backlog.yaml`, the saved views and,
 /// optionally, a guide for the repository's `CLAUDE.md` / `AGENTS.md`.
 ///
 /// The texts may contain the placeholders [placeholders] (`${prefix}`,
@@ -23,7 +23,7 @@ final class InitPreset {
 
   final String name;
 
-  /// One line for `backlog init --list-presets`.
+  /// One line for `kanban-ai init --list-presets`.
   final String description;
 
   /// The `backlog.yaml` template.

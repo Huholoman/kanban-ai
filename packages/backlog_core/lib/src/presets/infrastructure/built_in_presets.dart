@@ -3,7 +3,7 @@ import '../../workflow/infrastructure/yaml_workflow.dart';
 import '../domain/init_preset.dart';
 
 /// The presets that come with kanban-ai, in the order they are listed;
-/// `default` is what `backlog init` writes without `--preset`.
+/// `default` is what `kanban-ai init` writes without `--preset`.
 final List<InitPreset> builtInPresets = [
   InitPreset(
     name: 'default',
@@ -39,7 +39,7 @@ final List<InitPreset> builtInPresets = [
 
 const _minimalConfig = r'''
 # Backlog configuration (preset minimal). Items live in items/, saved views
-# in views/. See `backlog init --preset default` for every option.
+# in views/. See `kanban-ai init --preset default` for every option.
 
 id:
   prefix: ${prefix}      # new items get ids like ${prefix}-7f3a
@@ -86,7 +86,7 @@ sort: [priority, created]
 const _agentsConfig = r'''
 # Backlog configuration (preset agents). Items live in items/, saved views in
 # views/. Work is done by people and coding agents in git worktrees; see
-# `backlog init --preset default` for every option.
+# `kanban-ai init --preset default` for every option.
 
 id:
   prefix: ${prefix}      # new items get ids like ${prefix}-7f3a
@@ -148,7 +148,7 @@ dispatcher:
 const _reviewActions = r'''
   actions:
     # An AI review whenever an item enters review (also a button there); it
-    # ends with backlog review --ok|--changes, shown on the card.
+    # ends with kanban-ai review --ok|--changes, shown on the card.
     - name: AI review
       review: true
       on_enter: review
@@ -195,18 +195,18 @@ const _agentsGuide = r'''
 ## Backlog
 
 Work on ${project} is planned in a kanban-ai backlog (Markdown files, ids
-`${prefix}-…`); the `backlog` CLI finds it from any worktree.
+`${prefix}-…`); the `kanban-ai` CLI finds it from any worktree.
 
-- At the start of a session run `backlog instructions` and follow them.
+- At the start of a session run `kanban-ai instructions` and follow them.
 - Use the name of your worktree as the agent name:
   `export KANBAN_AI_AGENT=$(basename $(git rev-parse --show-toplevel))` (or `--as <worktree>`).
 - Change status, claims and relations (claim, status, parent, depends_on, done, release) only
-  through the CLI, never by editing item files; tick checklists with `backlog check <id> <n>`.
+  through the CLI, never by editing item files; tick checklists with `kanban-ai check <id> <n>`.
   Edit by hand only the body of an item (context, plan, notes).
 - Versions are milestones (`backlog.yaml`): every new item except epics gets `-m <version>`;
   `later` is the pile. Priority (`p0`–`p3`) only orders work within a version.
-- Create newly found work as a new item (`backlog new …` with the right `--parent`) instead of
+- Create newly found work as a new item (`kanban-ai new …` with the right `--parent`) instead of
   growing the current one.
 - Every commit message contains the item id, e.g. `Export to CSV (${prefix}-7f3a)`.
-- Before ending the session run `backlog lint` (no errors).
+- Before ending the session run `kanban-ai lint` (no errors).
 ''';

@@ -92,7 +92,7 @@ final class YamlProjectRegistryStore implements ProjectRegistryStore {
   final String? home;
 
   static const _header =
-      '# Backlogs served by backlog-server (see `backlog projects`); the first one is the default.\n'
+      '# Backlogs served by kanban-ai-server (see `kanban-ai projects`); the first one is the default.\n'
       '# path: absolute, ~/… or relative to this file; id and name are optional.\n';
 
   @override

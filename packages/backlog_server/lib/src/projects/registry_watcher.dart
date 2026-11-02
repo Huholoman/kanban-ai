@@ -5,7 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:watcher/watcher.dart';
 
 /// Re-reads the project registry file whenever it changes (also when an
-/// editor or `backlog projects` replaces it by a rename) and reports the new
+/// editor or `kanban-ai projects` replaces it by a rename) and reports the new
 /// registry; a malformed file is reported through `onError` and ignored.
 final class RegistryWatcher {
   RegistryWatcher(

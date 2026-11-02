@@ -6,7 +6,7 @@ import '../tui/config_app.dart';
 import '../tui/screen.dart';
 import 'backlog_command.dart';
 
-/// `backlog config`: the configuration TUI (global × project).
+/// `kanban-ai config`: the configuration TUI (global × project).
 final class ConfigCommand extends BacklogCommand {
   ConfigCommand(super.context) {
     argParser.addOption(
@@ -27,7 +27,7 @@ final class ConfigCommand extends BacklogCommand {
   @override
   Future<int> run() async {
     if (args.rest.isNotEmpty) throw UsageException('`config` takes no arguments.', usage);
-    final runTui = context.runTui ?? (throw UsageException('`backlog config` needs an interactive terminal.', usage));
+    final runTui = context.runTui ?? (throw UsageException('`kanban-ai config` needs an interactive terminal.', usage));
     final registry = args.option('projects') ?? projectRegistryFile(context.environment);
     String? current;
     try {

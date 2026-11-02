@@ -8,7 +8,7 @@ import '../../shared/errors.dart';
 import '../domain/init_preset.dart';
 import 'built_in_presets.dart';
 
-/// The presets `backlog init` can start from: the built-in ones and the
+/// The presets `kanban-ai init` can start from: the built-in ones and the
 /// user's, folders in [userDir] (`~/.config/kanban-ai/presets/<name>/`),
 /// which replace a built-in one of the same name.
 ///
@@ -65,7 +65,7 @@ final class PresetCatalog {
     }
     throw NotFoundException(
       'No preset "$reference"; there are ${presets.map((preset) => preset.name).join(', ')} '
-      '(`backlog init --list-presets`), or give a folder.',
+      '(`kanban-ai init --list-presets`), or give a folder.',
     );
   }
 

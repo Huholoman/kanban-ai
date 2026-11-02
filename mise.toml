@@ -74,23 +74,23 @@ run = [
 ]
 
 [tasks.build]
-description = "Compile `backlog` and `backlog-server` into build/ and build the web app, in parallel"
+description = "Compile `kanban-ai` and `kanban-ai-server` into build/ and build the web app, in parallel"
 depends = ["build-web", "build-cli", "build-server"]
 
 [tasks.build-cli]
-description = "Compile `backlog` into build/"
-run = ["mkdir -p build", "dart compile exe packages/backlog_cli/bin/backlog.dart -o build/backlog"]
+description = "Compile `kanban-ai` into build/"
+run = ["mkdir -p build", "dart compile exe packages/backlog_cli/bin/backlog.dart -o build/kanban-ai"]
 
 [tasks.build-server]
-description = "Compile `backlog-server` into build/"
-run = ["mkdir -p build", "dart compile exe packages/backlog_server/bin/backlog_server.dart -o build/backlog-server"]
+description = "Compile `kanban-ai-server` into build/"
+run = ["mkdir -p build", "dart compile exe packages/backlog_server/bin/backlog_server.dart -o build/kanban-ai-server"]
 
 [tasks.playground]
 description = "(Re)generate playground/ with demo data"
 run = [
   "mkdir -p build",
-  "dart compile exe packages/backlog_cli/bin/backlog.dart -o build/backlog",
-  "BACKLOG=$PWD/build/backlog tool/playground.sh",
+  "dart compile exe packages/backlog_cli/bin/backlog.dart -o build/kanban-ai",
+  "KANBAN_AI=$PWD/build/kanban-ai tool/playground.sh",
 ]
 
 [tasks.serve]
@@ -98,11 +98,11 @@ description = "Serve the playground (or KANBAN_AI_DIR) with the built web app"
 run = "dart run packages/backlog_server/bin/backlog_server.dart -C ${KANBAN_AI_DIR:-playground/backlog} --web packages/backlog_app/build/web"
 
 [tasks.install]
-description = "Install backlog and backlog-server into ~/.local/bin with Nix, from main or the given branch, tag or commit"
+description = "Install kanban-ai and kanban-ai-server (and their older names backlog, backlog-server) into ~/.local/bin with Nix, from main or the given branch, tag or commit"
 usage = 'arg "[ref]" help="Branch, tag or commit of this clone" default="main"'
 run = 'tool/install.sh "${usage_ref:-main}"'
 
 [tasks.install-dev]
-description = "Install backlog-dev and backlog-server-dev into ~/.local/bin from this worktree (uncommitted changes included): built in parallel with this Flutter and Dart, or with Nix (--nix)"
+description = "Install kanban-ai-dev and kanban-ai-server-dev (and backlog-dev, backlog-server-dev) into ~/.local/bin from this worktree (uncommitted changes included): built in parallel with this Flutter and Dart, or with Nix (--nix)"
 usage = 'flag "--nix" help="Build with Nix instead"'
 run = 'tool/install.sh --dev $([ "${usage_nix:-false}" = true ] && echo --nix)'

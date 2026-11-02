@@ -344,15 +344,15 @@ void main() {
     addTearDown(() => elsewhere.delete(recursive: true));
     final run = await backlog(['list'], cwd: elsewhere.path);
     expect(run.exitCode, ExitCode.notFound);
-    expect(run.err, contains('backlog init'));
+    expect(run.err, contains('kanban-ai init'));
     expect((await backlog(['--dir', backlogDir, 'list'], cwd: elsewhere.path)).exitCode, 0);
   });
 
   test('instructions are available for agents', () async {
     final run = await backlog(['instructions']);
-    expect(run.out, contains('backlog next'));
+    expect(run.out, contains('kanban-ai next'));
     expect(run.out, contains('KANBAN_AI_AGENT'));
-    expect(run.out, contains('backlog check T-7f3a'));
+    expect(run.out, contains('kanban-ai check T-7f3a'));
   });
 
   test('check and uncheck tick checklist items by number or text and keep the file as it was', () async {
@@ -874,7 +874,7 @@ statuses: [{id: open, category: open, pickable: true}, {id: doing, category: act
 
     final requested = await backlog(['action', id, 'Tests'], env: {'USER': 'tobik'});
     expect(requested.exitCode, 0, reason: '$requested');
-    expect(requested.out, contains('Requested "Tests" for $id. A running backlog-server'));
+    expect(requested.out, contains('Requested "Tests" for $id. A running kanban-ai-server'));
     final requests = await (await Backlog.open(backlogDir)).actionRequests.take();
     expect(requests.map((r) => (r.item, r.action, r.by)), [(id, 'Tests', 'tobik')]);
 

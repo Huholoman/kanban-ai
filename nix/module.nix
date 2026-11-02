@@ -76,7 +76,7 @@ in
       serviceConfig = {
         User = cfg.user;
         ExecStart = lib.escapeShellArgs [
-          "${cfg.package}/bin/backlog-server"
+          "${cfg.package}/bin/kanban-ai-server"
           "--dir"
           cfg.backlog
           "--host"

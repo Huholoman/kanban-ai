@@ -6,7 +6,7 @@ import 'package:backlog_core/backlog_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-/// `backlog review` in a git repository: the verdict as a review comment that
+/// `kanban-ai review` in a git repository: the verdict as a review comment that
 /// names the reviewed head of the item's branch.
 void main() {
   late Directory workspace;

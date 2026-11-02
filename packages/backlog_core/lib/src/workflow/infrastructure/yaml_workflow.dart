@@ -563,7 +563,7 @@ String _string(Object? node, String path, String origin) {
   return value;
 }
 
-/// The commented `backlog.yaml` that `backlog init` writes.
+/// The commented `backlog.yaml` that `kanban-ai init` writes.
 String workflowTemplate({String idPrefix = 'T'}) =>
     '''
 # Backlog configuration. Items live in items/, saved views in views/.
@@ -650,14 +650,14 @@ claims:
 #   # Own profiles (or replacing a built-in one), chosen with agent: <name>:
 #   agents:
 #     claude-sonnet:
-#       command: 'claude -p {prompt} --model sonnet --output-format stream-json --verbose --permission-mode acceptEdits --allowedTools "Bash(backlog *) Bash(git *) Read Edit Write Grep Glob"'
+#       command: 'claude -p {prompt} --model sonnet --output-format stream-json --verbose --permission-mode acceptEdits --allowedTools "Bash(kanban-ai *) Bash(git *) Read Edit Write Grep Glob"'
 #       env: {MY_SETTING: "{worktree}"}   # KANBAN_AI_AGENT and KANBAN_AI_DIR are always set
 #       output: claude-stream-json        # text | claude-stream-json | json-lines
 #       resume: --resume {session}        # appended to continue the item's last session
 #   # The prompt every agent gets (default: claim is yours, read backlog
-#   # instructions and backlog show {id}, small commits with the id, then
+#   # instructions and kanban-ai show {id}, small commits with the id, then
 #   # status=review, never push, ask in the item when unclear):
-#   prompt: "You are {worktree}. Work on backlog item {id}: run backlog show {id} first."
+#   prompt: "You are {worktree}. Work on backlog item {id}: run kanban-ai show {id} first."
 #   # The prompt when an agent continues its last session on the item; {news}
 #   # tells what happened since (how the run ended, new comments):
 #   resume_prompt: "Continue on {id}. Since your last run: {news}"
@@ -679,7 +679,7 @@ claims:
 #     # AI review: review: true gives the agent a built-in review task (in a
 #     # new session: read git diff {base}...{branch}, the item and the
 #     # project's rules; check correctness, tests, docs, security; change
-#     # nothing) and it ends with backlog review --ok|--changes, which the
+#     # nothing) and it ends with kanban-ai review --ok|--changes, which the
 #     # board shows on the card.
 #     - name: AI review
 #       review: true
@@ -703,7 +703,7 @@ claims:
 #     #   on_enter: deploy  # merges when an item is moved to deploy
 #     #   statuses: [review]   # and is a button in review
 #     #   run: merge        # built-in, see merge below
-#   # Pull requests: the agent finishes with `backlog pr <id>`, which pushes
+#   # Pull requests: the agent finishes with `kanban-ai pr <id>`, which pushes
 #   # its branch to remote and runs create (no shell; the description on
 #   # stdin) unless the item's pr field is set; the URL goes into pr. Without
 #   # this section agents never push. Placeholders: {id}, {title}, {branch},
@@ -714,7 +714,7 @@ claims:
 #     # create: 'gh pr create --head {branch} --base {base} --title "{id}: {title}" --body-file -'
 #     # find: 'gh pr list --head {branch} --json url --jq ".[0].url"'   # an open PR made elsewhere
 #     # url_pattern: 'https://\\S+/pulls/\\d+'   # default: the first URL in the output
-#     # backlog review also posts the review to the pull request (body on
+#     # kanban-ai review also posts the review to the pull request (body on
 #     # stdin and in {body}; also {pr}, {pr_number}, {verdict}); a failure
 #     # is only a note in the item's discussion:
 #     # review: 'tea comment {pr_number}'
@@ -749,6 +749,6 @@ claims:
 #   #   worktree: "{repo}-preview"
 #   #   check: [sh, -c, "mise run get && mise run check"]
 #   #   install: [mise, run, install-dev]
-#   #   server: backlog-server-dev     # default: no restart
-#   #   main_server: backlog-server    # default: the program the server runs as
+#   #   server: kanban-ai-server-dev     # default: no restart
+#   #   main_server: kanban-ai-server    # default: the program the server runs as
 ''';

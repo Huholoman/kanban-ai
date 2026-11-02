@@ -1,7 +1,7 @@
 import 'json.dart';
 
 /// One comment of an item's discussion (the `## Discussion` section of its
-/// body), as `backlog --json show` gives it.
+/// body), as `kanban-ai --json show` gives it.
 final class CommentDto {
   const CommentDto({
     required this.author,

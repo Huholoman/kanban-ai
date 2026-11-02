@@ -1,4 +1,4 @@
-/// The `backlog` command-line interface.
+/// The `kanban-ai` command-line interface.
 library;
 
 import 'dart:convert';
@@ -31,7 +31,7 @@ abstract final class ExitCode {
 }
 
 Future<int> runBacklogCli(List<String> arguments, CliContext context) async {
-  final runner = CommandRunner<int>('backlog', 'File-based backlog for humans and coding agents.')
+  final runner = CommandRunner<int>('kanban-ai', 'File-based backlog for humans and coding agents.')
     ..argParser.addOption(
       'dir',
       abbr: 'C',

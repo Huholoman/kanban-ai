@@ -370,9 +370,9 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
           '2. resolve the conflicts git reports, `git add <file>` for each resolved file, then '
           '`git rebase --continue` (repeat until the rebase is done; never `git rebase --abort` or `--skip`)\n'
           '3. run the project\'s checks and commit what it needs\n'
-          '4. `backlog set T-0001 status=deploy` to merge it again — unless a person has to decide something (how '
+          '4. `kanban-ai set T-0001 status=deploy` to merge it again — unless a person has to decide something (how '
           'to resolve a conflict, a check you cannot fix): then leave it in review and ask with '
-          '`backlog ask T-0001 "…"`',
+          '`kanban-ai ask T-0001 "…"`',
         ),
         reason: 'no fetch and no pull request without a remote strategy and pr',
       );
@@ -546,7 +546,7 @@ ${pr == null ? '' : '  pr: $pr\n'}''');
       expect(comment.note, isFalse);
       expect(comment.text, contains('Pull request is not mergeable'));
       expect(comment.text, contains('1. `git fetch origin`\n2. `git rebase origin/main` on agent/T-0001\n'));
-      expect(comment.text, contains('5. publish the branch with `backlog pr T-0001 --force` (never `git push`)\n'));
+      expect(comment.text, contains('5. publish the branch with `kanban-ai pr T-0001 --force` (never `git push`)\n'));
       expect(await hasBranch('agent/T-0001'), isTrue);
     });
   });

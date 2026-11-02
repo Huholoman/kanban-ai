@@ -389,7 +389,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.backToMainCalls, 1);
       expect(find.byKey(const ValueKey('preview-banner')), findsNothing);
-      expect(find.textContaining('The server restarts as backlog-server'), findsOneWidget);
+      expect(find.textContaining('The server restarts as kanban-ai-server'), findsOneWidget);
     });
   });
 
@@ -432,6 +432,6 @@ final preview = PreviewDto(
   commit: 'abcdef1234567890',
   base: 'main',
   since: DateTime.utc(2026, 11, 1, 12),
-  server: 'backlog-server-dev',
-  mainServer: 'backlog-server',
+  server: 'kanban-ai-server-dev',
+  mainServer: 'kanban-ai-server',
 );

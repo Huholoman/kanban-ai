@@ -90,7 +90,7 @@ void main() {
   group('ProcessServerControl', () {
     ProcessServerControl control({int? processId, List<String> arguments = const [], void Function()? stopped}) =>
         ProcessServerControl(
-          program: 'backlog-server',
+          program: 'kanban-ai-server',
           arguments: arguments,
           environment: {
             'PATH': Platform.environment['PATH'] ?? '/usr/bin:/bin',
@@ -108,13 +108,13 @@ void main() {
     test('the new server gets the environment without the old web app, marked with its program', () {
       final server = control();
       expect(server.preview, 'old');
-      expect(server.environmentFor('backlog-server-dev', preview: 'abc'), {
+      expect(server.environmentFor('kanban-ai-server-dev', preview: 'abc'), {
         'PATH': Platform.environment['PATH'] ?? '/usr/bin:/bin',
         'KEEP': 'yes',
-        'KANBAN_AI_SERVER_PROGRAM': 'backlog-server-dev',
+        'KANBAN_AI_SERVER_PROGRAM': 'kanban-ai-server-dev',
         'KANBAN_AI_PREVIEW': 'abc',
       });
-      expect(server.environmentFor('backlog-server'), isNot(contains('KANBAN_AI_PREVIEW')));
+      expect(server.environmentFor('kanban-ai-server'), isNot(contains('KANBAN_AI_PREVIEW')));
       expect(ProcessServerControl.programOf({'KANBAN_AI_SERVER_PROGRAM': 'x'}, 'y'), 'x');
       expect(ProcessServerControl.programOf({}, 'y'), 'y');
     });

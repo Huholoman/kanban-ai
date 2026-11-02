@@ -5,7 +5,7 @@ import 'config_app.dart';
 import 'screen.dart';
 import 'widgets.dart';
 
-/// *Global › Server*: the settings `backlog-server` reads from `server.yaml`
+/// *Global › Server*: the settings `kanban-ai-server` reads from `server.yaml`
 /// where neither an option nor an environment variable is given.
 ConfigFileScreen serverScreen(ConfigEditor editor, ConfigDraft draft) => ConfigFileScreen(
   'Server',
@@ -72,7 +72,7 @@ ConfigFileScreen serverScreen(ConfigEditor editor, ConfigDraft draft) => ConfigF
     ];
   },
   notes: const [
-    'Options and environment variables of backlog-server win over these.',
+    'Options and environment variables of kanban-ai-server win over these.',
     'A running server reads them only at its start.',
   ],
 );

@@ -15,7 +15,7 @@ import '../domain/server_config.dart';
 import 'file_config.dart';
 
 /// The programs the doctor looks for on the `PATH`.
-const doctorTools = ['backlog', 'backlog-server', 'backlog-dev', 'backlog-server-dev'];
+const doctorTools = ['kanban-ai', 'kanban-ai-server', 'kanban-ai-dev', 'kanban-ai-server-dev'];
 
 /// Looks at this machine: [doctorTools] on the `PATH` and where they were
 /// installed from (`release.txt`/`dev.txt`, written by `tool/install.sh`

@@ -153,7 +153,7 @@ dispatcher:
       final plain = parseWorkflowYaml('dispatcher: {worktrees: [a]}').dispatcher!;
       expect(plain.pr, isNull);
       expect(plain.prompt.text, contains('Never push'));
-      expect(plain.prompt.text, isNot(contains('backlog pr')));
+      expect(plain.prompt.text, isNot(contains('kanban-ai pr')));
 
       final tea = parseWorkflowYaml('''
 dispatcher:
@@ -177,8 +177,8 @@ dispatcher:
         '--description-file', '-',
       ]);
       expect(tea.prompt.text, DispatcherConfig.defaultPullRequestPrompt);
-      expect(tea.prompt.text, allOf(contains('backlog pr {id} --description'), contains('Never run `git push`')));
-      expect(tea.resumePrompt.text, contains('backlog pr {id}'));
+      expect(tea.prompt.text, allOf(contains('kanban-ai pr {id} --description'), contains('Never run `git push`')));
+      expect(tea.resumePrompt.text, contains('kanban-ai pr {id}'));
       expect(
         pr.urlIn('\x1B[1m#12\x1B[0m Do it\nhttps://git.example/o/r/pulls/12\n'),
         'https://git.example/o/r/pulls/12',
@@ -333,7 +333,7 @@ dispatcher:
       for (final prompt in [DispatcherConfig.defaultPrompt, DispatcherConfig.defaultPullRequestPrompt]) {
         expect(
           prompt,
-          allOf(contains("read the comments in the item's `## Discussion`"), contains('backlog ask {id}')),
+          allOf(contains("read the comments in the item's `## Discussion`"), contains('kanban-ai ask {id}')),
         );
       }
       final claude = byDefault.command.arguments;

@@ -103,7 +103,7 @@ final class Linter {
           LintIssue(
             Severity.warning,
             'archived-unfinished',
-            'Item is ${planned.item.status} but archived (`backlog archive --restore $id` moves it back).',
+            'Item is ${planned.item.status} but archived (`kanban-ai archive --restore $id` moves it back).',
             item: '$id',
           ),
         );

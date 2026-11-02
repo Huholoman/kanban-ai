@@ -57,7 +57,7 @@ final class Comment {
   /// as context.
   final bool note;
 
-  /// A review of the item's work (`backlog review`): its verdict; null for
+  /// A review of the item's work (`kanban-ai review`): its verdict; null for
   /// other comments. Like a note it neither answers an open question nor
   /// wakes the item's agent, but a resumed agent sees it.
   final ReviewVerdict? review;

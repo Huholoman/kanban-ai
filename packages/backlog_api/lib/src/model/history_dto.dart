@@ -1,7 +1,7 @@
 import 'json.dart';
 
 /// One entry of an item's history (`GET /api/items/<ref>/history`, shaped
-/// like `backlog --json history`): who did what when.
+/// like `kanban-ai --json history`): who did what when.
 final class HistoryEntryDto {
   const HistoryEntryDto({
     required this.kind,

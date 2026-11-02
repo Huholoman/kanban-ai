@@ -256,7 +256,7 @@ dispatcher:
     await backlog.claims.claimInEpic('T-0001', 'wt-1');
     await backlog.items.update('T-0002', [FieldChange.parse('status=review')]);
     expect((await backlog.claims.claimInEpic('T-0001', 'wt-1')).outcome!.item.id, ItemId('T-0003'));
-    // Claimed and handed over without `backlog epic --next`, with its own branch field.
+    // Claimed and handed over without `kanban-ai epic --next`, with its own branch field.
     await backlog.claims.claim('T-0004', 'wt-1');
     await backlog.items.update('T-0004', [
       FieldChange.parse('status=review'),
@@ -379,7 +379,7 @@ dispatcher:
       final note = Discussion.parse(after.item.body).comments.single;
       expect(note.note, isTrue, reason: 'a note does not wake the agent');
       expect(note.text, allOf(contains('Could not open a pull request'), contains('unable to connect')));
-      expect(note.text, contains('`backlog pr T-0001` in wt-1 tries again'));
+      expect(note.text, contains('`kanban-ai pr T-0001` in wt-1 tries again'));
       final problem = (await plan()).problems.single;
       expect(problem.item.id, ItemId('T-0001'));
       expect(
@@ -862,8 +862,8 @@ dispatcher:
       await reviewed();
       await launcher.launch((await plan()).actionStart('T-0001', 'AI review').agent!);
       await finish('T-0001', 0);
-      expect((await notes()).single.text, contains('It recorded no review (`backlog review`)'));
-      expect((await plan()).problems.single.problems, ['the review was not recorded (no `backlog review`)']);
+      expect((await notes()).single.text, contains('It recorded no review (`kanban-ai review`)'));
+      expect((await plan()).problems.single.problems, ['the review was not recorded (no `kanban-ai review`)']);
 
       clock.advance(const Duration(minutes: 1));
       File(path('go-T-0001')).deleteSync();

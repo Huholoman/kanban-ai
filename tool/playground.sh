@@ -3,20 +3,20 @@
 # with a filled backlog and fake worktree folders, for trying the CLI, the
 # server and the app. Safe to re-run: the old playground is replaced.
 #
-#   tool/playground.sh            # uses `backlog` from PATH, else `dart run`
-#   BACKLOG=/path/to/backlog tool/playground.sh
+#   tool/playground.sh            # uses `kanban-ai` from PATH, else `dart run`
+#   KANBAN_AI=/path/to/kanban-ai tool/playground.sh
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 play="$repo/playground"
-if [[ -n "${BACKLOG:-}" ]]; then cli=("$BACKLOG")
-elif command -v backlog >/dev/null; then cli=(backlog)
+if [[ -n "${KANBAN_AI:-}" ]]; then cli=("$KANBAN_AI")
+elif command -v kanban-ai >/dev/null; then cli=(kanban-ai)
 else cli=(dart run "$repo/packages/backlog_cli/bin/backlog.dart"); fi
 
 rm -rf "$play"
 mkdir -p "$play"/{monorepo,monorepo-2,monorepo-3,monorepo-4,monorepo-5}
 for wt in monorepo monorepo-2 monorepo-3 monorepo-4 monorepo-5; do
-  echo "Fake worktree of the Spokes code. Run backlog commands from here — ../backlog is found automatically." >"$play/$wt/README.md"
+  echo "Fake worktree of the Spokes code. Run kanban-ai commands from here — ../backlog is found automatically." >"$play/$wt/README.md"
 done
 
 cd "$play"

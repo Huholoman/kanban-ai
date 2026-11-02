@@ -2,7 +2,7 @@ import 'package:backlog_core/backlog_core.dart';
 import 'package:test/test.dart';
 
 const _registry = '''
-# Backlogs served by backlog-server
+# Backlogs served by kanban-ai-server
 projects:
   - id: kanban
     path: ~/p/kanban-ai/backlog   # the tool itself

@@ -262,10 +262,10 @@ final class Backlog {
   String get root => storage.root;
 
   /// Requests to run actions, for a server's dispatcher to pick up
-  /// (`backlog action`).
+  /// (`kanban-ai action`).
   ActionRequests get actionRequests => storage.actionRequests;
 
-  /// The fixes `backlog config` offers for lint issues.
+  /// The fixes `kanban-ai config` offers for lint issues.
   LintFixer get lintFixer => LintFixer(items: items, claims: claims, workflow: workflow);
 }
 

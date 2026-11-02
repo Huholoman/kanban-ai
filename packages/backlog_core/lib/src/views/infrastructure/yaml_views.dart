@@ -246,7 +246,7 @@ List<String> _strings(Object? value, String key) => switch (value) {
   _ => throw ConfigurationException('"$key" expects a list.'),
 };
 
-/// Views written by `backlog init`.
+/// Views written by `kanban-ai init`.
 const defaultViews = {
   'board': '''
 name: Board

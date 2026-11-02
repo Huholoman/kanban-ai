@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Installs backlog and backlog-server from this repository as symlinks in
-# ~/.local/bin pointing into ~/.local/state/kanban-ai.
+# Installs kanban-ai and kanban-ai-server from this repository as symlinks in
+# ~/.local/bin pointing into ~/.local/state/kanban-ai, together with their
+# older names backlog and backlog-server.
 #
-#   tool/install.sh [ref]       # backlog, backlog-server from a branch, tag or commit (default: main),
+#   tool/install.sh [ref]       # kanban-ai, kanban-ai-server from a branch, tag or commit (default: main),
 #                               # built with Nix (a GC root)
-#   tool/install.sh --dev       # backlog-dev, backlog-server-dev from this worktree as it is (uncommitted
+#   tool/install.sh --dev       # kanban-ai-dev, kanban-ai-server-dev from this worktree as it is (uncommitted
 #                               # changes included), built with the Dart and Flutter on the PATH (mise),
 #                               # the web app and both programs in parallel, without Nix
 #   tool/install.sh --dev --nix # the same from this worktree with Nix (uncommitted changes of tracked files)
@@ -96,12 +97,12 @@ build_local() {
     flutter build web --release --no-pub --no-web-resources-cdn --pwa-strategy=none --output "$out/web" &&
     tool/precompress.sh "$out/web") >"$out/logs/web.log" 2>&1 &
   pids+=("$!:web")
-  (cd "$repo" && dart compile exe packages/backlog_cli/bin/backlog.dart -o "$out/bin/backlog") \
-    >"$out/logs/backlog.log" 2>&1 &
-  pids+=("$!:backlog")
-  (cd "$repo" && dart compile exe packages/backlog_server/bin/backlog_server.dart -o "$out/libexec/backlog-server") \
-    >"$out/logs/backlog-server.log" 2>&1 &
-  pids+=("$!:backlog-server")
+  (cd "$repo" && dart compile exe packages/backlog_cli/bin/backlog.dart -o "$out/bin/kanban-ai") \
+    >"$out/logs/kanban-ai.log" 2>&1 &
+  pids+=("$!:kanban-ai")
+  (cd "$repo" && dart compile exe packages/backlog_server/bin/backlog_server.dart -o "$out/libexec/kanban-ai-server") \
+    >"$out/logs/kanban-ai-server.log" 2>&1 &
+  pids+=("$!:kanban-ai-server")
   for pid in "${pids[@]}"; do jobs_running+=("${pid%%:*}"); done
 
   for pid in "${pids[@]}"; do
@@ -117,12 +118,15 @@ build_local() {
   if [[ -n "$failed" ]]; then exit 1; fi
 
   # Like the Nix wrapper: the server serves its own web app unless told otherwise.
-  cat >"$out/bin/backlog-server" <<EOF
+  cat >"$out/bin/kanban-ai-server" <<EOF
 #!/bin/sh
 export KANBAN_AI_WEB="\${KANBAN_AI_WEB:-$out/web}"
-exec "$out/libexec/backlog-server" "\$@"
+exec "$out/libexec/kanban-ai-server" "\$@"
 EOF
-  chmod +x "$out/bin/backlog-server"
+  chmod +x "$out/bin/kanban-ai-server"
+  # The older names, like in the Nix build.
+  ln -s kanban-ai "$out/bin/backlog"
+  ln -s kanban-ai-server "$out/bin/backlog-server"
 
   previous="$(readlink -f "$link" || true)"
   ln -sfn "$out" "$link"
@@ -135,18 +139,19 @@ if [[ -n "$nix" ]]; then
   echo "Building kanban-ai from $from with Nix …"
   nix build --max-jobs auto --out-link "$link" "$flake#kanban-ai"
 else
-  echo "Building kanban-ai from $from (web app, backlog, backlog-server in parallel) …"
+  echo "Building kanban-ai from $from (web app, kanban-ai, kanban-ai-server in parallel) …"
   build_local
 fi
-# What it was built from, for `backlog config` › Global › Doctor.
+# What it was built from, for `kanban-ai config` › Global › Doctor.
 echo "$from, $(date '+%Y-%m-%d %H:%M')" >"$link.txt"
 
-for tool in backlog backlog-server; do
+for tool in kanban-ai kanban-ai-server backlog backlog-server; do
   ln -sfn "$link/bin/$tool" "$bin/$tool$suffix"
 done
 
 echo "Installed from $from:"
-for tool in backlog backlog-server; do
+for tool in kanban-ai kanban-ai-server; do
   echo "  $bin/$tool$suffix -> $(readlink -f "$link")/bin/$tool"
 done
+echo "  $bin/backlog$suffix, $bin/backlog-server$suffix: the older names of the two"
 if [[ ":$PATH:" != *":$bin:"* ]]; then echo "Note: $bin is not on PATH." >&2; fi

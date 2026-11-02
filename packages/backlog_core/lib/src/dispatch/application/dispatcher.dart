@@ -406,7 +406,7 @@ final class Dispatcher {
   }
 
   /// Starts the `on_enter` actions that may run now and the actions
-  /// requested by `backlog action`, in either mode; returns the plan after
+  /// requested by `kanban-ai action`, in either mode; returns the plan after
   /// the last start, or null when nothing started.
   ///
   /// A pending action is dropped when its item left the status it entered

@@ -65,7 +65,7 @@ void main() {
       expect(first.id, 'kanban-ai');
       expect(second.id, 'kanban-ai-2');
       final text = File(file).readAsStringSync();
-      expect(text, startsWith('# Backlogs served by backlog-server'));
+      expect(text, startsWith('# Backlogs served by kanban-ai-server'));
       expect(text, contains('path: ~/p/kanban-ai/backlog'));
       expect(text, contains('name: Copy'));
       final registry = await service.registry();

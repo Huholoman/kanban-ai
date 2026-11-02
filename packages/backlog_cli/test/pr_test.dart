@@ -6,7 +6,7 @@ import 'package:backlog_core/backlog_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-/// `backlog pr` against a local bare repository as the remote and a fake
+/// `kanban-ai pr` against a local bare repository as the remote and a fake
 /// `create` command (a shell script that records its arguments and standard
 /// input and prints a URL), the way `tea pulls create` or `gh pr create`
 /// would be configured.
@@ -183,7 +183,7 @@ void main() {
     await git(repo, ['rebase', '-q', 'main']);
     final plain = await backlog(['pr', id]);
     expect(plain.code, isNot(0));
-    expect(plain.err, contains('backlog pr $id --force'));
+    expect(plain.err, contains('kanban-ai pr $id --force'));
 
     final forced = await backlog(['pr', id, '--force']);
     expect(forced.code, 0, reason: forced.err);

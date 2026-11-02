@@ -3,7 +3,7 @@ import '../domain/config_draft.dart';
 import '../domain/config_file.dart';
 
 /// Use cases of editing one configuration file: open a [ConfigDraft],
-/// check it, save it. Adapters (the `backlog config` TUI, later the API)
+/// check it, save it. Adapters (the `kanban-ai config` TUI, later the API)
 /// build their pages on top; the file is only written by [save].
 final class ConfigEditor {
   ConfigEditor({required this.scope, required ConfigFile file, required ConfigValidator validate})

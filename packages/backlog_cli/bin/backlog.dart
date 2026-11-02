@@ -6,7 +6,7 @@ import 'package:backlog_cli/backlog_cli.dart';
 import 'package:dart_tui/dart_tui.dart' show Program, withAltScreen;
 
 Future<void> main(List<String> arguments) async {
-  // A reader that stops early (`backlog view … | head`) closes the pipe:
+  // A reader that stops early (`kanban-ai view … | head`) closes the pipe:
   // the rest of the output goes nowhere, like with other Unix tools.
   unawaited(stdout.done.catchError(_ignoreBrokenPipe));
   unawaited(stderr.done.catchError(_ignoreBrokenPipe));
