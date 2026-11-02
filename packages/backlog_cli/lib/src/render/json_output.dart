@@ -1,9 +1,16 @@
 import 'package:backlog_core/backlog_core.dart';
 
+import 'text_output.dart';
+
 /// JSON shapes of the CLI. Agents parse these, so fields are only ever added,
 /// never renamed.
 abstract final class JsonOutput {
-  static Map<String, Object?> item(PlannedItem planned, {String? path, bool withBody = false}) {
+  static Map<String, Object?> item(
+    PlannedItem planned, {
+    String? path,
+    bool withBody = false,
+    List<Attachment>? attachments,
+  }) {
     final item = planned.item;
     final checklist = planned.checklist;
     return {
@@ -47,6 +54,7 @@ abstract final class JsonOutput {
       if (withBody) 'body': item.body,
       if (withBody) 'discussion': [for (final c in item.discussion.comments) comment(c)],
       if (withBody) 'checklist': [for (final entry in Checklist.entriesOf(item.body)) checklistEntry(entry)],
+      if (attachments != null) 'attachments': [for (final a in attachments) attachment(a, item: path)],
     };
   }
 
@@ -66,6 +74,14 @@ abstract final class JsonOutput {
     'commit': entry.commit,
     'uncommitted': entry.uncommitted,
     'log': entry.log,
+  };
+
+  /// An attachment; with the [item]'s file its `path` next to it.
+  static Map<String, Object?> attachment(Attachment attachment, {String? item}) => {
+    'name': attachment.name,
+    'size': attachment.size,
+    'modified': attachment.modified?.toUtc().toIso8601String(),
+    'path': ?TextOutput.attachmentPath(attachment, item),
   };
 
   static Map<String, Object?> checklistEntry(ChecklistEntry entry) => {

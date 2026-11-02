@@ -1,4 +1,5 @@
 import 'package:backlog_core/backlog_core.dart';
+import 'package:path/path.dart' as p;
 
 /// Human-oriented terminal output.
 abstract final class TextOutput {
@@ -94,7 +95,12 @@ abstract final class TextOutput {
 
   static String _statuses(List<EpicMember> members) => {for (final m in members) m.item.item.status}.join(', ');
 
-  static List<String> detail(PlannedItem planned, BacklogSnapshot snapshot, {String? path}) {
+  static List<String> detail(
+    PlannedItem planned,
+    BacklogSnapshot snapshot, {
+    String? path,
+    List<Attachment> attachments = const [],
+  }) {
     final item = planned.item;
     String describe(ItemId id) {
       final other = snapshot[id];
@@ -135,8 +141,24 @@ abstract final class TextOutput {
       if (!planned.checklist.isEmpty) 'checklist: ${planned.checklist}',
       'created: ${itemTime(item.created)}   updated: ${itemTime(item.updated)}',
       if (path != null) 'file: $path',
+      for (final attachment in attachments) 'attachment: ${attachmentLine(attachment)}',
       if (item.body.trim().isNotEmpty) ...['', item.body.trimRight()],
     ];
+  }
+
+  /// `screenshot.png (12.3 kB)`.
+  static String attachmentLine(Attachment attachment) => '${attachment.name} (${size(attachment.size)})';
+
+  /// Where [attachment] lies, next to the [item] file `…/<folder>/index.md`;
+  /// null when the item is no such file.
+  static String? attachmentPath(Attachment attachment, String? item) =>
+      item == null || p.basename(item) != 'index.md' ? null : p.join(p.dirname(item), attachment.name);
+
+  /// A size in bytes for people: `512 B`, `12.3 kB`, `4.0 MB`.
+  static String size(int bytes) {
+    if (bytes < 1000) return '$bytes B';
+    if (bytes < 1000 * 1000) return '${(bytes / 1000).toStringAsFixed(1)} kB';
+    return '${(bytes / 1000 / 1000).toStringAsFixed(1)} MB';
   }
 
   static List<String> view(ViewResult result) {
