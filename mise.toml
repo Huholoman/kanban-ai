@@ -9,19 +9,49 @@ jq = "1.8.1"       # tool/playground.sh
 description = "Fetch dependencies of the workspace and the app"
 run = ["dart pub get", "cd packages/backlog_app && flutter pub get"]
 
+# The Dart packages and the app are analysed and tested as separate tasks
+# (the tests per package), which mise runs in parallel.
 [tasks.analyze]
 description = "Static analysis of all packages"
-run = [
-  "dart analyze packages/backlog_core packages/backlog_cli packages/backlog_api packages/backlog_server",
-  "cd packages/backlog_app && flutter analyze",
-]
+depends = ["analyze-dart", "analyze-app"]
+
+[tasks.analyze-dart]
+description = "Static analysis of the Dart packages"
+run = "dart analyze packages/backlog_core packages/backlog_cli packages/backlog_api packages/backlog_server"
+
+[tasks.analyze-app]
+description = "Static analysis of the Flutter app"
+dir = "packages/backlog_app"
+run = "flutter analyze"
 
 [tasks.test]
 description = "All tests"
-run = [
-  "dart test packages/backlog_core packages/backlog_cli packages/backlog_api packages/backlog_server",
-  "cd packages/backlog_app && flutter test",
-]
+depends = ["test-dart", "test-app"]
+
+[tasks.test-dart]
+description = "Tests of the Dart packages"
+depends = ["test-core", "test-cli", "test-api", "test-server"]
+
+[tasks.test-core]
+description = "Tests of backlog_core"
+run = "dart test packages/backlog_core"
+
+[tasks.test-cli]
+description = "Tests of backlog_cli"
+run = "dart test packages/backlog_cli"
+
+[tasks.test-api]
+description = "Tests of backlog_api"
+run = "dart test packages/backlog_api"
+
+[tasks.test-server]
+description = "Tests of backlog_server"
+run = "dart test packages/backlog_server"
+
+[tasks.test-app]
+description = "Tests of the Flutter app"
+dir = "packages/backlog_app"
+run = "flutter test"
 
 [tasks.format]
 description = "Format the code (page width 120)"
@@ -29,8 +59,11 @@ run = "dart format packages"
 
 [tasks.check]
 description = "Format check, analysis and tests — run before committing"
-run = ["dart format --output=none --set-exit-if-changed packages"]
-depends = ["analyze", "test"]
+depends = ["format-check", "analyze-dart", "analyze-app", "test-dart", "test-app"]
+
+[tasks.format-check]
+description = "Check that the code is formatted"
+run = "dart format --output=none --set-exit-if-changed packages"
 
 [tasks.build-web]
 description = "Build the web app into packages/backlog_app/build/web (CanvasKit bundled, .br/.gz copies)"
@@ -41,13 +74,16 @@ run = [
 ]
 
 [tasks.build]
-description = "Compile `backlog` and `backlog-server` into build/"
-depends = ["build-web"]
-run = [
-  "mkdir -p build",
-  "dart compile exe packages/backlog_cli/bin/backlog.dart -o build/backlog",
-  "dart compile exe packages/backlog_server/bin/backlog_server.dart -o build/backlog-server",
-]
+description = "Compile `backlog` and `backlog-server` into build/ and build the web app, in parallel"
+depends = ["build-web", "build-cli", "build-server"]
+
+[tasks.build-cli]
+description = "Compile `backlog` into build/"
+run = ["mkdir -p build", "dart compile exe packages/backlog_cli/bin/backlog.dart -o build/backlog"]
+
+[tasks.build-server]
+description = "Compile `backlog-server` into build/"
+run = ["mkdir -p build", "dart compile exe packages/backlog_server/bin/backlog_server.dart -o build/backlog-server"]
 
 [tasks.playground]
 description = "(Re)generate playground/ with demo data"
@@ -67,5 +103,6 @@ usage = 'arg "[ref]" help="Branch, tag or commit of this clone" default="main"'
 run = 'tool/install.sh "${usage_ref:-main}"'
 
 [tasks.install-dev]
-description = "Install backlog-dev and backlog-server-dev into ~/.local/bin with Nix, from this worktree (uncommitted changes included)"
-run = "tool/install.sh --dev"
+description = "Install backlog-dev and backlog-server-dev into ~/.local/bin from this worktree (uncommitted changes included): built in parallel with this Flutter and Dart, or with Nix (--nix)"
+usage = 'flag "--nix" help="Build with Nix instead"'
+run = 'tool/install.sh --dev $([ "${usage_nix:-false}" = true ] && echo --nix)'

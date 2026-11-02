@@ -109,9 +109,10 @@ With the project registry one `backlog-server` serves all your backlogs, so inst
 mise run install                # backlog, backlog-server from main
 mise run install 3b0c6ec         # … or from another branch, tag or commit of the clone
 mise run install-dev            # backlog-dev, backlog-server-dev from this worktree (uncommitted changes included)
+mise run install-dev --nix      # … the same built with Nix
 ```
 
-The task builds the flake with `nix build`, keeps the result as a GC root in `~/.local/state/kanban-ai/` (`release`, `dev`) and links the binaries into `~/.local/bin`, which must be on `PATH`; it prints the ref and commit it installed and keeps them in `release.txt` / `dev.txt` next to the links (shown by the doctor in `backlog config`). The web app is bundled. `KANBAN_AI_BIN_DIR` and `KANBAN_AI_STATE_DIR` change the two folders. Without mise: `tool/install.sh [ref]`, `tool/install.sh --dev`. The `-dev` pair lets you try a branch next to the release, e.g. a second board with `backlog-server-dev --port 8650`.
+`install` builds the flake with `nix build`, keeps the result as a GC root in `~/.local/state/kanban-ai/` (`release`) and links the binaries into `~/.local/bin`, which must be on `PATH`. `install-dev` builds without Nix, with the Flutter and Dart of mise: the web app, `backlog` and `backlog-server` at the same time, into a new folder under `~/.local/state/kanban-ai/dev-local/` (the previous build is kept, a running server may still use it), then points `dev` at it — much faster than Nix, which builds everything from scratch; `--nix` builds the flake like `install` (into the GC root `dev`). Both print the ref and commit they installed and keep them in `release.txt` / `dev.txt` next to the links (shown by the doctor in `backlog config`). The web app is bundled. `KANBAN_AI_BIN_DIR` and `KANBAN_AI_STATE_DIR` change the two folders. Without mise: `tool/install.sh [ref]`, `tool/install.sh --dev [--nix]`. The `-dev` pair lets you try a branch next to the release, e.g. a second board with `backlog-server-dev --port 8650`.
 
 ### Without Nix
 
@@ -681,18 +682,18 @@ Tools are pinned with [mise](https://mise.jdx.dev) in `mise.toml`: Flutter 3.32.
 ```bash
 mise install                    # Flutter + Dart, jq
 mise run get                    # dart pub get + flutter pub get in the app
-mise run check                  # format check, analysis, all tests — before committing
+mise run check                  # format check, analysis, all tests (in parallel) — before committing
 mise tasks                      # analyze, test, format, build, build-web, playground, serve, install, install-dev
 ```
 
 | Task | What it does |
 |---|---|
 | `mise run build-web` | the web app in `packages/backlog_app/build/web`: CanvasKit bundled (nothing from Google's CDN), no service worker, Brotli/gzip copies for the server (`brotli` optional) |
-| `mise run build` | the web app plus `build/backlog` and `build/backlog-server` |
+| `mise run build` | the web app plus `build/backlog` and `build/backlog-server`, built in parallel |
 | `mise run playground` | regenerate `playground/` with demo data |
 | `mise run serve` | serve the playground (or `BACKLOG_DIR`) with the built web app |
 | `mise run install [ref]` | install `backlog` and `backlog-server` from `main` (or a branch, tag or commit) into `~/.local/bin` with Nix |
-| `mise run install-dev` | install `backlog-dev` and `backlog-server-dev` from this worktree, uncommitted changes included |
+| `mise run install-dev [--nix]` | install `backlog-dev` and `backlog-server-dev` from this worktree, uncommitted changes included; built in parallel with mise's Flutter and Dart, or with Nix |
 
 The same commands without mise:
 
