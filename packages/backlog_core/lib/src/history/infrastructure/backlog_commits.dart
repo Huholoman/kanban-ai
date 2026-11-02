@@ -71,9 +71,16 @@ final class BacklogCommits {
         continue;
       }
       final what = byItem.putIfAbsent(id, () => []);
-      for (final change in await _describe(code, path)) {
+      for (final change
+          in _attachmentOf(path) == null
+              ? await _describe(code, path)
+              : [_describeAttachment(code, _attachmentOf(path)!)]) {
         if (!what.contains(change)) what.add(change);
       }
+    }
+    // An item file moved into its folder (for its first attachment).
+    for (final what in byItem.values) {
+      if (what.remove('deleted') && what.remove('new') && what.isEmpty) what.add('edited');
     }
     final parts = [for (final MapEntry(key: id, value: what) in byItem.entries) '$id ${what.join(', ')}', ...others];
     final subject = parts.length > 6
@@ -124,6 +131,19 @@ final class BacklogCommits {
     final dashes = stem.split('-');
     return dashes.length >= 2 ? '${dashes[0]}-${dashes[1]}' : stem;
   }
+
+  /// The name of the attachment [path] is (`items/<folder>/<name>`), else
+  /// null.
+  static String? _attachmentOf(String path) {
+    final parts = p.posix.split(path);
+    return parts.length == 3 && parts.last != 'index.md' ? parts.last : null;
+  }
+
+  static String _describeAttachment(String code, String name) => code == '??' || code.contains('A')
+      ? 'attached $name'
+      : code.contains('D')
+      ? 'detached $name'
+      : 'replaced $name';
 
   /// What happened to [path]: `new`, `deleted`, or from its diff the new
   /// `status …`, `priority …` and `comment by …`, else `edited`.
