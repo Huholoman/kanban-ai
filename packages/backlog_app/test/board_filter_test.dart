@@ -112,6 +112,25 @@ void main() {
     expect(FilterFacet.epic.describe('E-1', index), 'Item E-1');
   });
 
+  test('searching an epic keeps everything under it: on boards without epic cards it shows as their header', () {
+    final epic = item('E-1', type: 'epic');
+    final story = item('S-1', type: 'story', parent: 'E-1');
+    final task = item('T-9', parent: 'S-1');
+    final other = item('T-8');
+    final index = {
+      for (final i in [epic, story, task, other]) i.id: i,
+    };
+    List<String> found(String text) => [
+      for (final i in [epic, story, task, other])
+        if (BoardFilter(text: text).matches(i, index)) i.id,
+    ];
+
+    expect(found('e-1'), ['E-1', 'S-1', 'T-9'], reason: 'by id');
+    expect(found('item e-1'), ['E-1', 'S-1', 'T-9'], reason: 'by title');
+    expect(found('S-1'), ['S-1'], reason: 'a story is no epic: only itself');
+    expect(found('T-8'), ['T-8']);
+  });
+
   test('a parent cycle does not hang the epic lookup', () {
     final a = item('A', parent: 'B');
     final b = item('B', parent: 'A', type: 'epic');

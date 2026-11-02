@@ -153,7 +153,12 @@ final class BoardFilter {
   bool matches(ItemDto item, [Map<String, ItemDto> index = const {}, DateTime? now]) {
     if (age case final age? when !age.of(item, now ?? DateTime.now())) return false;
     final query = text.trim().toLowerCase();
-    if (query.isNotEmpty && ![item.id, item.title, ?item.branch].any((field) => field.toLowerCase().contains(query))) {
+    bool found(Iterable<String> fields) => fields.any((field) => field.toLowerCase().contains(query));
+    // An epic matched by id or title brings everything under it along: on
+    // views without epic cards it shows as the header of its items.
+    if (query.isNotEmpty &&
+        !found([item.id, item.title, ?item.branch]) &&
+        !FilterFacet.epic.valuesOf(item, index).any((epic) => found([epic, ?index[epic]?.title]))) {
       return false;
     }
     for (final MapEntry(key: facet, value: wanted) in selected.entries) {
