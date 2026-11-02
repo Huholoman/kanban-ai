@@ -881,4 +881,33 @@ statuses: [{id: open, category: open, pickable: true}, {id: doing, category: act
     expect((await backlog(['action', todo, 'Tests'])).err, contains('not offered for items in todo'));
     expect((await backlog(['action', id, 'Nope'])).exitCode, 4);
   });
+
+  test('serve runs the server program with its options and -C, and returns its exit code', () async {
+    List<String>? started;
+    final err = StringBuffer();
+    Future<int> serve(List<String> args) => runBacklogCli(
+      args,
+      CliContext(
+        out: StringBuffer(),
+        err: err,
+        cwd: workspace.path,
+        runServer: (arguments) async {
+          started = arguments;
+          return 3;
+        },
+      ),
+    );
+    expect(await serve(['serve', '--port', '9000', '--quiet']), 3);
+    expect(started, ['--port', '9000', '--quiet']);
+    expect(await serve(['-C', 'backlog', 'serve', '--help']), 3);
+    expect(started, ['--dir', backlogDir, '--help']);
+    expect((await backlog(['serve'])).err, contains('cannot start programs here'));
+  });
+
+  test('the server program follows the name the CLI runs as', () {
+    expect(serverProgramFor('/home/me/.local/bin/kanban-ai'), '/home/me/.local/bin/kanban-ai-server');
+    expect(serverProgramFor('kanban-ai-dev'), 'kanban-ai-server-dev');
+    expect(serverProgramFor('/usr/bin/backlog'), '/usr/bin/backlog-server');
+    expect(serverProgramFor('/usr/lib/dart/bin/dart'), 'kanban-ai-server');
+  });
 }

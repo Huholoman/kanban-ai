@@ -212,6 +212,7 @@ kanban-ai lint                    # before ending the session
 kanban-ai-server -C path/to/backlog --token secret   # one backlog
 cd ~/p/myapp && kanban-ai projects add               # or register every backlog once…
 kanban-ai-server --token secret                      # …and serve them all from one server
+kanban-ai serve --token secret                       # the same through the CLI
 ```
 
 **Several projects:** without `-C`, the server serves every backlog of the project registry (`~/.config/kanban-ai/projects.yaml`, see `kanban-ai projects` below) when it exists, otherwise the backlog found from the current folder. The board switches between them; the API has them under `/api/p/<id>/…` (`/api/projects` lists them) and the plain `/api/…` paths mean the first, default project. The registry is watched, so `kanban-ai projects add/remove` apply without a restart. A project with a missing folder or a broken `backlog.yaml` does not stop the server, it is listed with its error. `-C` (or `KANBAN_AI_DIR`) always means just that one backlog.
@@ -615,6 +616,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `instructions` | the guide for agents, in Markdown |
 | `projects`, `projects add [dir] [--id] [--name]`, `projects remove <id>`, `projects pin\|unpin <id>` | the registry of backlogs on this machine (`~/.config/kanban-ai/projects.yaml`), see below |
 | `config [--projects f]` | configuration in a terminal UI, see below |
+| `serve [server options]` | run the server (`kanban-ai-server`, below) with these options; `kanban-ai serve --help` lists them |
 
 **Project registry:** `kanban-ai init` registers the new backlog by itself (`--no-register` skips it); `kanban-ai projects add` (in a project) registers an existing backlog in `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` (default `~/.config/kanban-ai/projects.yaml`; elsewhere with `KANBAN_AI_PROJECTS` or `--projects <file>`). The file is plain YAML you can also edit by hand — `projects:` is a list of `{id?, name?, path}`, paths absolute, `~/…` or relative to the file; the id defaults to the project folder's name (the parent of a folder called `backlog`), the first project is the default one, and `pinned: true` puts a project into the board switcher's short list (`kanban-ai projects pin|unpin <id>`, or the pin in the switcher's *All projects…*).
 
