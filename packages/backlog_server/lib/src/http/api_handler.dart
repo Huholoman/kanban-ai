@@ -67,6 +67,7 @@ final class ApiHandler {
           ..post('$items/<ref>/actions/<name>', _runAction)
           ..get('$items/<ref>/epic', _epic)
           ..get('$items/<ref>/history', _history)
+          ..post('$items/<ref>/suggest-touches', _suggestTouches)
           ..get(views, _views)
           ..post(views, _createView)
           ..get('$views/<id>', _view)
@@ -360,6 +361,19 @@ final class ApiHandler {
   /// As seen by whoever implements the epic (the holder of its claim, else
   /// the worktree of the agent running for it): its own claims are no
   /// problem and its item in progress is next.
+  Future<Response> _suggestTouches(Request request, String ref) async {
+    final estimator =
+        (await _host.backlog).touches ??
+        (throw const InvalidInputException('backlog.yaml has no touches.suggest: nothing to estimate touches with.'));
+    final estimate = await estimator.estimate(ref);
+    return _json(
+      TouchesSuggestionDto(
+        suggested: estimate.touches,
+        rejected: [for (final r in estimate.rejected) (entry: r.entry, reason: r.reason)],
+      ).toJson(),
+    );
+  }
+
   Future<Response> _history(Request request, String ref) async {
     final launcher = _launcher();
     final entries = await (await _host.backlog).history.of(

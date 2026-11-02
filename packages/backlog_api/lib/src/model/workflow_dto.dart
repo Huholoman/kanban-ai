@@ -114,6 +114,7 @@ final class WorkflowDto {
     required this.defaultType,
     this.appearance = const AppearanceDto(),
     this.actions = const [],
+    this.suggestTouches = false,
   });
 
   factory WorkflowDto.fromJson(Json json) {
@@ -128,6 +129,7 @@ final class WorkflowDto {
       defaultType: defaults.string('type'),
       appearance: AppearanceDto.fromJson(json.optionalObject('appearance')),
       actions: json.objects('actions').map(ActionDto.fromJson).toList(),
+      suggestTouches: json.boolean('suggest_touches'),
     );
   }
 
@@ -142,6 +144,9 @@ final class WorkflowDto {
 
   /// `dispatcher.actions` (empty without a dispatcher).
   final List<ActionDto> actions;
+
+  /// Whether the server can estimate touches (`touches.suggest`).
+  final bool suggestTouches;
 
   /// The actions items in [status] show as buttons.
   List<ActionDto> actionsIn(String status) => [
@@ -164,5 +169,6 @@ final class WorkflowDto {
     'defaults': {'status': defaultStatus, 'priority': defaultPriority, 'type': defaultType},
     'appearance': appearance.toJson(),
     'actions': [for (final action in actions) action.toJson()],
+    'suggest_touches': suggestTouches,
   };
 }

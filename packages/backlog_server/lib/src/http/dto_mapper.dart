@@ -36,6 +36,7 @@ abstract final class DtoMapper {
       if (workflow.dispatcher case final dispatcher?)
         for (final action in dispatcher.actions) DtoMapper.action(action, dispatcher),
     ],
+    suggestTouches: workflow.touches != null,
   );
 
   static AppearanceDto _appearance(Appearance appearance) {

@@ -23,6 +23,33 @@ final class LintIssueDto {
   Json toJson() => {'severity': severity, 'code': code, 'message': message, 'item': item, 'location': location};
 }
 
+/// A model's estimate of the `touches` of an item (`touches.suggest`), for
+/// a person to confirm; nothing is saved.
+final class TouchesSuggestionDto {
+  const TouchesSuggestionDto({required this.suggested, this.rejected = const []});
+
+  factory TouchesSuggestionDto.fromJson(Json json) => TouchesSuggestionDto(
+    suggested: json.strings('suggested'),
+    rejected: [
+      for (final rejected in json.objects('rejected'))
+        (entry: rejected.string('entry'), reason: rejected.string('reason')),
+    ],
+  );
+
+  /// The suggested paths and globs.
+  final List<String> suggested;
+
+  /// Entries of the answer left out, each with the reason.
+  final List<({String entry, String reason})> rejected;
+
+  Json toJson() => {
+    'suggested': suggested,
+    'rejected': [
+      for (final rejected in rejected) {'entry': rejected.entry, 'reason': rejected.reason},
+    ],
+  };
+}
+
 /// Something in the backlog folder changed — items, views or configuration
 /// (`type: changed`) — or the dispatcher's plan changed (`type: dispatch`,
 /// no paths). Clients reload what they show.

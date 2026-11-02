@@ -112,6 +112,23 @@ void main() {
     expect(moved.item.ready, isTrue);
   });
 
+  test('touches: estimated by the touches.suggest command, nothing saved', () async {
+    final item = await api.createItem(const NewItemRequest(title: 'Payments'));
+    expect((await api.workflow()).suggestTouches, isFalse);
+    await expectLater(api.suggestTouches(item.item.id), throwsA(apiError(400, 'invalid_input')));
+
+    final config = File(p.join(dir.path, 'backlog.yaml'));
+    config.writeAsStringSync(
+      '${config.readAsStringSync()}\ntouches:\n  suggest: [sh, -c, "cat >/dev/null; printf \'lib/pay/\\n**\\n\'"]\n',
+    );
+    api = client();
+    expect((await api.workflow()).suggestTouches, isTrue);
+    final suggestion = await api.suggestTouches(item.item.id);
+    expect(suggestion.suggested, ['lib/pay/']);
+    expect(suggestion.rejected, [(entry: '**', reason: 'covers the whole repository')]);
+    expect((await api.item(item.item.id)).item.touches, isEmpty);
+  });
+
   test('update edits fields and body and keeps the file tidy', () async {
     final created = await api.createItem(const NewItemRequest(title: 'Edit me', labels: ['ui']));
     final updated = await api.updateItem(

@@ -266,6 +266,19 @@ final class FakeBacklogApi implements BacklogApi {
   }
 
   @override
+  Future<TouchesSuggestionDto> suggestTouches(String reference) async {
+    suggestedFor.add(reference);
+    if (failSuggestion case final error?) throw error;
+    return suggestion;
+  }
+
+  /// What [suggestTouches] answers (or fails with [failSuggestion]); the
+  /// items it was asked for.
+  TouchesSuggestionDto suggestion = const TouchesSuggestionDto(suggested: []);
+  Object? failSuggestion;
+  final suggestedFor = <String>[];
+
+  @override
   Future<ItemDetailDto> updateItem(String reference, ItemUpdateRequest request) async {
     if (failNextUpdate case final error?) {
       failNextUpdate = null;

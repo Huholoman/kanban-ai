@@ -27,6 +27,10 @@ abstract interface class BacklogApi {
 
   Future<ItemDetailDto> updateItem(String reference, ItemUpdateRequest request);
 
+  /// A model's estimate of the touches of [reference] (`touches.suggest`);
+  /// saves nothing.
+  Future<TouchesSuggestionDto> suggestTouches(String reference);
+
   Future<ItemDetailDto> claim(String reference, ClaimRequest request);
 
   Future<ItemDetailDto> release(String reference, ClaimRequest request);
@@ -186,6 +190,9 @@ abstract final class ApiPaths {
   static String attachments(String reference) => '${item(reference)}/attachments';
 
   static String attachment(String reference, String name) => '${attachments(reference)}/${Uri.encodeComponent(name)}';
+
+  /// The estimate of the touches of [reference].
+  static String suggestTouches(String reference) => '${item(reference)}/suggest-touches';
 
   /// The history of [reference].
   static String history(String reference) => '${item(reference)}/history';
