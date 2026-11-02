@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:backlog_api/backlog_api.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../shared/item_style.dart';
 import '../../../shared/pr_link.dart';
@@ -13,6 +14,7 @@ import '../../dispatch/presentation/epic_panel.dart';
 import '../application/item_body.dart';
 import '../application/item_controller.dart';
 import 'ask_text.dart';
+import 'attachments_section.dart';
 import 'detail_relations.dart';
 import 'history_section.dart';
 
@@ -126,7 +128,17 @@ class DetailContent extends StatelessWidget {
               DetailChildren(controller: controller, onOpen: onOpen),
               DetailRelations(controller: controller, onOpen: onOpen),
               const SizedBox(height: 16),
-              _Body(body: item.body ?? '', onSave: controller.saveBody, enabled: !controller.busy),
+              _Body(
+                body: item.body ?? '',
+                onSave: controller.saveBody,
+                enabled: !controller.busy,
+                attachmentUri: (href) => switch (attachmentOf(href, detail.attachments)) {
+                  final name? => controller.attachmentUri(name),
+                  null => null,
+                },
+              ),
+              const SizedBox(height: 12),
+              AttachmentsSection(key: ValueKey('attachments-${item.id}'), controller: controller),
               const SizedBox(height: 16),
               ActivitySection(controller: controller),
               const SizedBox(height: 12),
@@ -672,9 +684,13 @@ class _Touches extends StatelessWidget {
 /// The Markdown body in a card, with an edit mode; its checklist items are
 /// checkboxes that rewrite their line and save the body.
 class _Body extends StatefulWidget {
-  const _Body({required this.body, required this.onSave, required this.enabled});
+  const _Body({required this.body, required this.onSave, required this.enabled, required this.attachmentUri});
 
   final String body;
+
+  /// Where a relative link or image of the body (`![](shot.png)`) that names
+  /// an attachment points; null for others.
+  final Uri? Function(String href) attachmentUri;
   final Future<bool> Function(String body) onSave;
 
   /// False while a change is being saved.
@@ -770,7 +786,28 @@ class _BodyState extends State<_Body> {
           else
             for (final segment in splitChecklist(description))
               switch (segment) {
-                MarkdownSegment(:final markdown) => MarkdownBody(data: markdown, selectable: true),
+                MarkdownSegment(:final markdown) => MarkdownBody(
+                  data: markdown,
+                  selectable: true,
+                  imageBuilder: (uri, title, alt) => switch (widget.attachmentUri(uri.toString())) {
+                    final attachment? => Image.network(
+                      attachment.toString(),
+                      errorBuilder: (context, error, stack) => Text(alt ?? uri.toString()),
+                    ),
+                    null => Text(alt ?? uri.toString()),
+                  },
+                  onTapLink: (text, href, title) {
+                    if (href == null) return;
+                    final attachment = widget.attachmentUri(href);
+                    if (attachment != null) {
+                      unawaited(
+                        launchUrl(attachment, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank'),
+                      );
+                    } else {
+                      PrLink.opener(href)?.call();
+                    }
+                  },
+                ),
                 final ChecklistSegment item => _ChecklistItem(
                   item: item,
                   onChanged: widget.enabled

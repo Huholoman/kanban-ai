@@ -1,8 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/app_scope.dart';
 import 'package:backlog_app/features/item/application/detail_navigation.dart';
 import 'package:backlog_app/features/item/application/item_body.dart';
+import 'package:backlog_app/features/item/presentation/attachments_section.dart';
 import 'package:backlog_app/features/item/presentation/item_page.dart';
+import 'package:backlog_app/shared/files/file_input.dart';
 import 'package:backlog_app/shared/tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -287,4 +293,79 @@ void main() {
     await _pumpDetail(tester, 'E-1');
     expect(_key('scope-board'), findsNothing);
   });
+
+  group('ItemDetailView attachments', () {
+    late _FakeFiles files;
+
+    setUp(() => FileInput.testInput = files = _FakeFiles());
+    tearDown(() => FileInput.testInput = null);
+
+    testWidgets('files chosen, dropped and pasted are attached; a text too; deleting asks', (tester) async {
+      final api = await _pumpDetail(tester, 'T-2');
+      expect(find.text('No attachments. Drop files here or paste them (Ctrl+V).'), findsOneWidget);
+
+      files.chosen = [
+        PickedFile('shot.png', Uint8List.fromList([1, 2, 3])),
+      ];
+      await _tap(tester, _key('attach-files'));
+      expect(api.attachments['T-2']!.keys, ['shot.png']);
+      expect(find.text('Attachments · 1'), findsOneWidget);
+      expect(find.text('3 B'), findsOneWidget);
+
+      files.sent.add(const FileDragEvent(dragging: true));
+      await tester.pumpAndSettle();
+      expect(find.text('Drop to attach to T-2.'), findsOneWidget);
+      files.sent
+        ..add(const FileDragEvent(dragging: false))
+        ..add(FilesReceived([PickedFile('shot.png', Uint8List(2000))]));
+      await tester.pumpAndSettle();
+      expect(find.text('Drop to attach to T-2.'), findsNothing);
+      expect(_key('attachment-shot-2.png'), findsOneWidget, reason: 'a taken name gets -2');
+      expect(find.text('2.0 kB'), findsOneWidget);
+
+      await _tap(tester, _key('attach-text'));
+      await tester.enterText(_key('attachment-name'), 'error.log');
+      await tester.enterText(_key('attachment-text'), 'Stack trace…');
+      await _tap(tester, _key('attachment-text-save'));
+      expect(utf8.decode(api.attachments['T-2']!['error.log']!), 'Stack trace…');
+      expect(find.text('Attachments · 3'), findsOneWidget);
+
+      await _tap(tester, _key('attachment-delete-shot.png'));
+      await _tap(tester, _key('attachment-delete-confirm'));
+      expect(api.attachments['T-2']!.keys, unorderedEquals(['shot-2.png', 'error.log']));
+      expect(_key('attachment-shot.png'), findsNothing);
+    });
+
+    test('relative links and images of the body name attachments', () {
+      const attachments = [AttachmentDto(name: 'shot.png', size: 1), AttachmentDto(name: 'my log.txt', size: 1)];
+      expect(attachmentOf('shot.png', attachments), 'shot.png');
+      expect(attachmentOf('./my%20log.txt', attachments), 'my log.txt');
+      for (final other in ['other.png', 'https://x/shot.png', '/shot.png', '//x/shot.png', 'docs/shot.png']) {
+        expect(attachmentOf(other, attachments), isNull, reason: other);
+      }
+    });
+
+    testWidgets('a file over the limit is refused before the upload', (tester) async {
+      final api = await _pumpDetail(tester, 'T-2');
+      files.sent.add(FilesReceived([PickedFile('huge.bin', Uint8List(AttachmentDto.maxSize + 1))]));
+      await tester.pumpAndSettle();
+      expect(api.attachments['T-2'], isNull);
+      expect(find.textContaining('huge.bin is larger than 32 MiB'), findsOneWidget);
+    });
+  });
+}
+
+/// Files the test chooses or drops.
+final class _FakeFiles implements FileInput {
+  List<PickedFile> chosen = const [];
+  final sent = StreamController<FileEvent>.broadcast();
+
+  @override
+  bool get canPick => true;
+
+  @override
+  Future<List<PickedFile>> pick() async => chosen;
+
+  @override
+  Stream<FileEvent> events() => sent.stream;
 }
