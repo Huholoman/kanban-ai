@@ -675,14 +675,14 @@ Tools are pinned with [mise](https://mise.jdx.dev) in `mise.toml`: Flutter 3.32.
 ```bash
 mise install                    # Flutter + Dart, jq
 mise run get                    # dart pub get + flutter pub get in the app
-mise run check                  # format check, analysis, all tests — before committing
+mise run check                  # format check, analysis, all tests (in parallel) — before committing
 mise tasks                      # analyze, test, format, build, build-web, playground, serve, install, install-dev
 ```
 
 | Task | What it does |
 |---|---|
 | `mise run build-web` | the web app in `packages/backlog_app/build/web`: CanvasKit bundled (nothing from Google's CDN), no service worker, Brotli/gzip copies for the server (`brotli` optional) |
-| `mise run build` | the web app plus `build/backlog` and `build/backlog-server` |
+| `mise run build` | the web app plus `build/backlog` and `build/backlog-server`, built in parallel |
 | `mise run playground` | regenerate `playground/` with demo data |
 | `mise run serve` | serve the playground (or `BACKLOG_DIR`) with the built web app |
 | `mise run install [ref]` | install `backlog` and `backlog-server` from `main` (or a branch, tag or commit) into `~/.local/bin` with Nix |

@@ -669,7 +669,7 @@ Dart pub workspace (`backlog_core`, `backlog_cli`, `backlog_api`, `backlog_serve
 - **backlog_server** — shelf: `ProjectHub` (hosted projects, `/api/p/<id>` routing, `/api/projects`) with a `HostedProject` per backlog (`BacklogHost`, the `ChangeSource` of its storage → its WebSocket and dispatcher, `ApiHandler` + `DtoMapper`), `RegistryWatcher` (live registry), `McpHandler` + `McpTools` (MCP at `/mcp` over the `ProjectHub`, §8.3), middleware (token, client allowlist, CORS), multi-address binding.
 - **backlog_app** — features `board`, `item`, `projects` (`ProjectsController` picks the open project; one session per project) and `dispatch` (`DispatchController`: the plan, Start, Stop and actions, shared by the board and the detail through `DispatchScope`), each with `application/` (ChangeNotifier controllers and pure logic: `BoardFilter`, `ColumnArrangement`, `DetailNavigation`; shared design tokens in `shared/tokens.dart`) and `presentation/`; depends only on `ProjectsApi` and `BacklogApi`.
 
-Development: `mise run check` (format check, analysis, all tests), `mise run playground` (demo backlog), `mise run serve`.
+Development: `mise run check` (format check, analysis, all tests; the Dart packages and the app as parallel tasks), `mise run playground` (demo backlog), `mise run serve`.
 
 ## 12. Known limits
 
