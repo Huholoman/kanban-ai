@@ -147,7 +147,8 @@ $map
       // The first word is the path; whatever follows is a comment.
       var entry = line.split(RegExp(r'\s+')).first;
       entry = entry.replaceAll(RegExp('^[`\'"]+|[`\'",;:]+\$'), '');
-      if (entry.isEmpty || !RegExp(r'[/.*{]').hasMatch(entry) && line.contains(' ')) continue;
+      if (!RegExp(r'[\w*]').hasMatch(entry)) continue; // a lone list marker or punctuation
+      if (!RegExp(r'[/.*{]').hasMatch(entry) && line.contains(' ')) continue; // prose
       yield entry;
     }
   }

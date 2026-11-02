@@ -35,6 +35,8 @@ Here are the files:
 2. lib/**/*.dart  # all Dart files
 * "pubspec.yaml",
 Makefile
+-
+---
 lib/payments/
 ```
 ''';
