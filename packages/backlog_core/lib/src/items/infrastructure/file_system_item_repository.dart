@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import '../../infrastructure/backlog_layout.dart';
 import '../../shared/errors.dart';
 import '../../shared/slug.dart';
+import '../domain/attachment.dart';
 import '../domain/item.dart';
 import '../domain/item_id.dart';
 import '../domain/item_repository.dart';
@@ -194,6 +195,92 @@ final class FileSystemItemRepository implements ItemRepository {
     _cache?.remove(path);
     _paths[id] = entry == path ? target : p.join(target, 'index.md');
     archived ? _archived.add(id) : _archived.remove(id);
+  }
+
+  @override
+  Future<List<Attachment>> attachments(ItemId id) async {
+    final folder = _folderOf(await _pathOf(id));
+    if (folder == null || !folder.existsSync()) return const [];
+    final attachments = <Attachment>[];
+    for (final entity in folder.listSync(followLinks: false)) {
+      final name = p.basename(entity.path);
+      if (entity is! File || !_isAttachment(name)) continue;
+      final stat = entity.statSync();
+      attachments.add(Attachment(name: name, size: stat.size, modified: stat.modified.toUtc()));
+    }
+    return attachments..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  @override
+  Future<List<int>> readAttachment(ItemId id, String name) async {
+    final file = _attachmentFile(await _pathOf(id), name);
+    try {
+      if (file != null) return await file.readAsBytes();
+    } on PathNotFoundException {
+      // reported below
+    }
+    throw NotFoundException('$id has no attachment "$name".');
+  }
+
+  @override
+  Future<Attachment> writeAttachment(ItemId id, String name, List<int> content) async {
+    var path = await _pathOf(id);
+    if (_folderOf(path) == null) path = await _intoFolder(id, path);
+    final file = File(p.join(p.dirname(path), name));
+    await writeBytesAtomically(file, content);
+    return Attachment(name: name, size: content.length, modified: file.statSync().modified.toUtc());
+  }
+
+  @override
+  Future<void> deleteAttachment(ItemId id, String name) async {
+    final file = _attachmentFile(await _pathOf(id), name);
+    try {
+      if (file != null) {
+        await file.delete();
+        return;
+      }
+    } on PathNotFoundException {
+      // reported below
+    }
+    throw NotFoundException('$id has no attachment "$name".');
+  }
+
+  /// The file of item [id], loading the items again when it is not known
+  /// (or no longer there).
+  Future<String> _pathOf(ItemId id) async {
+    var path = _paths[id];
+    if (path == null || !File(path).existsSync()) {
+      await load();
+      path = _paths[id];
+    }
+    if (path == null) throw NotFoundException('No item $id.');
+    return path;
+  }
+
+  /// The folder of an item kept as `<folder>/index.md`, else null.
+  static Directory? _folderOf(String path) => p.basename(path) == 'index.md' ? File(path).parent : null;
+
+  File? _attachmentFile(String path, String name) {
+    final folder = _folderOf(path);
+    if (folder == null || !_isAttachment(name) || name.contains('/') || name.contains(r'\')) return null;
+    return File(p.join(folder.path, name));
+  }
+
+  static bool _isAttachment(String name) => name != 'index.md' && !name.startsWith('.');
+
+  /// Turns the item file `<name>.md` into `<name>/index.md`, so that
+  /// attachments can be stored next to it; the new path.
+  Future<String> _intoFolder(ItemId id, String path) async {
+    final folder = p.withoutExtension(path);
+    if (FileSystemEntity.typeSync(folder, followLinks: false) != FileSystemEntityType.notFound) {
+      throw InvalidInputException('Cannot store attachments of $id: ${_layout.relative(folder)} exists already.');
+    }
+    await Directory(folder).create();
+    final index = p.join(folder, 'index.md');
+    await File(path).rename(index);
+    _cache?.remove(path);
+    _paths[id] = index;
+    return index;
   }
 
   List<File> _itemFiles() => [..._filesIn(_layout.itemsDir), ..._filesIn(_layout.archiveDir)];

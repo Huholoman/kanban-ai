@@ -1,6 +1,7 @@
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/workflow.dart';
+import '../domain/attachment.dart';
 import '../domain/checklist.dart';
 import '../domain/discussion.dart';
 import '../domain/item.dart';
@@ -171,6 +172,33 @@ final class ItemService {
     await _repository.setArchived(item.id, archived: false);
     return true;
   }
+
+  /// The files attached to the item, sorted by name.
+  Future<List<Attachment>> attachments(String reference) async => _repository.attachments((await get(reference)).id);
+
+  /// The files attached to item [id], without resolving a reference (e.g.
+  /// for an item just found in a snapshot).
+  Future<List<Attachment>> attachmentsOf(ItemId id) => _repository.attachments(id);
+
+  /// The content of the attachment [name] of the item.
+  Future<List<int>> readAttachment(String reference, String name) async =>
+      _repository.readAttachment((await get(reference)).id, name);
+
+  /// Attaches [content] to the item as [name] (see [Attachment.checkName]).
+  /// An attachment of that name is replaced with [replace], else the new one
+  /// gets a free name (`name-2.ext`, …). Returns what was stored.
+  Future<Attachment> attach(String reference, String name, List<int> content, {bool replace = false}) async {
+    final checked = Attachment.checkName(name);
+    final id = (await get(reference)).id;
+    final stored = replace
+        ? checked
+        : Attachment.freeName(checked, [for (final attachment in await _repository.attachments(id)) attachment.name]);
+    return _repository.writeAttachment(id, stored, content);
+  }
+
+  /// Deletes the attachment [name] of the item.
+  Future<void> detach(String reference, String name) async =>
+      _repository.deleteAttachment((await get(reference)).id, name);
 
   bool _finished(Item item) => _workflow.categoryOf(item.status) == StatusCategory.done;
 
