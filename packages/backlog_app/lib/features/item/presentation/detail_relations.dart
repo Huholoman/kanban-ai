@@ -12,7 +12,9 @@ import 'ask_text.dart';
 
 /// The item's children ("Tasks 1 of 3 done"), each expandable in place to a
 /// preview — the first lines of its body and its own children — with a
-/// button that opens it in the panel.
+/// button that opens it in the panel. Children in two or more milestones get
+/// a chip per milestone and *All* above them ([ItemController.childMilestone];
+/// *Implement epic* starts with that scope).
 class DetailChildren extends StatefulWidget {
   const DetailChildren({super.key, required this.controller, required this.onOpen});
 
@@ -38,9 +40,12 @@ class _DetailChildrenState extends State<DetailChildren> {
 
   @override
   Widget build(BuildContext context) {
-    final detail = widget.controller.detail!;
-    final children = detail.children;
-    if (children.isEmpty) return const SizedBox.shrink();
+    final controller = widget.controller;
+    final detail = controller.detail!;
+    if (detail.children.isEmpty) return const SizedBox.shrink();
+    final children = controller.shownChildren;
+    final milestones = controller.childMilestones;
+    final hidden = detail.children.length - children.length;
     final tokens = BoardTokens.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -48,11 +53,34 @@ class _DetailChildrenState extends State<DetailChildren> {
         _SectionHeader(
           key: const ValueKey('relation-children'),
           title: detail.item.type == 'story' ? 'Tasks' : 'Children',
-          summary: '${_done(children)} of ${children.length} done',
+          summary:
+              '${_done(children)} of ${children.length} done${hidden == 0 ? '' : ' · $hidden in other milestones'}',
           folded: _folded,
           onTap: () => setState(() => _folded = !_folded),
         ),
-        if (!_folded)
+        if (!_folded && milestones.length > 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Wrap(
+              key: const ValueKey('children-milestones'),
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final milestone in [...milestones, null])
+                  ChoiceChip(
+                    key: ValueKey('children-milestone-${milestone ?? 'all'}'),
+                    label: Text(milestone ?? 'All'),
+                    tooltip: milestone == null
+                        ? 'All children'
+                        : 'The children of $milestone and those without a milestone; Implement epic starts with it',
+                    visualDensity: VisualDensity.compact,
+                    selected: controller.childMilestone == milestone,
+                    onSelected: (_) => controller.filterChildren(milestone),
+                  ),
+              ],
+            ),
+          ),
+        if (!_folded && children.isNotEmpty)
           Container(
             decoration: BoxDecoration(
               border: Border.all(color: tokens.border),
@@ -363,10 +391,17 @@ class _SectionHeader extends StatelessWidget {
         ),
         child: Row(
           children: [
+            Text(title, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(width: 8),
             Expanded(
-              child: Text(title, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+              child: Text(
+                summary,
+                textAlign: TextAlign.end,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall,
+              ),
             ),
-            Text(summary, style: theme.textTheme.bodySmall),
             const SizedBox(width: 4),
             Icon(folded ? Icons.chevron_right : Icons.expand_more, size: 18, color: tokens.muted),
           ],

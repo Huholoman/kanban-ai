@@ -63,7 +63,8 @@ class ItemDetailView extends StatefulWidget {
   final ValueChanged<ItemDto>? onAddChild;
 
   /// The milestone of the board it was opened from
-  /// ([BoardController.milestone]): *Implement epic* defaults to it.
+  /// ([BoardController.milestone]): the children filter and *Implement epic*
+  /// default to it.
   final String? milestone;
 
   @override
@@ -86,7 +87,12 @@ class _ItemDetailViewState extends State<ItemDetailView> {
   /// A controller for the item [_navigation] is at.
   void _start() {
     final scope = _scope!;
-    final controller = _controller = ItemController(scope.api, _navigation.current, agent: scope.config.agent);
+    final controller = _controller = ItemController(
+      scope.api,
+      _navigation.current,
+      agent: scope.config.agent,
+      boardMilestone: widget.milestone,
+    );
     _notices = controller.notices.listen((message) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     });

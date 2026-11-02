@@ -40,9 +40,11 @@ ItemDto item(
   String? created,
   DateTime? createdAt,
   num? rank,
+  String? milestone,
 }) => ItemDto(
   id: id,
   rank: rank,
+  milestone: milestone,
   branch: branch,
   pr: pr,
   blocked: blockedBy.isNotEmpty,
@@ -163,8 +165,13 @@ final class FakeBacklogApi implements BacklogApi {
   Future<ItemDetailDto> item(String reference) async {
     final found = items_[reference];
     if (found == null) throw BacklogApiException(404, 'not_found', 'No item "$reference".');
-    ItemLinkDto link(ItemDto item) =>
-        ItemLinkDto(id: item.id, title: item.title, status: item.status, category: item.category);
+    ItemLinkDto link(ItemDto item) => ItemLinkDto(
+      id: item.id,
+      title: item.title,
+      status: item.status,
+      category: item.category,
+      milestone: item.milestone,
+    );
     ItemLinkDto linkTo(String id) => items_[id] == null ? ItemLinkDto(id: id) : link(items_[id]!);
     final children = items_.values.where((i) => i.parent == found.id).toList();
     return ItemDetailDto(
@@ -630,6 +637,7 @@ final class FakeBacklogApi implements BacklogApi {
     status: status ?? item.status,
     category: _workflow.categoryOf(status ?? item.status),
     priority: priority ?? item.priority,
+    milestone: item.milestone,
     labels: item.labels,
     touches: item.touches,
     conflicting: item.conflicting,

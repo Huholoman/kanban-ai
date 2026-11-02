@@ -210,7 +210,7 @@ class DetailHeader extends StatelessWidget {
           icon: Icons.account_tree_outlined,
           tooltip: 'One agent implements all items under this one on one branch, with one pull request',
           onPressed: enabled
-              ? () => unawaited(confirmEpicStart(context, dispatch, item.id, milestone: milestone ?? item.milestone))
+              ? () => unawaited(confirmEpicStart(context, dispatch, item.id, milestone: _epicMilestone(item)))
               : null,
         ),
       ...itemActions(context, item, controller.detail?.actions ?? const [], enabled: enabled),
@@ -241,6 +241,12 @@ class DetailHeader extends StatelessWidget {
         ),
     ];
   }
+
+  /// The scope *Implement epic* starts with: the children filter when the
+  /// children offer one (*All* included), else the board's milestone or the
+  /// item's own.
+  String? _epicMilestone(ItemDto item) =>
+      controller.childMilestones.length > 1 ? controller.childMilestone : milestone ?? item.milestone;
 
   /// The nearest ancestor whose branch (its `branch`, else `agent/<id>`)
   /// the unfinished [item] has its work on: deploying it means deploying

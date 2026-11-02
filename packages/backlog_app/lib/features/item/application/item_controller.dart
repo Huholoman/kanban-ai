@@ -11,8 +11,13 @@ import 'detail_navigation.dart';
 /// the siblings) and previews of linked items. Reloads when the backlog
 /// changes, e.g. an agent edits it.
 class ItemController extends ChangeNotifier {
-  ItemController(this._api, this.reference, {this.agent, Duration refreshDelay = const Duration(milliseconds: 300)})
-    : _refreshDelay = refreshDelay;
+  ItemController(
+    this._api,
+    this.reference, {
+    this.agent,
+    this.boardMilestone,
+    Duration refreshDelay = const Duration(milliseconds: 300),
+  }) : _refreshDelay = refreshDelay;
 
   final BacklogApi _api;
 
@@ -21,6 +26,10 @@ class ItemController extends ChangeNotifier {
 
   /// Who claims the item from the UI; the server default when null.
   final String? agent;
+
+  /// The milestone of the board the detail was opened from; the children
+  /// filter starts with it ([childMilestone]).
+  final String? boardMilestone;
   final Duration _refreshDelay;
   final _notices = StreamController<String>.broadcast();
   DebouncedChanges? _changes;
@@ -53,6 +62,10 @@ class ItemController extends ChangeNotifier {
   /// null for all.
   String? historyFilter;
 
+  /// The milestone a person chose for the children ([filterChildren]); until
+  /// then [boardMilestone] applies.
+  ({String? milestone})? _childFilter;
+
   Stream<String> get notices => _notices.stream;
 
   ItemDto? get item => detail?.item;
@@ -65,6 +78,47 @@ class ItemController extends ChangeNotifier {
     final detail? => SiblingPosition.of([for (final sibling in siblings) sibling.id], detail.item.id),
     null => null,
   };
+
+  /// The milestones of the item's children, in the workflow's order (others
+  /// after them by name); the children can be filtered when there are two or
+  /// more.
+  List<String> get childMilestones {
+    final present = {for (final child in detail?.children ?? const <ItemLinkDto>[]) ?child.milestone};
+    final order = [for (final milestone in workflow?.milestones ?? const <MilestoneDto>[]) milestone.id];
+    return [
+      for (final milestone in order)
+        if (present.contains(milestone)) milestone,
+      ...present.where((milestone) => !order.contains(milestone)).toList()..sort(),
+    ];
+  }
+
+  /// The milestone the children are filtered by — those of it and those
+  /// without a milestone are shown, as an epic run limited to it takes them —
+  /// or null for all of them (also when there is nothing to choose from).
+  String? get childMilestone {
+    final milestones = childMilestones;
+    if (milestones.length < 2) return null;
+    final chosen = _childFilter == null ? boardMilestone : _childFilter!.milestone;
+    return milestones.contains(chosen) ? chosen : null;
+  }
+
+  /// Filters the children by [milestone] (null: all), see [childMilestone].
+  void filterChildren(String? milestone) {
+    _childFilter = (milestone: milestone);
+    notifyListeners();
+  }
+
+  /// The children [childMilestone] lets through.
+  List<ItemLinkDto> get shownChildren {
+    final children = detail?.children ?? const <ItemLinkDto>[];
+    final milestone = childMilestone;
+    return milestone == null
+        ? children
+        : [
+            for (final child in children)
+              if (child.milestone == null || child.milestone == milestone) child,
+          ];
+  }
 
   /// The loaded detail of a linked item, see [loadPreview].
   ItemDetailDto? preview(String id) => _previews[id];

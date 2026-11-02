@@ -405,6 +405,69 @@ void main() {
       expect(api.startedEpics, ['E-1@v0.2']);
     });
 
+    testWidgets('the children filtered by a milestone, Implement epic starts with it', (tester) async {
+      final (api, _) = await _pumpDetail(
+        tester,
+        'E-1',
+        _plan(),
+        milestone: 'v0.2',
+        items: [
+          item('E-1', type: 'epic', children: const Progress(0, 3)),
+          item('T-1', parent: 'E-1', milestone: 'v0.2'),
+          item('T-2', parent: 'E-1', milestone: 'v0.3'),
+          item('T-3', parent: 'E-1'),
+        ],
+      );
+      api.epics['E-1'] = const EpicDto(
+        epic: 'E-1',
+        title: 'Item E-1',
+        branch: 'agent/E-1',
+        verdict: 'ok',
+        members: [
+          EpicMemberDto(id: 'T-1', title: 'Item T-1', status: 'todo', state: 'to-do', milestone: 'v0.2'),
+          EpicMemberDto(id: 'T-2', title: 'Item T-2', status: 'todo', state: 'to-do', milestone: 'v0.3'),
+        ],
+        progress: [
+          EpicProgressDto(milestone: 'v0.2', settled: 0, total: 1),
+          EpicProgressDto(milestone: 'v0.3', settled: 0, total: 1),
+        ],
+      );
+      ChoiceChip chip(String id) => tester.widget<ChoiceChip>(_key('children-milestone-$id'));
+      expect(chip('v0.2').selected, isTrue, reason: "the board's milestone");
+      expect([_key('link-T-1'), _key('link-T-2'), _key('link-T-3')].map((f) => f.evaluate().length), [1, 0, 1]);
+      expect(find.text('0 of 2 done · 1 in other milestones'), findsOneWidget);
+
+      await tester.tap(_key('children-milestone-all'));
+      await tester.pumpAndSettle();
+      expect(_key('link-T-2'), findsOneWidget);
+      expect(find.text('0 of 3 done'), findsOneWidget);
+
+      await tester.tap(_key('children-milestone-v0.3'));
+      await tester.pumpAndSettle();
+      expect([_key('link-T-1'), _key('link-T-2'), _key('link-T-3')].map((f) => f.evaluate().length), [0, 1, 1]);
+      await tester.tap(_key('implement-epic'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<ChoiceChip>(_key('epic-scope-v0.3')).selected, isTrue);
+      await tester.tap(_key('epic-start'));
+      await tester.pumpAndSettle();
+      expect(api.startedEpics, ['E-1@v0.3']);
+    });
+
+    testWidgets('children in one milestone offer no filter', (tester) async {
+      await _pumpDetail(
+        tester,
+        'E-1',
+        _plan(),
+        items: [
+          item('E-1', type: 'epic', children: const Progress(0, 2)),
+          item('T-1', parent: 'E-1', milestone: 'v0.2'),
+          item('T-2', parent: 'E-1'),
+        ],
+      );
+      expect(_key('children-milestones'), findsNothing);
+      expect(find.text('0 of 2 done'), findsOneWidget);
+    });
+
     testWidgets('items in the backlog are not taken; the dialog moves one to todo', (tester) async {
       final (api, _) = await _pumpDetail(tester, 'E-1', _plan());
       api.epics['E-1'] = const EpicDto(
