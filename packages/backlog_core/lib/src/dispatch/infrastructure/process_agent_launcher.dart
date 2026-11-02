@@ -12,6 +12,7 @@ import '../../items/application/field_change.dart';
 import '../../items/domain/discussion.dart';
 import '../../items/domain/item.dart';
 import '../../items/domain/item_id.dart';
+import '../../items/infrastructure/attachment_export.dart';
 import '../../planning/domain/backlog_snapshot.dart';
 import '../../shared/clock.dart';
 import '../../shared/errors.dart';
@@ -426,6 +427,7 @@ final class ProcessAgentLauncher extends AgentLauncher {
       if (assignment.returnTo != null) {
         await backlog.items.update(id.value, [FieldChange.parse('status=${backlog.workflow.activeStatus}')]);
       }
+      await _exportAttachments(backlog, assignment);
       record = await _spawn(assignment);
     } catch (_) {
       // A start that failed changes nothing: an action's agent only took the
@@ -450,6 +452,18 @@ final class ProcessAgentLauncher extends AgentLauncher {
     );
     _onChange?.call();
   });
+
+  /// Copies the item's attachments into the agent's worktree
+  /// ([DispatcherConfig.attachmentsFolder]), out of the backlog its tools
+  /// may not read; the agent starts without them when that fails.
+  Future<void> _exportAttachments(Backlog backlog, DispatchAssignment assignment) async {
+    final id = assignment.id;
+    try {
+      await exportAttachments(backlog.items, id, p.join(assignment.path, DispatcherConfig.attachmentsFolder(id.value)));
+    } on Object catch (error) {
+      _log('Dispatcher: could not copy the attachments of $id into ${assignment.agent}: $error');
+    }
+  }
 
   /// Fails when something already runs for [id] or in [worktree].
   Future<void> _checkIdle(ItemId id, String? worktree) async {

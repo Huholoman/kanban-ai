@@ -27,7 +27,13 @@ final class AttachCommand extends BacklogCommand {
         help: 'Name of the attachment (with --text, default text.txt, or with a single file).',
         valueHelp: 'name',
       )
-      ..addFlag('replace', negatable: false, help: 'Replace an attachment of the same name (else: name-2.ext).');
+      ..addFlag('replace', negatable: false, help: 'Replace an attachment of the same name (else: name-2.ext).')
+      ..addFlag(
+        'export',
+        negatable: false,
+        help: 'Copy the attachments into .kanban-ai/attachments/<id>/ here (or --to), e.g. into a worktree.',
+      )
+      ..addOption('to', help: 'The folder --export copies into.', valueHelp: 'folder');
   }
 
   @override
@@ -35,10 +41,12 @@ final class AttachCommand extends BacklogCommand {
 
   @override
   String get description =>
-      'Attach files or a text to an item (stored next to its file); without them list its attachments.';
+      'Attach files or a text to an item (stored next to its file); without them list its attachments; '
+      '--export copies them here.';
 
   @override
-  String get invocation => 'backlog attach <id> [<file>… | --text "<text>"] [--name <name>] [--replace]';
+  String get invocation =>
+      'backlog attach <id> [<file>… | --text "<text>"] [--name <name>] [--replace] | <id> --export [--to <folder>]';
 
   @override
   Future<int> run() async {
@@ -47,6 +55,12 @@ final class AttachCommand extends BacklogCommand {
     final files = args.rest.skip(1).toList();
     final text = args.option('text');
     final name = args.option('name');
+    if (args.flag('export') || args.option('to') != null) {
+      if (files.isNotEmpty || text != null || name != null) {
+        throw UsageException('--export takes only the item id (and --to).', usage);
+      }
+      return _export(reference);
+    }
     if (text != null && files.isNotEmpty) throw UsageException('Give files or --text, not both.', usage);
     if (name != null && text == null && files.length != 1) {
       throw UsageException('--name needs --text or exactly one file.', usage);
@@ -81,6 +95,34 @@ final class AttachCommand extends BacklogCommand {
       key: 'attached',
       message: [for (final attachment in attached) 'Attached ${TextOutput.attachmentLine(attachment)} to ${item.id}.'],
     );
+  }
+}
+
+extension on AttachCommand {
+  /// Copies the item's attachments into a folder outside the backlog (by
+  /// default `.kanban-ai/attachments/<id>/` of the current folder, where the
+  /// dispatcher puts those of an agent's item).
+  Future<int> _export(String reference) async {
+    final backlog = await openBacklog();
+    final id = (await backlog.items.get(reference)).id;
+    final folder = p.normalize(p.join(context.cwd, args.option('to') ?? DispatcherConfig.attachmentsFolder(id.value)));
+    final written = await exportAttachments(backlog.items, id, folder);
+    if (this.json) {
+      final snapshot = await backlog.planning.snapshot();
+      final attachments = await backlog.items.attachmentsOf(id);
+      emitJson({
+        ...JsonOutput.item(snapshot[id]!, path: await backlog.items.locationOf(id), attachments: attachments),
+        'exported': written,
+      });
+      return 0;
+    }
+    if (written.isEmpty) {
+      line('$id has no attachments.');
+    } else {
+      line('Copied ${written.length} attachment(s) of $id to $folder:');
+      lines([for (final path in written) '  $path']);
+    }
+    return 0;
   }
 }
 
