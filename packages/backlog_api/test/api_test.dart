@@ -170,7 +170,13 @@ void main() {
     test('detail, view and workflow', () {
       final detail = ItemDetailDto(
         item: item,
-        parent: const ItemLinkDto(id: 'T-0', title: 'Epic', status: 'todo', category: StatusCategoryDto.open),
+        parent: const ItemLinkDto(
+          id: 'T-0',
+          title: 'Epic',
+          status: 'todo',
+          category: StatusCategoryDto.open,
+          milestone: 'v0.2',
+        ),
         dependencies: const [ItemLinkDto(id: 'T-9')],
         conflicts: const [ItemLinkDto(id: 'T-3', title: 'Other', status: 'review')],
         waiting: const [ItemLinkDto(id: 'T-4', title: 'Later', status: 'todo')],
@@ -188,6 +194,7 @@ void main() {
       final detailCopy = roundTrip(detail.toJson(), ItemDetailDto.fromJson);
       expect(detailCopy.toJson(), detail.toJson());
       expect(detailCopy.item.needsHuman, isTrue);
+      expect(detailCopy.parent!.milestone, 'v0.2');
       expect(detailCopy.discussion.first.at, DateTime.utc(2026, 10, 31, 14));
       expect((detailCopy.item.review, detailCopy.item.reviewFindings), ('changes', 2));
       final review = detailCopy.discussion.last;

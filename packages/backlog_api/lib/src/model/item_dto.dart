@@ -257,7 +257,7 @@ final class ItemDto {
 
 /// A short reference to another item, as shown next to a detail.
 final class ItemLinkDto {
-  const ItemLinkDto({required this.id, this.title, this.status, this.category});
+  const ItemLinkDto({required this.id, this.title, this.status, this.category, this.milestone});
 
   factory ItemLinkDto.fromJson(Json json) {
     final category = json.optionalString('category');
@@ -266,6 +266,7 @@ final class ItemLinkDto {
       title: json.optionalString('title'),
       status: json.optionalString('status'),
       category: category == null ? null : StatusCategoryDto.values.byName(category),
+      milestone: json.optionalString('milestone'),
     );
   }
 
@@ -275,10 +276,11 @@ final class ItemLinkDto {
   final String? title;
   final String? status;
   final StatusCategoryDto? category;
+  final String? milestone;
 
   bool get isMissing => title == null;
 
-  Json toJson() => {'id': id, 'title': title, 'status': status, 'category': category?.name};
+  Json toJson() => {'id': id, 'title': title, 'status': status, 'category': category?.name, 'milestone': milestone};
 }
 
 /// An item with its body and its neighbourhood in the backlog.

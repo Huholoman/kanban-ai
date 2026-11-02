@@ -370,6 +370,7 @@ abstract final class DtoMapper {
             title: other.item.title,
             status: other.item.status,
             category: _category(other.category),
+            milestone: other.item.milestone,
           );
   }
 
