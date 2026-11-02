@@ -18,7 +18,8 @@ abstract class _DiscussionCommand extends BacklogCommand {
   bool get note => false;
 
   @override
-  String get invocation => 'backlog $name <id> ("<text>" | --file <path>)   (text - or --file - reads standard input)';
+  String get invocation =>
+      'kanban-ai $name <id> ("<text>" | --file <path>)   (text - or --file - reads standard input)';
 
   @override
   Future<int> run() async {

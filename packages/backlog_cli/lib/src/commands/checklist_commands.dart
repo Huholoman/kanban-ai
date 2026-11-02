@@ -13,7 +13,7 @@ abstract class _ChecklistCommand extends BacklogCommand {
   bool get done;
 
   @override
-  String get invocation => 'backlog $name <id> [<number>… | <text…>]';
+  String get invocation => 'kanban-ai $name <id> [<number>… | <text…>]';
 
   @override
   Future<int> run() async {
