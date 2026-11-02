@@ -27,6 +27,7 @@ export 'src/history/infrastructure/git_item_revisions.dart';
 export 'src/infrastructure/backlog_layout.dart' show BacklogLayout;
 export 'src/items/application/field_change.dart';
 export 'src/items/application/item_service.dart';
+export 'src/items/domain/attachment.dart';
 export 'src/items/domain/checklist.dart';
 export 'src/items/domain/discussion.dart';
 export 'src/items/domain/item.dart';

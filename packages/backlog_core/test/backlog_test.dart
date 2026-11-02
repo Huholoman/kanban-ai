@@ -150,6 +150,46 @@ void main() {
       );
     });
 
+    test('attachments move the item into a folder and stay next to it', () async {
+      final (backlog, _) = await tempBacklog();
+      final created = await backlog.items.create(const NewItem(title: 'Broken login', body: 'See the log.'));
+      expect(await backlog.items.attachments('0001'), isEmpty);
+
+      final log = await backlog.items.attach('0001', ' login.log ', 'line 1\n'.codeUnits);
+      expect(log.name, 'login.log');
+      expect(log.size, 7);
+      final folder = p.join(backlog.root, 'items', 'T-0001-broken-login');
+      expect(File(p.join(backlog.root, 'items', 'T-0001-broken-login.md')).existsSync(), isFalse);
+      expect(File(p.join(folder, 'index.md')).readAsStringSync(), contains('See the log.'));
+      expect(await backlog.items.locate('0001'), p.join(folder, 'index.md'));
+      expect(await backlog.items.readAttachment('0001', 'login.log'), 'line 1\n'.codeUnits);
+
+      expect((await backlog.items.attach('0001', 'login.log', [1])).name, 'login-2.log');
+      expect((await backlog.items.attach('0001', 'LOGIN.log', [2])).name, 'LOGIN-3.log');
+      expect((await backlog.items.attach('0001', 'login.log', [3], replace: true)).name, 'login.log');
+      expect(await backlog.items.readAttachment('0001', 'login.log'), [3]);
+      File(p.join(folder, '.hidden')).writeAsStringSync('x');
+      expect((await backlog.items.attachments('0001')).map((a) => a.name), ['LOGIN-3.log', 'login-2.log', 'login.log']);
+
+      await backlog.items.detach('0001', 'login-2.log');
+      expect((await backlog.items.attachmentsOf(created.id)).map((a) => a.name), ['LOGIN-3.log', 'login.log']);
+      await expectLater(backlog.items.detach('0001', 'login-2.log'), throwsA(isA<NotFoundException>()));
+      for (final name in ['index.md', '../T-0001-broken-login.md', '.hidden', 'missing']) {
+        await expectLater(backlog.items.readAttachment('0001', name), throwsA(isA<NotFoundException>()), reason: name);
+      }
+      for (final name in ['', 'a/b', r'a\b', '.env', 'INDEX.md', 'tab\there', 'x' * 201]) {
+        await expectLater(backlog.items.attach('0001', name, [0]), throwsA(isA<InvalidInputException>()), reason: name);
+      }
+
+      await backlog.items.update('0001', [FieldChange.parse('status=done')]);
+      expect(await backlog.items.archive(references: ['0001']), hasLength(1));
+      expect(
+        p.relative((await backlog.items.locate('0001'))!, from: backlog.root),
+        'archive/T-0001-broken-login/index.md',
+      );
+      expect((await backlog.items.attachments('0001')).map((a) => a.name), ['LOGIN-3.log', 'login.log']);
+    });
+
     test('archive moves old finished items to archive/, where they are still found', () async {
       final (backlog, clock) = await tempBacklog();
       final old = await backlog.items.create(const NewItem(title: 'Old', status: 'done'));
@@ -753,4 +793,17 @@ final class _RecordingItems implements ItemRepository {
 
   @override
   Future<void> setArchived(ItemId id, {required bool archived}) => _inner.setArchived(id, archived: archived);
+
+  @override
+  Future<List<Attachment>> attachments(ItemId id) => _inner.attachments(id);
+
+  @override
+  Future<List<int>> readAttachment(ItemId id, String name) => _inner.readAttachment(id, name);
+
+  @override
+  Future<Attachment> writeAttachment(ItemId id, String name, List<int> content) =>
+      _inner.writeAttachment(id, name, content);
+
+  @override
+  Future<void> deleteAttachment(ItemId id, String name) => _inner.deleteAttachment(id, name);
 }
