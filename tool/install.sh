@@ -58,13 +58,36 @@ fi
 
 mkdir -p "$bin" "$state"
 
+# The unfinished local build and its compilers in the background: removed
+# and stopped when the install fails or is interrupted.
+unfinished=
+jobs_running=()
+kill_tree() {
+  local child
+  kill -STOP "$1" 2>/dev/null || return 0
+  for child in $(pgrep -P "$1"); do kill_tree "$child"; done
+  kill -TERM "$1" 2>/dev/null || true
+  kill -CONT "$1" 2>/dev/null || true
+}
+abandon() {
+  local job
+  for job in "${jobs_running[@]}"; do kill_tree "$job"; done
+  wait 2>/dev/null || true
+  if [[ -n "$unfinished" ]]; then rm -rf "$unfinished"; fi
+}
+trap abandon EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 # Builds into a new folder of $state/dev-local and points $link at it once
 # everything is built, so a running server keeps its programs and web app
-# until then. The previous build stays (a server may still run from it).
+# until then. The build $link pointed at stays (a server may still run from
+# it); older ones are removed.
 build_local() {
-  local builds="$state/dev-local" out pids=() pid failed=
+  local builds="$state/dev-local" out previous pids=() pid failed=
   mkdir -p "$builds"
   out="$(mktemp -d "$builds/$(date +%Y%m%d-%H%M%S)-${sha:0:12}-XXXX")"
+  unfinished="$out"
   mkdir -p "$out/bin" "$out/libexec" "$out/logs"
   (cd "$repo" && dart pub get >/dev/null)
   (cd "$repo/packages/backlog_app" && flutter pub get >/dev/null)
@@ -79,6 +102,7 @@ build_local() {
   (cd "$repo" && dart compile exe packages/backlog_server/bin/backlog_server.dart -o "$out/libexec/backlog-server") \
     >"$out/logs/backlog-server.log" 2>&1 &
   pids+=("$!:backlog-server")
+  for pid in "${pids[@]}"; do jobs_running+=("${pid%%:*}"); done
 
   for pid in "${pids[@]}"; do
     if wait "${pid%%:*}"; then
@@ -89,10 +113,8 @@ build_local() {
       failed=1
     fi
   done
-  if [[ -n "$failed" ]]; then
-    rm -rf "$out"
-    exit 1
-  fi
+  jobs_running=()
+  if [[ -n "$failed" ]]; then exit 1; fi
 
   # Like the Nix wrapper: the server serves its own web app unless told otherwise.
   cat >"$out/bin/backlog-server" <<EOF
@@ -102,10 +124,11 @@ exec "$out/libexec/backlog-server" "\$@"
 EOF
   chmod +x "$out/bin/backlog-server"
 
+  previous="$(readlink -f "$link" || true)"
   ln -sfn "$out" "$link"
-  # Keep the new build and the one before it.
-  find "$builds" -mindepth 1 -maxdepth 1 -type d ! -newer "$out" ! -path "$out" -printf '%T@ %p\n' |
-    sort -rn | tail -n +2 | cut -d' ' -f2- | xargs -r rm -rf
+  unfinished=
+  # Keep the new build and the one $link pointed at.
+  find "$builds" -mindepth 1 -maxdepth 1 -type d ! -path "$out" ! -path "$previous" -exec rm -rf {} +
 }
 
 if [[ -n "$nix" ]]; then
