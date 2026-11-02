@@ -389,6 +389,68 @@ void main() {
     expect((await backlog(['check'])).exitCode, ExitCode.usage);
   });
 
+  test('attach stores files and texts next to the item; detach deletes them', () async {
+    final id = await create('Login fails');
+    expect((await backlog(['attach', id])).out, '$id has no attachments.\n');
+    File(p.join(workspace.path, 'error.log')).writeAsStringSync('boom\n');
+
+    final file = await backlog(['attach', id, 'error.log']);
+    expect(file.exitCode, 0, reason: '$file');
+    final folder = p.join(backlogDir, 'items', '$id-login-fails');
+    expect(
+      file.out,
+      'Attached error.log (5 B) to $id.\nAttachments of $id:\n  error.log (5 B)  ${p.join(folder, 'error.log')}\n',
+    );
+    expect(File(p.join(folder, 'index.md')).existsSync(), isTrue);
+
+    final text = await backlog(['--json', 'attach', id, '--text', '-', '--name', 'steps.md'], input: '1. log in\n');
+    final json = text.json! as Map;
+    expect(json['attached'], ['steps.md']);
+    expect(json['attachments'], [
+      {'name': 'error.log', 'size': 5, 'modified': isA<String>(), 'path': p.join(folder, 'error.log')},
+      {'name': 'steps.md', 'size': 10, 'modified': isA<String>(), 'path': p.join(folder, 'steps.md')},
+    ]);
+    expect((await backlog(['attach', id, '--text', 'again'])).out, startsWith('Attached text.txt (5 B)'));
+    expect((await backlog(['attach', id, 'error.log'])).out, startsWith('Attached error-2.log (5 B)'));
+    expect((await backlog(['attach', id, 'error.log', '--replace'])).out, startsWith('Attached error.log (5 B)'));
+
+    final show = await backlog(['show', id]);
+    expect(show.out, contains('attachment: error-2.log (5 B)\nattachment: error.log (5 B)\n'));
+    expect(((await backlog(['--json', 'show', id])).json! as Map)['attachments'], hasLength(4));
+
+    final worktree = p.join(workspace.path, 'monorepo-2');
+    Directory(worktree).createSync();
+    final export = await backlog(['attach', id, '--export'], cwd: worktree);
+    final exported = p.join(worktree, '.kanban-ai', 'attachments', id);
+    expect(
+      export.out,
+      startsWith('Copied 4 attachment(s) of $id to $exported:\n  ${p.join(exported, 'error-2.log')}\n'),
+    );
+    expect(File(p.join(exported, 'steps.md')).readAsStringSync(), '1. log in\n');
+    File(p.join(exported, 'gone.txt')).writeAsStringSync('no longer attached');
+    await backlog(['attach', id, '--export'], cwd: worktree);
+    expect(File(p.join(exported, 'gone.txt')).existsSync(), isFalse, reason: 'its own folder is tidied');
+
+    final other = File(p.join(workspace.path, 'out', 'notes', 'keep.md'))..createSync(recursive: true);
+    final to = await backlog(['--json', 'attach', id, '--to', 'out']);
+    expect((to.json! as Map)['exported'], hasLength(4));
+    expect(File(p.join(workspace.path, 'out', 'error.log')).readAsStringSync(), 'boom\n');
+    expect(other.existsSync(), isTrue, reason: 'a folder given with --to only gets copies');
+    final empty = await backlog(['--json', 'new', 'Nothing attached']);
+    await backlog(['attach', (empty.json! as Map)['id'] as String, '--to', 'out']);
+    expect(other.existsSync(), isTrue, reason: 'nor is it removed for an item without attachments');
+    expect((await backlog(['attach', id, 'x', '--export'])).exitCode, ExitCode.usage);
+
+    final detach = await backlog(['--json', 'detach', id, 'error-2.log', 'text.txt']);
+    expect((detach.json! as Map)['removed'], ['error-2.log', 'text.txt']);
+    expect(((detach.json! as Map)['attachments'] as List).map((a) => (a as Map)['name']), ['error.log', 'steps.md']);
+    expect((await backlog(['detach', id, 'text.txt'])).exitCode, ExitCode.notFound);
+    expect((await backlog(['attach', id, '--text', 'x', '--name', '../escape'])).exitCode, ExitCode.failure);
+    expect((await backlog(['attach', id, 'missing.png'])).err, contains('Cannot read'));
+    expect((await backlog(['attach', id, 'a', 'b', '--name', 'c'])).exitCode, ExitCode.usage);
+    expect((await backlog(['detach', id])).exitCode, ExitCode.usage);
+  });
+
   test('history: text and JSON, filters, runs from the logs of a registered project', () async {
     final env = {
       'HOME': p.join(workspace.path, 'home'),

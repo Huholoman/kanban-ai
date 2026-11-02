@@ -48,6 +48,17 @@ CLI, not by editing the file (it may lie outside your worktree):
     backlog check T-7f3a "CSV export"    # or name it by its text
     backlog uncheck T-7f3a 2
 
+Files attached to an item (screenshots, logs, texts) are listed by `show`.
+The dispatcher copies those of your item into `.kanban-ai/attachments/<id>/`
+of your worktree before you start; read them there. Copy them yourself (e.g.
+of another item) and attach your own with the CLI:
+
+    backlog attach T-7f3a                         # list them with their paths
+    backlog attach T-7f3a --export                # copy into .kanban-ai/attachments/T-7f3a/ here
+    backlog attach T-7f3a out/report.html         # attach files
+    backlog attach T-7f3a --text - --name notes.md   # a text from stdin
+    backlog detach T-7f3a report.html
+
 Edit the rest of the body of your item file directly when you can (context,
 plan, notes), else with the CLI (the text from a file keeps long texts out
 of the command line):

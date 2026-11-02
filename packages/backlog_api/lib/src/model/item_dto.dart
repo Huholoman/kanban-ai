@@ -1,4 +1,5 @@
 import 'action_dto.dart';
+import 'attachment_dto.dart';
 import 'discussion_dto.dart';
 import 'json.dart';
 import 'workflow_dto.dart';
@@ -293,6 +294,7 @@ final class ItemDetailDto {
     this.waiting = const [],
     this.discussion = const [],
     this.actions = const [],
+    this.attachments = const [],
   });
 
   factory ItemDetailDto.fromJson(Json json) {
@@ -309,6 +311,7 @@ final class ItemDetailDto {
       waiting: links('waiting'),
       discussion: json.objects('discussion').map(CommentDto.fromJson).toList(),
       actions: json.objects('actions').map(ActionDto.fromJson).toList(),
+      attachments: json.objects('attachments').map(AttachmentDto.fromJson).toList(),
     );
   }
 
@@ -333,6 +336,9 @@ final class ItemDetailDto {
   /// The actions the item's status offers as buttons (`dispatcher.actions`).
   final List<ActionDto> actions;
 
+  /// The files attached to the item, sorted by name.
+  final List<AttachmentDto> attachments;
+
   Json toJson() => {
     'item': item.toJson(),
     'parent': parent?.toJson(),
@@ -344,5 +350,6 @@ final class ItemDetailDto {
     'waiting': [for (final link in waiting) link.toJson()],
     'discussion': [for (final comment in discussion) comment.toJson()],
     'actions': [for (final action in actions) action.toJson()],
+    'attachments': [for (final attachment in attachments) attachment.toJson()],
   };
 }

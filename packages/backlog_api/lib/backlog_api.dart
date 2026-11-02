@@ -6,6 +6,7 @@ export 'src/client/backlog_api.dart';
 export 'src/client/http_backlog_api.dart';
 export 'src/model/action_dto.dart';
 export 'src/model/agent_log_update_dto.dart';
+export 'src/model/attachment_dto.dart';
 export 'src/model/discussion_dto.dart';
 export 'src/model/dispatch_dto.dart';
 export 'src/model/epic_dto.dart';

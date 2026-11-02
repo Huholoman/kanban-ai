@@ -528,11 +528,15 @@ final class DispatcherConfig {
 
   /// How every default prompt (and the frames of prompt actions and fixes)
   /// tells the agent to tick off the item's checklist: through the CLI, since
-  /// the item file lies outside its worktree and editing it is denied.
+  /// the item file lies outside its worktree and editing it is denied; and
+  /// where it finds the item's attachments ([attachmentsFolder]).
   static const checklistRules =
       'The checklist of the item (`- [ ]` lines in its body): tick off what you finished with '
       '`backlog check {id} <number or text>` (`backlog check {id}` lists it numbered, `backlog uncheck` undoes); '
-      'never edit the item file for that.';
+      'never edit the item file for that. Files attached to the item (`backlog show {id}` lists them) are copied to '
+      '$scratchFolder/attachments/{id}/ in your worktree before you start: read them there (the Read tool shows '
+      'images); `backlog attach <id> --export` copies those of another item next to them. Attach a file for people '
+      'with `backlog attach {id} <file>`.';
 
   /// How every default prompt tells the agent to run things so that its tool
   /// whitelist lets them through (nobody can approve anything else).
@@ -551,6 +555,10 @@ final class DispatcherConfig {
   /// for the backlog CLI ([runRules]); the launcher makes git ignore it
   /// (`info/exclude`), so the worktree stays clean.
   static const scratchFolder = '.kanban-ai';
+
+  /// Where (relative to an agent's worktree) the launcher copies the
+  /// attachments of item [id] before the agent starts.
+  static String attachmentsFolder(String id) => '$scratchFolder/attachments/$id';
 
   /// How the default prompts tell an agent starting on an item to read the
   /// discussion first: the comments are part of the assignment, and a point

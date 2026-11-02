@@ -8,6 +8,7 @@ import 'package:backlog_core/backlog_core.dart';
 
 import 'src/cli_context.dart';
 import 'src/commands/action_commands.dart';
+import 'src/commands/attachment_commands.dart';
 import 'src/commands/checklist_commands.dart';
 import 'src/commands/config_command.dart';
 import 'src/commands/discussion_commands.dart';
@@ -49,6 +50,8 @@ Future<int> runBacklogCli(List<String> arguments, CliContext context) async {
     DescribeCommand(context),
     CheckCommand(context),
     UncheckCommand(context),
+    AttachCommand(context),
+    DetachCommand(context),
     ReadyCommand(context),
     BlockedCommand(context),
     NextCommand(context),

@@ -1,4 +1,5 @@
 import '../model/agent_log_update_dto.dart';
+import '../model/attachment_dto.dart';
 import '../model/discussion_dto.dart';
 import '../model/dispatch_dto.dart';
 import '../model/epic_dto.dart';
@@ -39,6 +40,18 @@ abstract interface class BacklogApi {
   /// column after a drop) by setting its `rank`, and its neighbours' when
   /// they need one; returns the item.
   Future<ItemDetailDto> rank(String reference, RankRequest request);
+
+  /// Attaches [content] to the item as [name]; a name the item has already
+  /// gets `-2`, `-3`, … unless [replace]. Refused above
+  /// [AttachmentDto.maxSize].
+  Future<ItemDetailDto> attach(String reference, String name, List<int> content, {bool replace = false});
+
+  /// Deletes the attachment [name] of the item.
+  Future<ItemDetailDto> detach(String reference, String name);
+
+  /// Where the browser opens the attachment [name] of the item (with the
+  /// token, since a link sends no header); [download] asks to save it.
+  Uri attachmentUri(String reference, String name, {bool download = false});
 
   Future<List<ViewSummaryDto>> views();
 
@@ -168,6 +181,11 @@ abstract final class ApiPaths {
   static String item(String reference) => '$items/${Uri.encodeComponent(reference)}';
 
   static String itemAction(String reference, String action) => '${item(reference)}/$action';
+
+  /// The attachments of [reference]; [attachment] one of them by name.
+  static String attachments(String reference) => '${item(reference)}/attachments';
+
+  static String attachment(String reference, String name) => '${attachments(reference)}/${Uri.encodeComponent(name)}';
 
   /// The history of [reference].
   static String history(String reference) => '${item(reference)}/history';

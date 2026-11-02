@@ -177,6 +177,8 @@ backlog history MA-7f3a         # who changed what when (git history, comments, 
 backlog heartbeat MA-7f3a       # renew the claim (default lease 4 h)
 backlog set MA-7f3a branch=feat/x status=review
 backlog check MA-7f3a 2         # tick checklist item 2 (or by its text); `uncheck` undoes, no number lists them
+backlog attach MA-7f3a out.log  # attach files (or --text - --name n.md); `show` lists them with paths, `detach` deletes
+backlog attach MA-7f3a --export # copy them into .kanban-ai/attachments/MA-7f3a/ (the dispatcher does it for its agents)
 backlog pr MA-7f3a --description "What, why, how verified"   # push the branch, open the PR (with dispatcher.pr)
 backlog done MA-7f3a            # finished: drops the claim, prints what got unblocked
 backlog release MA-7f3a         # give it back unfinished
@@ -258,6 +260,7 @@ The open project is in the URL after `#`: `http://host:8640/?token=…#/p/kanban
 - **Cards:** id and priority on top, the title, and one meta line that tells the state: *? Waits for you* (an agent asked a question; warning-coloured border), *Ready*, *Blocked by …*, *Waits for …* (touches overlap work in progress), the claim holder with the time left, an expired claim (faint, dashed border) or else the labels; next to the PR link the **AI review** state (*AI review…*, *AI review ✓*, *AI review: 3 findings*, *AI review outdated*); a thin bar shows progress of the checklist or children.
 - **Dashboard:** *Dashboard* on top of the left panel (with a badge: how many things wait for you in this project) shows the open project's dashboard in place of the board, live; a view brings the board back. The project switcher shows the same count for the other projects. *Needs you*: agents' questions with an answer field right there, items in `review` with their AI review state, PR link and the status's actions (*Merge*, …), *Problems* (items whose last run went wrong: a failed exit, denied permissions, a pull request that could not be opened), held items with the reason — each with its next step and buttons, and clean-up (expired claims, unavailable worktrees, lint). *Running*: every agent or action with its worktree and start time and *Stop*, and the dispatcher's queue (capacity, next starts with *Start* in `manual` mode, queued starts with *Cancel*, waiting items and why). *Overview*: milestone progress bars and the urgent (two most urgent priorities) work of the current milestone. A row opens its item in the panel on the right, as a card on the board does. On phones the sections stack, *Needs you* first.
 - **Ids:** clicking an item id (on a card or in the detail) copies it to the clipboard.
+- **Attachments:** under the description the item's files (*Attachments · N*): the name opens one in a new tab (images, PDFs and texts are shown, other files download), ⤓ downloads, 🗑 deletes after asking. *Files* chooses files to attach, *Text* attaches a text you write or paste (a log, an error) under a name; files dragged onto the page or pasted with Ctrl+V (e.g. a screenshot) are attached to the open item. A taken name gets `-2`; at most 32 MiB per file. The description can show an attached image with `![](shot.png)` and link a file with `[log](log.txt)`.
 - **Comments and History:** under the description two tabs. *History* lists who changed what and when, newest first: the item's creation, each changed field (`status: todo → review`), checklist progress, edits of the description (from the git history of the backlog, plus changes not committed yet, marked *uncommitted*), comments and the agent and action runs of the dispatcher; filters *All*, *Status*, *Changes*, *Comments*, *Agents* (`backlog history <id>` in the terminal).
 - **Discussion:** in the *Comments* tab the detail shows the item's comments (questions of agents highlighted while open, *Waits for you* under the title) and a reply field. *Send* adds a comment; when the item's last agent session can be continued, the dispatcher resumes the agent with your reply by itself (in `manual` mode too). **Note only** (shown with such a session or an open question) saves a note that wakes nobody and answers nothing. A reply you have not sent stays as a draft of the item (in this browser, or on this device in the app) and is back when you open the item again, also after a reload. Editing the description leaves the discussion as it is. Times of comments and, at the bottom of the detail, when the item was created and last changed are shown in your time zone, relative for recent ones (*5 min ago*, *yesterday*), the exact time in the tooltip.
 - **Actions:** the actions of an item's status are buttons in their own row under the detail's header (with many of them, the rest behind *More…*) and a small ⋯ menu on its card (icons: agent, command, built-in); the detail's agent box shows a running action with its live log and *Stop*, and hooks waiting to run (*Queued: the action "AI review"*). The result lands as a note in the discussion.
@@ -282,8 +285,9 @@ backlog/
   backlog.yaml                # workflow: statuses, priorities, types, milestones, id prefix, lease
   items/
     MA-7f3a-production-db-backups.md
-    MA-8m2x-content-reporting/   # a folder only when the item needs attachments
+    MA-8m2x-content-reporting/   # a folder only when the item has attachments
       index.md
+      screenshot.png             # an attachment (`backlog attach`, or the board)
   archive/ finished items moved out of items/ by `backlog archive`, same layout
   views/   board.yaml, ready.yaml, hot.yaml, blocked.yaml, dependencies.yaml, …
   docs/    design documents that items link to (docs: [moderation])
@@ -583,6 +587,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `show <id>`, `path <id>` | details, path of the file |
 | `archive [<id>…] [--older-than 30] [--dry-run]`, `archive --restore <id>…` | move finished items (the named ones, else those unchanged for 30 days) to `archive/` so that `items/` stays small; they are still found by id, references and history keep working, and one that becomes unfinished moves back |
 | `set <id> status=review labels+=x touches+=lib/a/ depends_on-=MA-1 milestone=` | edit fields (`=` sets, `+=`/`-=` for lists, empty clears) |
+| `attach <id> [<file>… \| --text "…"] [--name n] [--replace]`, `detach <id> <name>…` | attach files or a text to an item (stored next to its file, which becomes a folder); without files list them with their paths; `--export` copies them into `.kanban-ai/attachments/<id>/` here (the dispatcher does so in an agent's worktree before it starts); `detach` deletes them |
 | `describe <id> --file f [--section "Acceptance criteria"]` | replace the description above `## Discussion` (or only one `##` section) without editing the file; the discussion stays — how agents update what their item asks for |
 | `ready`, `blocked` | what can be done / what is waiting |
 | `next [-w …] --as <agent>` | claim the most urgent ready item |
@@ -660,6 +665,7 @@ There is no event bus or event sourcing: the state lives in files and git keeps 
 - `items/<id>`: GET (with its relations and the items it waits for or holds up through `touches`), and PATCH `{changes: ["status=done"], body}`
 - `items/<id>/claim|release|done`: POST `{agent, status, force}`
 - `items/<id>/rank`: POST `{order: [ids]}` moves the item to its place in a list (a board column after a drop) by setting its `rank` (and its neighbours' when they need one)
+- `items/<id>/attachments/<name>`: GET the file (shown inline only when harmless, sandboxed), PUT the raw content (`?replace=true`; at most 32 MiB), DELETE; the detail has `attachments: [{name, size, modified}]`
 - `items/<id>/comments`: POST `{text, author?, question?, note?}` (the detail has `discussion`, items `needs_human`, `review` — `running` while an AI review runs — and `review_findings`)
 - `views`: GET, and POST `{name, section?, base?, conditions: [filter expressions]}` (save a filter as a view)
 - `views/<id>`: GET (`?group_by=field` regroups it for that request), and PATCH `{section?, columns?}` (only the given keys change; null removes them)

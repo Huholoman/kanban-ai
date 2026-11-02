@@ -133,6 +133,7 @@ abstract final class DtoMapper {
     BacklogSnapshot snapshot, {
     String? path,
     Set<ItemId> reviewing = const {},
+    List<Attachment> attachments = const [],
   }) {
     final item = planned.item;
     final dispatcher = snapshot.workflow.dispatcher;
@@ -161,6 +162,10 @@ abstract final class DtoMapper {
         if (dispatcher != null)
           for (final action in dispatcher.actions)
             if (action.offeredIn(item.status)) DtoMapper.action(action, dispatcher),
+      ],
+      attachments: [
+        for (final attachment in attachments)
+          AttachmentDto(name: attachment.name, size: attachment.size, modified: attachment.modified),
       ],
     );
   }

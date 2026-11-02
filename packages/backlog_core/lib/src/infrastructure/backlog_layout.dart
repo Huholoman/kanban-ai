@@ -48,10 +48,17 @@ final _random = Random();
 
 /// Writes through a temporary sibling and a rename, so that a concurrent
 /// reader sees either the old or the new content, never half a file.
-Future<void> writeAtomically(File file, String content) async {
+Future<void> writeAtomically(File file, String content) =>
+    _replaceAtomically(file, (temp) => temp.writeAsString(content, flush: true));
+
+/// [writeAtomically] for binary [content].
+Future<void> writeBytesAtomically(File file, List<int> content) =>
+    _replaceAtomically(file, (temp) => temp.writeAsBytes(content, flush: true));
+
+Future<void> _replaceAtomically(File file, Future<void> Function(File temp) write) async {
   await file.parent.create(recursive: true);
   final temp = File(p.join(file.parent.path, '.${p.basename(file.path)}.${pid}_${_random.nextInt(1 << 32)}.tmp'));
-  await temp.writeAsString(content, flush: true);
+  await write(temp);
   try {
     await temp.rename(file.path);
   } catch (_) {

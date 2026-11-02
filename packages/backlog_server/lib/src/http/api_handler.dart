@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_core/backlog_core.dart';
+import 'package:mime/mime.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
@@ -59,6 +61,9 @@ final class ApiHandler {
           ..post('$items/<ref>/done', _complete)
           ..post('$items/<ref>/comments', _comment)
           ..post('$items/<ref>/rank', _rank)
+          ..get('$items/<ref>/attachments/<name>', _attachment)
+          ..put('$items/<ref>/attachments/<name>', _attach)
+          ..delete('$items/<ref>/attachments/<name>', _detach)
           ..post('$items/<ref>/actions/<name>', _runAction)
           ..get('$items/<ref>/epic', _epic)
           ..get('$items/<ref>/history', _history)
@@ -157,6 +162,92 @@ final class ApiHandler {
     final backlog = await _host.backlog;
     final item = await backlog.items.get(ref);
     await backlog.items.rank(item.id.value, payload.order);
+    return _detailOf(backlog, item.id.value);
+  }
+
+  /// The attachment as a file. Only types a browser shows harmlessly are
+  /// shown inline (images but SVG, PDF, audio, video, plain text); other
+  /// texts (HTML, SVG, scripts, …) come as plain text, the rest as a
+  /// download, and a sandbox keeps whatever is shown from running scripts
+  /// with the board's origin.
+  Future<Response> _attachment(Request request, String ref, String name) async {
+    final decoded = Uri.decodeComponent(name);
+    final content = await (await _host.backlog).items.readAttachment(ref, decoded);
+    final type = lookupMimeType(decoded, headerBytes: content.take(defaultMagicNumbersMaxLength).toList());
+    final (contentType, inline) = switch (type) {
+      'application/pdf' => (type!, true),
+      'image/svg+xml' => (_plainText, true),
+      final type? when type.startsWith('image/') || type.startsWith('audio/') || type.startsWith('video/') => (
+        type,
+        true,
+      ),
+      final type? when type.startsWith('text/') || ['json', 'xml', 'javascript', 'yaml'].any(type.contains) => (
+        _plainText,
+        true,
+      ),
+      _ when _looksLikeText(content) => (_plainText, true),
+      _ => ('application/octet-stream', false),
+    };
+    final disposition = inline && request.url.queryParameters['download'] != 'true' ? 'inline' : 'attachment';
+    return Response.ok(
+      content,
+      headers: {
+        'content-type': contentType,
+        'content-disposition': "$disposition; filename*=UTF-8''${Uri.encodeComponent(decoded)}",
+        'content-security-policy': 'sandbox',
+        'x-content-type-options': 'nosniff',
+        'cache-control': 'no-cache',
+      },
+    );
+  }
+
+  static const _plainText = 'text/plain; charset=utf-8';
+
+  /// UTF-8 without NUL bytes in its first 8 kB (a log, a pasted text).
+  static bool _looksLikeText(List<int> content) {
+    final head = content.take(8192).toList();
+    if (head.contains(0)) return false;
+    // A character of several bytes may be cut at the end of the head.
+    for (var cut = 0; cut <= (content.length > head.length ? 3 : 0) && cut < head.length; cut++) {
+      try {
+        utf8.decode(head.sublist(0, head.length - cut));
+        return true;
+      } on FormatException {
+        // try a shorter head
+      }
+    }
+    return head.isEmpty;
+  }
+
+  /// Stores the request's body as the attachment (`?replace=true` replaces
+  /// one of the same name); refused above [AttachmentDto.maxSize].
+  Future<Response> _attach(Request request, String ref, String encodedName) async {
+    final name = Uri.decodeComponent(encodedName);
+    if ((request.contentLength ?? 0) > AttachmentDto.maxSize) throw _tooLarge(name);
+    final content = BytesBuilder(copy: false);
+    await for (final chunk in request.read()) {
+      content.add(chunk);
+      if (content.length > AttachmentDto.maxSize) throw _tooLarge(name);
+    }
+    final backlog = await _host.backlog;
+    final item = await backlog.items.get(ref);
+    await backlog.items.attach(
+      item.id.value,
+      name,
+      content.takeBytes(),
+      replace: request.url.queryParameters['replace'] == 'true',
+    );
+    return _detailOf(backlog, item.id.value);
+  }
+
+  static InvalidInputException _tooLarge(String name) => InvalidInputException(
+    '"$name" is larger than the ${AttachmentDto.maxSize ~/ (1024 * 1024)} MiB an attachment may have.',
+  );
+
+  Future<Response> _detach(Request request, String ref, String name) async {
+    final backlog = await _host.backlog;
+    final item = await backlog.items.get(ref);
+    await backlog.items.detach(item.id.value, Uri.decodeComponent(name));
     return _detailOf(backlog, item.id.value);
   }
 
@@ -338,7 +429,13 @@ final class ApiHandler {
     final location = await backlog.items.locationOf(planned.id);
     final path = location == null ? null : backlog.storage.displayLocation(location);
     return _json(
-      DtoMapper.detail(planned, snapshot, path: path, reviewing: _reviewing).toJson(),
+      DtoMapper.detail(
+        planned,
+        snapshot,
+        path: path,
+        reviewing: _reviewing,
+        attachments: await backlog.items.attachmentsOf(planned.id),
+      ).toJson(),
       status: status,
     );
   }

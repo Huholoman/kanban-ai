@@ -1,3 +1,4 @@
+import 'attachment.dart';
 import 'item.dart';
 import 'item_id.dart';
 
@@ -42,4 +43,20 @@ abstract interface class ItemRepository {
   /// Moves the item into the archive, or back out of it ([archived] false);
   /// nothing happens when it is there already.
   Future<void> setArchived(ItemId id, {required bool archived});
+
+  /// The files attached to the item, sorted by name; empty when it has none.
+  Future<List<Attachment>> attachments(ItemId id);
+
+  /// The content of the attachment [name] of the item; a
+  /// [NotFoundException] when it has none of that name.
+  Future<List<int>> readAttachment(ItemId id, String name);
+
+  /// Stores [content] as the attachment [name] (checked by the caller,
+  /// [Attachment.checkName]) of the item, replacing one of that name. The
+  /// item file itself stays as it is.
+  Future<Attachment> writeAttachment(ItemId id, String name, List<int> content);
+
+  /// Deletes the attachment [name] of the item; a [NotFoundException] when
+  /// it has none of that name.
+  Future<void> deleteAttachment(ItemId id, String name);
 }

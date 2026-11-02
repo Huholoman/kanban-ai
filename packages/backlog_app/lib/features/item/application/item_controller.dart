@@ -169,6 +169,31 @@ class ItemController extends ChangeNotifier {
   Future<bool> comment(String text, {bool note = false}) =>
       _run(() => _api.comment(_id, CommentRequest(text, author: agent, note: note)));
 
+  /// Attaches [files] one after the other (a taken name gets `-2`, …);
+  /// those larger than the server accepts are refused with a notice. True
+  /// when all were attached.
+  Future<bool> attach(List<(String name, List<int> content)> files) async {
+    var all = true;
+    for (final (name, content) in files) {
+      if (content.length > AttachmentDto.maxSize) {
+        _notices.add(
+          '$name is larger than ${AttachmentDto.maxSize ~/ (1024 * 1024)} MiB, the most an attachment may have.',
+        );
+        all = false;
+        continue;
+      }
+      all &= await _run(() => _api.attach(_id, name, content));
+    }
+    return all;
+  }
+
+  /// Deletes the attachment [name].
+  Future<bool> detach(String name) => _run(() => _api.detach(_id, name));
+
+  /// Where the browser opens the attachment [name] (or saves it with
+  /// [download]).
+  Uri attachmentUri(String name, {bool download = false}) => _api.attachmentUri(_id, name, download: download);
+
   Future<bool> claim() => _run(() => _api.claim(_id, ClaimRequest(agent: agent, force: true)));
 
   Future<bool> release() => _run(() => _api.release(_id, ClaimRequest(agent: agent, force: true)));
