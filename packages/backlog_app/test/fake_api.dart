@@ -127,6 +127,9 @@ final class FakeBacklogApi implements BacklogApi {
   /// What backlog.yaml would say under `dispatcher.actions`.
   List<ActionDto> actions = const [];
 
+  /// Whether backlog.yaml has `touches.suggest`.
+  bool suggestTouchesConfigured = false;
+
   @override
   Future<WorkflowDto> workflow() async {
     _loaded('workflow');
@@ -139,6 +142,7 @@ final class FakeBacklogApi implements BacklogApi {
       defaultType: _workflow.defaultType,
       appearance: appearance,
       actions: actions,
+      suggestTouches: suggestTouchesConfigured,
     );
   }
 

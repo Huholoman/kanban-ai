@@ -35,11 +35,13 @@ Future<FakeBacklogApi> _pumpDetail(
   WidgetTester tester,
   String reference, {
   void Function(String epicId)? onScope,
+  void Function(FakeBacklogApi api)? setUp,
 }) async {
   tester.view.physicalSize = const Size(560, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final api = FakeBacklogApi(_tree());
+  setUp?.call(api);
   await tester.pumpWidget(
     AppScope(
       api: api,
@@ -236,6 +238,49 @@ void main() {
         ['touches-=docs/*.{md,txt}'],
         ['touches+=lib/a/, lib/b/'],
       ]);
+    });
+
+    testWidgets('without touches.suggest there is no Suggest', (tester) async {
+      await _pumpDetail(tester, 'W-2');
+      expect(_key('add-touches'), findsOneWidget);
+      expect(_key('suggest-touches'), findsNothing);
+    });
+
+    testWidgets('Suggest asks the model; the person picks and adds to the suggestion', (tester) async {
+      final api = await _pumpDetail(
+        tester,
+        'W-2',
+        setUp: (api) => api
+          ..suggestTouchesConfigured = true
+          ..suggestion = const TouchesSuggestionDto(
+            suggested: ['lib/w/', 'docs/*.{md,txt}', 'test/w_test.dart'],
+            rejected: [(entry: 'src/x.c', reason: 'matches nothing in the repository')],
+          ),
+      );
+      await _tap(tester, _key('suggest-touches'));
+      expect(api.suggestedFor, ['W-2']);
+      expect(find.text('src/x.c — matches nothing in the repository'), findsOneWidget);
+      expect(find.text('1 suggested path is among the touches already.'), findsOneWidget);
+      await _tap(tester, _key('suggested-test/w_test.dart'));
+      await tester.enterText(_key('more-touches'), 'pubspec.yaml');
+      await _tap(tester, _key('add-suggested-touches'));
+      expect(api.updates.map((u) => u.$2.changes), [
+        ['touches+=lib/w/,pubspec.yaml'],
+      ]);
+    });
+
+    testWidgets('a failing suggestion is a notice and adds nothing', (tester) async {
+      final api = await _pumpDetail(
+        tester,
+        'W-2',
+        setUp: (api) => api
+          ..suggestTouchesConfigured = true
+          ..failSuggestion = BacklogApiException(409, 'unavailable', 'touches.suggest failed with exit code 1'),
+      );
+      await _tap(tester, _key('suggest-touches'));
+      expect(find.textContaining('touches.suggest failed'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(api.updates, isEmpty);
     });
   });
 

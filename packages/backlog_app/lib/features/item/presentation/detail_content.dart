@@ -17,6 +17,7 @@ import 'ask_text.dart';
 import 'attachments_section.dart';
 import 'detail_relations.dart';
 import 'history_section.dart';
+import 'touches_suggestion_dialog.dart';
 
 /// The scrolling part of the detail: title, state, fields, children,
 /// relations and the Markdown body, all editable.
@@ -641,8 +642,9 @@ class _Labels extends StatelessWidget {
   );
 }
 
-/// Paths and globs the work changes, as removable monospace chips, and a
-/// chip that adds more.
+/// Paths and globs the work changes, as removable monospace chips, a chip
+/// that adds more and, with `touches.suggest`, one that asks a model for
+/// them (a person confirms the suggestion before it is added).
 class _Touches extends StatelessWidget {
   const _Touches({required this.item, required this.controller});
 
@@ -677,6 +679,27 @@ class _Touches extends StatelessWidget {
           }
         },
       ),
+      if (controller.workflow?.suggestTouches ?? false)
+        ActionChip(
+          key: const ValueKey('suggest-touches'),
+          avatar: controller.suggestingTouches
+              ? const SizedBox.square(dimension: 12, child: CircularProgressIndicator(strokeWidth: 1.5))
+              : const Icon(Icons.auto_awesome_outlined, size: 14),
+          label: const Text('Suggest'),
+          tooltip: 'Ask a model which files this work changes (touches.suggest); you confirm before anything is added',
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          onPressed: controller.suggestingTouches
+              ? null
+              : () async {
+                  final suggestion = await controller.suggestTouches();
+                  if (suggestion == null || !context.mounted) return;
+                  final paths = await confirmTouches(context, suggestion, item.touches);
+                  if (paths != null && paths.isNotEmpty) {
+                    await controller.change([ItemUpdateRequest.add('touches', paths.join(','))]);
+                  }
+                },
+        ),
     ],
   );
 }

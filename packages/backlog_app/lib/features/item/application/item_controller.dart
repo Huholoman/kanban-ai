@@ -36,6 +36,9 @@ class ItemController extends ChangeNotifier {
 
   /// True while a change is being saved.
   bool busy = false;
+
+  /// True while a model estimates the item's touches ([suggestTouches]).
+  bool suggestingTouches = false;
   Object? error;
 
   /// The History tab is shown instead of the comments.
@@ -161,6 +164,23 @@ class ItemController extends ChangeNotifier {
   Future<bool> change(List<String> changes) => _run(() => _api.updateItem(_id, ItemUpdateRequest(changes: changes)));
 
   Future<bool> set(String field, Object? value) => change([ItemUpdateRequest.set(field, value)]);
+
+  /// A model's estimate of the item's touches (`touches.suggest`), for a
+  /// person to confirm before it is saved; null when it failed (a notice
+  /// says why).
+  Future<TouchesSuggestionDto?> suggestTouches() async {
+    suggestingTouches = true;
+    notifyListeners();
+    try {
+      return await _api.suggestTouches(_id);
+    } catch (e) {
+      _notices.add('$e');
+      return null;
+    } finally {
+      suggestingTouches = false;
+      notifyListeners();
+    }
+  }
 
   Future<bool> saveBody(String body) => _run(() => _api.updateItem(_id, ItemUpdateRequest(body: body)));
 
