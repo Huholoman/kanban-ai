@@ -349,6 +349,16 @@ The hierarchy comes from `parent`. The type is just a label, so you can define y
 
 **Touches** are paths or globs in the code repository (relative to its root) that the work will change: `lib/payments/` (a folder and everything in it), `lib/**/*.dart`, `pubspec.yaml`, `{lib,test}/payments/`. Two items overlap when some file could match both; matching errs on the side of an overlap (a pattern also covers what is below it, as in `.gitignore`, unless its last part looks like a file name such as `*.dart`). `lint` warns about malformed patterns and ones that cover the whole repository.
 
+**Estimated touches:** a cheap or local model can suggest them. Configure the command that answers a prompt on its standard input (or as `{prompt}`) with paths on its standard output:
+
+```yaml
+touches:
+  suggest: llm -m gpt-4o-mini     # or: [ollama, run, qwen2.5-coder], claude -p --model haiku, …
+  # repo: ../monorepo             # default: dispatcher.repo, else the first worktree, else the backlog folder
+```
+
+The model gets the item's title and description and a map of the repository (its files on the base branch, collapsed into folders beyond 600). `backlog suggest-touches MA-7f3a` prints its suggestion — entries that are malformed, cover the whole repository or point to no existing folder are left out, with the reason — and saves nothing; `--add` or `--replace` saves it.
+
 Files may be edited by hand. When the tool writes a file, it keeps comments, key order and unknown keys and changes only what changed, so git diffs stay small. Ids can be shortened: `7f3a` or `MA-7f` is enough when unambiguous.
 
 **The discussion** is the last section, `## Discussion`, written by `backlog comment` / `backlog ask` (and the board): one `### <author> · <date time> UTC` heading per comment, ` · question` for a question that waits for a person, ` · note` for a note, ` · review ok` / ` · review changes @<commit>` for a review (its numbered list items are its findings). It is plain Markdown, so it can be read and edited by hand (seconds and `UTC` may be left out); a comment ends at the next comment heading, the section at the next `#`/`##` heading.
@@ -587,6 +597,7 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `list [-w field=a,b] [-s] [-m] [-l] [-t] [--all]` | list items (without finished ones) |
 | `show <id>`, `path <id>` | details, path of the file |
 | `archive [<id>…] [--older-than 30] [--dry-run]`, `archive --restore <id>…` | move finished items (the named ones, else those unchanged for 30 days) to `archive/` so that `items/` stays small; they are still found by id, references and history keep working, and one that becomes unfinished moves back |
+| `suggest-touches <id> [--add \| --replace]` | a model's estimate of the item's touches (`touches.suggest`); saved only with `--add`/`--replace` |
 | `set <id> status=review labels+=x touches+=lib/a/ depends_on-=MA-1 milestone=` | edit fields (`=` sets, `+=`/`-=` for lists, empty clears) |
 | `attach <id> [<file>… \| --text "…"] [--name n] [--replace]`, `detach <id> <name>…` | attach files or a text to an item (stored next to its file, which becomes a folder); without files list them with their paths; `--export` copies them into `.kanban-ai/attachments/<id>/` here (the dispatcher does so in an agent's worktree before it starts); `detach` deletes them |
 | `describe <id> --file f [--section "Acceptance criteria"]` | replace the description above `## Discussion` (or only one `##` section) without editing the file; the discussion stays — how agents update what their item asks for |

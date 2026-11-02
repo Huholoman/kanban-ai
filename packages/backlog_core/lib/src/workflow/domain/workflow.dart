@@ -2,6 +2,7 @@ import '../../shared/errors.dart';
 import 'action_definition.dart';
 import 'appearance.dart';
 import 'dispatcher_config.dart';
+import 'touches_config.dart';
 
 /// What a status means for planning, independently of its name.
 enum StatusCategory {
@@ -54,6 +55,7 @@ final class Workflow {
     Duration claimLease = const Duration(hours: 4),
     Appearance appearance = Appearance.none,
     DispatcherConfig? dispatcher,
+    TouchesConfig? touches,
     BacklogGit git = BacklogGit.standard,
     bool persistentItemCache = false,
   }) {
@@ -105,6 +107,7 @@ final class Workflow {
       claimLease: claimLease,
       appearance: appearance,
       dispatcher: dispatcher,
+      touches: touches,
       git: git,
       persistentItemCache: persistentItemCache,
     );
@@ -123,6 +126,7 @@ final class Workflow {
     required this.claimLease,
     required this.appearance,
     required this.dispatcher,
+    required this.touches,
     required this.git,
     required this.persistentItemCache,
   });
@@ -166,6 +170,10 @@ final class Workflow {
   /// Who starts agents on ready work; null when `backlog.yaml` has no
   /// `dispatcher` section (the dispatcher is off).
   final DispatcherConfig? dispatcher;
+
+  /// How `touches` are estimated (`touches.suggest`); null when
+  /// `backlog.yaml` has no `touches` section (no estimates).
+  final TouchesConfig? touches;
 
   /// How the server keeps the backlog's own git repository (`git`).
   final BacklogGit git;

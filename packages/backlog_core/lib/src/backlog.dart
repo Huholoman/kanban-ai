@@ -11,8 +11,11 @@ import 'infrastructure/backlog_layout.dart';
 import 'items/application/item_service.dart';
 import 'items/domain/item_id.dart';
 import 'planning/application/planning_service.dart';
+import 'planning/application/touches_estimator.dart';
+import 'planning/infrastructure/command_touches_model.dart';
 import 'planning/infrastructure/git_branch_changes.dart';
 import 'planning/infrastructure/git_branch_heads.dart';
+import 'planning/infrastructure/git_repo_files.dart';
 import 'presets/domain/init_preset.dart';
 import 'presets/infrastructure/built_in_presets.dart';
 import 'shared/clock.dart';
@@ -45,6 +48,7 @@ final class Backlog {
     required this.claims,
     required this.views,
     required this.linter,
+    required this.touches,
   });
 
   /// Opens the backlog folder at [root] ([FileBacklogStorage]). With
@@ -91,6 +95,10 @@ final class Backlog {
       ids: ids ?? RandomIdGenerator(prefix: workflow.idPrefix, length: workflow.idLength),
       clock: clock,
     );
+    final touches = workflow.touches;
+    final codeRepositories = touches?.repo == null
+        ? repositories
+        : [p.normalize(p.isAbsolute(touches!.repo!) ? touches.repo! : p.join(root, touches.repo!))];
     return Backlog._(
       storage: storage,
       configuration: configuration,
@@ -117,6 +125,13 @@ final class Backlog {
         directoryExists: (path) => Directory(path).exists(),
         programExists: programOnPath,
       ),
+      touches: touches == null
+          ? null
+          : TouchesEstimator(
+              items: items,
+              files: GitRepoFiles(codeRepositories, base: dispatcher?.base ?? 'main'),
+              model: CommandTouchesModel(touches, backlog: p.absolute(root), candidates: codeRepositories),
+            ),
     );
   }
 
@@ -238,6 +253,10 @@ final class Backlog {
   final ClaimService claims;
   final ViewService views;
   final Linter linter;
+
+  /// Suggests the `touches` of items (`touches.suggest`); null when
+  /// `backlog.yaml` configures no estimate.
+  final TouchesEstimator? touches;
 
   /// The folder the backlog belongs to (see [BacklogStorage.root]).
   String get root => storage.root;

@@ -454,6 +454,75 @@ final class SetCommand extends BacklogCommand {
   }
 }
 
+/// `backlog suggest-touches <id> [--add | --replace]`: asks the model of
+/// `touches.suggest` which files the item will change; saves the
+/// suggestion only when told to.
+final class SuggestTouchesCommand extends BacklogCommand {
+  SuggestTouchesCommand(super.context) {
+    argParser
+      ..addFlag('add', negatable: false, help: 'Add the suggestion to the item\'s touches.')
+      ..addFlag('replace', negatable: false, help: 'Replace the item\'s touches by the suggestion.');
+  }
+
+  @override
+  String get name => 'suggest-touches';
+
+  @override
+  String get description =>
+      'Estimate the item\'s touches from its description and the files of the code repository (touches.suggest in '
+      'backlog.yaml, e.g. a cheap or local model). Prints the suggestion; --add or --replace saves it.';
+
+  @override
+  String get invocation => 'backlog suggest-touches <id> [--add | --replace]';
+
+  @override
+  Future<int> run() async {
+    final reference = singleArgument('item id');
+    final add = args.flag('add'), replace = args.flag('replace');
+    if (add && replace) throw UsageException('Give --add or --replace, not both.', usage);
+    final backlog = await openBacklog();
+    final estimator =
+        backlog.touches ??
+        (throw const ConfigurationException('backlog.yaml has no touches.suggest: nothing to estimate touches with.'));
+    final estimate = await estimator.estimate(reference);
+    var item = estimate.item;
+    final save = (add || replace) && (replace || estimate.touches.isNotEmpty);
+    if (save) {
+      final change = FieldChange('touches', replace ? ChangeOp.set : ChangeOp.add, estimate.touches.join(','));
+      item = await backlog.items.update(item.id.value, [change]);
+    }
+    if (json) {
+      emitJson({
+        'id': '${item.id}',
+        'suggested': estimate.touches,
+        'rejected': [
+          for (final rejected in estimate.rejected) {'entry': rejected.entry, 'reason': rejected.reason},
+        ],
+        'saved': save,
+        'touches': item.touches,
+      });
+      return 0;
+    }
+    if (estimate.touches.isEmpty) {
+      line('No touches suggested for ${item.id}.');
+    } else {
+      line(
+        save
+            ? '${replace ? 'Replaced' : 'Added to'} the touches of ${item.id}:'
+            : 'Suggested touches for ${item.id} (not saved; --add or --replace saves them):',
+      );
+      for (final entry in estimate.touches) {
+        line('  $entry');
+      }
+    }
+    for (final rejected in estimate.rejected) {
+      line('left out: ${rejected.entry} (${rejected.reason})');
+    }
+    if (save) line('touches: ${item.touches.isEmpty ? '(none)' : item.touches.join(', ')}');
+    return 0;
+  }
+}
+
 /// `backlog describe <id> (<text…> | --file f) [--section name]`: replaces
 /// the item's description or one of its sections without editing its file
 /// (agents cannot: it lies outside their worktree).

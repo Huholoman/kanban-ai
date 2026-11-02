@@ -6,6 +6,7 @@ import '../domain/appearance.dart';
 import '../domain/dispatcher_config.dart';
 import '../domain/merge_config.dart';
 import '../domain/preview_config.dart';
+import '../domain/touches_config.dart';
 import '../domain/workflow.dart';
 
 /// Parses the `backlog.yaml` format into a [Workflow].
@@ -76,6 +77,7 @@ Workflow parseWorkflowYaml(String source, {String origin = 'backlog.yaml'}) {
     claimLease: leaseMinutes == null ? standard.claimLease : Duration(minutes: leaseMinutes as int),
     appearance: _appearance(document['appearance'], origin),
     dispatcher: _dispatcher(document['dispatcher'], origin),
+    touches: _touches(document['touches'], origin),
     git: _git(document['git'], origin),
     persistentItemCache: _cacheItems(document['cache'], origin),
   );
@@ -90,6 +92,28 @@ bool _cacheItems(Object? node, String origin) {
   final items = yaml['items'];
   if (items != null && items is! bool) throw ConfigurationException('$origin: cache.items must be true or false.');
   return items == true;
+}
+
+/// `touches`: the `suggest` command, optional `repo` and `timeout`
+/// (seconds); null without it.
+TouchesConfig? _touches(Object? node, String origin) {
+  if (node == null) return null;
+  final yaml = _map(node, 'touches', origin);
+  const known = ['suggest', 'repo', 'timeout'];
+  for (final key in yaml.keys) {
+    if (!known.contains(key)) {
+      throw ConfigurationException('$origin: unknown key "touches.$key" (expected ${known.join(', ')}).');
+    }
+  }
+  final timeout = yaml['timeout'];
+  if (timeout != null && timeout is! int) throw ConfigurationException('$origin: touches.timeout must be an integer.');
+  return TouchesConfig(
+    suggest:
+        _template(yaml['suggest'], 'touches.suggest', TouchesConfig.placeholders, origin) ??
+        (throw ConfigurationException('$origin: touches.suggest is required.')),
+    repo: yaml['repo'] == null ? null : _string(yaml['repo'], 'touches.repo', origin),
+    timeout: Duration(seconds: (timeout as int?) ?? 120),
+  );
 }
 
 BacklogGit _git(Object? node, String origin) {
