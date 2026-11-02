@@ -73,6 +73,8 @@ final class ApiHandler {
           ..get('$views/<id>', _view)
           ..patch('$views/<id>', _updateView)
           ..get(local(ApiPaths.lint), _lint)
+          ..get('/dispatch/profiles', _agentProfiles)
+          ..put('/dispatch/profiles', _saveAgentProfiles)
           ..get(local(ApiPaths.dispatch), _dispatch)
           ..post(local(ApiPaths.dispatchStart), _startAgent)
           ..post(local(ApiPaths.dispatchStop), _stopAgent)
@@ -82,6 +84,41 @@ final class ApiHandler {
           ..get('${local(ApiPaths.dispatch)}/log/<ref>', _agentLog)
           ..get('${local(ApiPaths.dispatch)}/log/<ref>/live', _agentLogLive);
     return _guard(router.call);
+  }
+
+  Future<Response> _agentProfiles(Request request) async {
+    final config = (await _host.backlog).workflow.dispatcher;
+    return _json({
+      'agent': config?.agent.name,
+      'profiles': {
+        for (final entry in (config?.profiles ?? AgentProfile.builtIns).entries)
+          entry.key: {'command': entry.value.command.arguments, 'output': entry.value.output.id},
+      },
+    });
+  }
+
+  Future<Response> _saveAgentProfiles(Request request) async {
+    final body = await _body(request);
+    final editor = projectConfigEditor(_host.root);
+    final draft = await editor.open();
+    if (draft.valueAt(['dispatcher']) == null) {
+      throw const InvalidInputException('Configure the dispatcher first.');
+    }
+    if (body['profile'] case final Map<String, dynamic> profile) {
+      final name = profile['name'];
+      if (name is! String || !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(name)) {
+        throw const InvalidInputException('Invalid profile name.');
+      }
+      draft.set(['dispatcher', 'agents', name, 'command'], profile['command']);
+      draft.set(['dispatcher', 'agents', name, 'output'], profile['output'] ?? 'text');
+    }
+    if (body['agent'] case final String agent) {
+      DispatcherSettings(draft).setAgent(agent);
+      draft.remove(['dispatcher', 'command']);
+    }
+    await editor.save(draft);
+    _host.reload();
+    return _json({'saved': true});
   }
 
   Future<Response> _workflow(Request request) async => _json(DtoMapper.workflow((await _host.backlog).workflow));

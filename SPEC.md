@@ -702,3 +702,7 @@ Development: `mise run check` (format check, analysis, all tests; the Dart packa
 - `kanban-ai config` has no pages for the dispatcher's agent profiles, prompts, actions, pull requests and merging; those are edited key by key with *Edit a value…*.
 - The theme switch is not remembered across page reloads.
 - The server's item cache (§8) still `stat`s every item file per request; very large backlogs pay for that, and without `cache.items` the CLI parses every file on each run.
+
+### Agent profiles on the web board
+
+The Agents panel lists built-in and project profiles, including Codex. Select a profile to persist `dispatcher.agent` for subsequent runs. The + button defines and selects a custom profile with a name, command (use `{prompt}`), and output format. Configuration is validated before saving; running agents continue with their original profile. Existing sessions may still resume with their original agent.

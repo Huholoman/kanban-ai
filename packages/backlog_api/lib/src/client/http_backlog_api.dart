@@ -44,6 +44,14 @@ final class HttpBacklogApi implements BacklogApi {
   final SocketConnector _connectSocket;
 
   @override
+  Future<Map<String, dynamic>> agentProfiles() async => asJson(await _get('/api/dispatch/profiles'));
+
+  @override
+  Future<void> saveAgentProfiles(Map<String, dynamic> settings) async {
+    await _send('PUT', '/api/dispatch/profiles', settings);
+  }
+
+  @override
   Future<WorkflowDto> workflow() async => WorkflowDto.fromJson(asJson(await _get(ApiPaths.workflow)));
 
   @override

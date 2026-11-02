@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
+import 'agent_profiles.dart';
 import 'dispatch_scope.dart';
 
 /// The dispatcher in the navigation: mode and load, each worktree with what
@@ -34,6 +35,7 @@ class DispatchOverview extends StatelessWidget {
           'Agents · ${plan.mode} · ${plan.running}/${plan.maxAgents}'
           '${plan.maxWorktrees == null ? '' : ' · ${plan.worktrees.where((w) => !w.isNew).length}/${plan.maxWorktrees} worktrees'}',
         ),
+        AgentProfiles(dispatch: dispatch),
         for (final worktree in plan.worktrees) _WorktreeRow(worktree: worktree, onOpenItem: onOpenItem),
         for (final assignment in plan.assignments)
           _Row(
