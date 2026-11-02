@@ -54,6 +54,19 @@ void main() {
     expect(commit.pushError, isNull);
     expect(await _git(root, ['status', '--porcelain', '--', ':(exclude).locks']), isEmpty);
     expect(await _git(root, ['log', '-1', '--format=%s']), '${commit.subject}\n');
+
+    await backlog.items.attach(first.id.value, 'shot.png', [1]);
+    await backlog.items.attach(first.id.value, 'log.txt', [1]);
+    expect(
+      (await commits.commit(ids: [first.id.value]))!.subject,
+      'Backlog: ${first.id} attached log.txt, attached shot.png',
+    );
+    await backlog.items.detach(first.id.value, 'shot.png');
+    await backlog.items.attach(first.id.value, 'log.txt', [2], replace: true);
+    expect(
+      (await commits.commit(ids: [first.id.value]))!.subject,
+      'Backlog: ${first.id} replaced log.txt, detached shot.png',
+    );
   });
 
   test('a backlog inside another repository is not committed', () async {
