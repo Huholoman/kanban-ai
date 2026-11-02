@@ -1,0 +1,8 @@
+tags:
+  # The suites in test/processes, which start many real processes (git, fake
+  # agents). Under the default compiler every suite is an isolate of the one
+  # big test runner process, and each process started forks all of it (about
+  # 15 ms of system time each); an executable per suite forks cheaply. So
+  # `mise run check` runs `dart test -x processes` and, alongside,
+  # `dart test --compiler exe test/processes`.
+  processes:

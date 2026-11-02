@@ -1,6 +1,7 @@
 // Real processes and git: slow when `mise run check` runs every suite at once.
 @Timeout(Duration(minutes: 2))
 @TestOn('linux || mac-os')
+@Tags(['processes'])
 library;
 
 import 'dart:convert';
@@ -10,7 +11,7 @@ import 'package:backlog_core/backlog_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-import 'support.dart';
+import '../support.dart';
 
 Future<String> _git(String dir, List<String> arguments) async {
   final result = await Process.run('git', arguments, workingDirectory: dir);
