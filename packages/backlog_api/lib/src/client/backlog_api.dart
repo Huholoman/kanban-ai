@@ -17,6 +17,9 @@ import '../model/workflow_dto.dart';
 abstract interface class BacklogApi {
   Future<WorkflowDto> workflow();
 
+  Future<Map<String, dynamic>> agentProfiles();
+  Future<void> saveAgentProfiles(Map<String, dynamic> settings);
+
   /// Items in the default order; finished ones only with [includeDone].
   Future<List<ItemDto>> items({bool includeDone = false});
 

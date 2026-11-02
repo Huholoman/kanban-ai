@@ -81,6 +81,10 @@ ItemDto item(
 /// In-memory [BacklogApi]: a kanban `board` grouped by status and a `list`
 /// view, edits recorded in [updates].
 final class FakeBacklogApi implements BacklogApi {
+  @override
+  Future<Map<String, dynamic>> agentProfiles() async => {'agent': 'claude', 'profiles': <String, dynamic>{}};
+  @override
+  Future<void> saveAgentProfiles(Map<String, dynamic> settings) async {}
   FakeBacklogApi(Iterable<ItemDto> items) : items_ = {for (final item in items) item.id: item};
 
   final Map<String, ItemDto> items_;

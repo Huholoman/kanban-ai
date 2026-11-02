@@ -30,6 +30,15 @@ class DispatchController extends ChangeNotifier {
 
   bool get configured => plan.configured;
 
+  Map<String, dynamic> profiles = const {};
+  String? selectedAgent;
+
+  Future<void> saveProfiles(Map<String, dynamic> settings) => _act('profiles', () async {
+    await _api.saveAgentProfiles(settings);
+    await load();
+    _notices.add('Agent settings saved. Applies to new runs.');
+  });
+
   Future<void> start() async {
     _changes ??= DebouncedChanges(
       _api,
@@ -43,6 +52,13 @@ class DispatchController extends ChangeNotifier {
   Future<void> load() async {
     try {
       plan = await _api.dispatch();
+      try {
+        final settings = await _api.agentProfiles();
+        profiles = Map<String, dynamic>.from(settings['profiles'] as Map);
+        selectedAgent = settings['agent'] as String?;
+      } on BacklogApiException {
+        profiles = const {};
+      }
     } on BacklogApiException {
       plan = DispatchDto.off; // an older server, or a broken backlog the board reports itself
     }

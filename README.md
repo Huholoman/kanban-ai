@@ -745,3 +745,7 @@ That is 95 tests in total. After changing a `pubspec.lock`, just run `nix build`
 - [ ] server: commit/push from the UI, real users instead of a shared token, several people (database adapters)
 - [x] an MCP server over the core (`/mcp` of `kanban-ai-server`), for clients without a shell
 - [ ] `kanban-ai mcp` over stdio for local MCP clients without the server
+
+### Agent profiles on the web board
+
+The Agents panel lists built-in and project profiles, including Codex. Select a profile to persist `dispatcher.agent` for subsequent runs. The + button defines and selects a custom profile with a name, command (use `{prompt}`), and output format. Configuration is validated before saving; running agents continue with their original profile. Existing sessions may still resume with their original agent.

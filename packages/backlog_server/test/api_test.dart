@@ -52,6 +52,30 @@ void main() {
   Matcher apiError(int status, String type) =>
       isA<BacklogApiException>().having((e) => e.statusCode, 'statusCode', status).having((e) => e.type, 'type', type);
 
+  test('agent profiles persist, select built-ins and reject invalid updates', () async {
+    final file = File(p.join(dir.path, 'backlog.yaml'));
+    await file.writeAsString('${await file.readAsString()}\ndispatcher:\n  worktrees: [worker]\n  agent: claude\n');
+    api = client();
+    expect((await api.agentProfiles())['profiles'], contains('codex'));
+    await api.saveAgentProfiles({'agent': 'codex'});
+    expect((await api.agentProfiles())['agent'], 'codex');
+    await api.saveAgentProfiles({
+      'profile': {'name': 'custom', 'command': 'custom-agent {prompt}', 'output': 'text'},
+      'agent': 'custom',
+    });
+    expect((await api.agentProfiles())['agent'], 'custom');
+    final saved = await file.readAsString();
+    await expectLater(api.saveAgentProfiles({'agent': 'missing'}), throwsA(apiError(400, 'invalid_input')));
+    expect(await file.readAsString(), saved);
+    await expectLater(
+      api.saveAgentProfiles({
+        'profile': {'name': 'bad', 'command': 'agent {unknown}'},
+      }),
+      throwsA(isA<BacklogApiException>()),
+    );
+    expect(await file.readAsString(), saved);
+  });
+
   test('workflow describes the allowed values', () async {
     final workflow = await api.workflow();
     expect(workflow.statuses.map((s) => s.id), contains('in-progress'));
