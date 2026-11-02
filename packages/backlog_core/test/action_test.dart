@@ -249,6 +249,7 @@ dispatcher:
       expect(inWorktree.worktree, 'w2');
       expect(inWorktree.path, '/work/w2');
       expect(inWorktree.command, ['sh', '-c', 'check T-1 7 in w2']);
+      expect(inWorktree.environment, containsPair('KANBAN_AI_AGENT', 'w2'));
       expect(inWorktree.environment, containsPair('BACKLOG_AGENT', 'w2'));
       expect(inWorktree.environment, containsPair('KANBAN_AI_ACTION', 'Tests'));
       expect(inWorktree.environment, containsPair('GIT_EDITOR', 'true'));

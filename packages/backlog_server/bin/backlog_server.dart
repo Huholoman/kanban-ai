@@ -11,19 +11,19 @@ Future<void> main(List<String> arguments) async {
       'config',
       valueHelp: 'file',
       help:
-          'Server settings (or BACKLOG_SERVER_CONFIG; default: \$XDG_CONFIG_HOME/kanban-ai/server.yaml when it '
+          'Server settings (or KANBAN_AI_SERVER_CONFIG; default: \$XDG_CONFIG_HOME/kanban-ai/server.yaml when it '
           'exists); options and the environment win over them.',
     )
     ..addOption(
       'dir',
       abbr: 'C',
-      help: 'Serve only this backlog folder (or BACKLOG_DIR), ignoring the project registry.',
+      help: 'Serve only this backlog folder (or KANBAN_AI_DIR), ignoring the project registry.',
     )
     ..addOption(
       'projects',
       valueHelp: 'file',
       help:
-          'Project registry to serve (or BACKLOG_PROJECTS; default: \$XDG_CONFIG_HOME/kanban-ai/projects.yaml '
+          'Project registry to serve (or KANBAN_AI_PROJECTS; default: \$XDG_CONFIG_HOME/kanban-ai/projects.yaml '
           'when it exists, else the backlog found from the current folder).',
     )
     ..addMultiOption(
@@ -34,12 +34,12 @@ Future<void> main(List<String> arguments) async {
     ..addMultiOption(
       'allow',
       valueHelp: 'ip[/prefix]',
-      help: 'Answer only these clients (repeat or comma-separate, or BACKLOG_ALLOW); others get 403.',
+      help: 'Answer only these clients (repeat or comma-separate, or KANBAN_AI_ALLOW); others get 403.',
     )
     ..addOption('port', abbr: 'p', defaultsTo: '8640')
-    ..addOption('token', help: 'Require this token from clients (or BACKLOG_TOKEN).')
+    ..addOption('token', help: 'Require this token from clients (or KANBAN_AI_TOKEN).')
     ..addFlag('generate-token', negatable: false, help: 'Require a random token, printed at start.')
-    ..addOption('web', help: 'Built web app to serve (or BACKLOG_WEB; default: packages/backlog_app/build/web).')
+    ..addOption('web', help: 'Built web app to serve (or KANBAN_AI_WEB; default: packages/backlog_app/build/web).')
     ..addFlag('quiet', abbr: 'q', help: 'Do not log requests.')
     ..addFlag('help', abbr: 'h', negatable: false);
 
@@ -60,7 +60,7 @@ Future<void> main(List<String> arguments) async {
   }
 
   final environment = Platform.environment;
-  final configOption = options.option('config') ?? environment['BACKLOG_SERVER_CONFIG'];
+  final configOption = options.option('config') ?? toolVariable(environment, 'SERVER_CONFIG');
   final configFile = configOption == null || configOption.trim().isEmpty
       ? serverConfigFile(environment)
       : p.normalize(p.absolute(configOption));
@@ -84,10 +84,10 @@ Future<void> main(List<String> arguments) async {
   }
   // --dir beats --projects, options beat the environment, and the registry
   // beats the backlog found from the current folder.
-  final explicitDir = dirOption ?? (projectsOption == null ? environment['BACKLOG_DIR'] : null);
+  final explicitDir = dirOption ?? (projectsOption == null ? toolVariable(environment, 'DIR') : null);
   final explicitRegistry = explicitDir != null
       ? null
-      : projectsOption ?? environment['BACKLOG_PROJECTS'] ?? settings.projects;
+      : projectsOption ?? toolVariable(environment, 'PROJECTS') ?? settings.projects;
   String? root;
   String? projectsFile;
   if (explicitDir != null) {
@@ -117,10 +117,10 @@ Future<void> main(List<String> arguments) async {
   }
   final token = options.flag('generate-token')
       ? generateToken()
-      : options.option('token') ?? environment['BACKLOG_TOKEN'] ?? settings.token;
-  final webRoot = options.option('web') ?? environment['BACKLOG_WEB'] ?? settings.web ?? _defaultWebRoot();
+      : options.option('token') ?? toolVariable(environment, 'TOKEN') ?? settings.token;
+  final webRoot = options.option('web') ?? toolVariable(environment, 'WEB') ?? settings.web ?? _defaultWebRoot();
   final hosts = options.wasParsed('host') ? options.multiOption('host') : settings.hosts ?? const ['0.0.0.0'];
-  final allowedByEnvironment = (environment['BACKLOG_ALLOW'] ?? '').split(',').where((r) => r.trim().isNotEmpty);
+  final allowedByEnvironment = (toolVariable(environment, 'ALLOW') ?? '').split(',').where((r) => r.trim().isNotEmpty);
   final allowed = options.multiOption('allow').isNotEmpty
       ? options.multiOption('allow')
       : allowedByEnvironment.isNotEmpty

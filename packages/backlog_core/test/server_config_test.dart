@@ -63,7 +63,8 @@ projects: ~/projects.yaml
   test('the file lives next to the registry; a missing one is empty', () async {
     expect(serverConfigFile({'HOME': '/home/me'}), '/home/me/.config/kanban-ai/server.yaml');
     expect(serverConfigFile({'XDG_CONFIG_HOME': '/cfg', 'HOME': '/home/me'}), '/cfg/kanban-ai/server.yaml');
-    expect(serverConfigFile({'BACKLOG_SERVER_CONFIG': '/x/s.yaml'}), '/x/s.yaml');
+    expect(serverConfigFile({'KANBAN_AI_SERVER_CONFIG': '/x/s.yaml'}), '/x/s.yaml');
+    expect(serverConfigFile({'BACKLOG_SERVER_CONFIG': '/x/old.yaml'}), '/x/old.yaml');
     expect(serverConfigFile({}), isNull);
 
     final dir = await Directory.systemTemp.createTemp('server_config_');

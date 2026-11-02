@@ -398,7 +398,9 @@ dispatcher:
       expect(assignment.environment, {
         'GIT_EDITOR': 'vi', // the profile replaces the default
         'GIT_SEQUENCE_EDITOR': 'true', // git never waits for an editor nobody sees
+        'KANBAN_AI_AGENT': 'a',
         'BACKLOG_AGENT': 'a',
+        'KANBAN_AI_DIR': '/w/backlog',
         'BACKLOG_DIR': '/w/backlog',
         'MY_NAME': 'a-X-1',
       });

@@ -119,7 +119,7 @@ build_local() {
   # Like the Nix wrapper: the server serves its own web app unless told otherwise.
   cat >"$out/bin/backlog-server" <<EOF
 #!/bin/sh
-export BACKLOG_WEB="\${BACKLOG_WEB:-$out/web}"
+export KANBAN_AI_WEB="\${KANBAN_AI_WEB:-$out/web}"
 exec "$out/libexec/backlog-server" "\$@"
 EOF
   chmod +x "$out/bin/backlog-server"

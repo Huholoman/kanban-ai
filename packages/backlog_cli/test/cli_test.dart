@@ -97,7 +97,7 @@ void main() {
     final ready = await backlog(['--json', 'ready']);
     expect((ready.json! as List).map((i) => (i as Map)['id']), [first]);
 
-    final env = {'BACKLOG_AGENT': 'monorepo-3'};
+    final env = {'KANBAN_AI_AGENT': 'monorepo-3'};
     final next = await backlog(['--json', 'next'], env: env);
     expect(next.exitCode, 0, reason: '$next');
     final claimed = next.json! as Map;
@@ -137,7 +137,7 @@ void main() {
     expect((plan['members'] as List).map((m) => (m as Map)['id']), [first, second]);
     expect(((plan['members'] as List)[1] as Map)['after'], [first]);
 
-    final env = {'BACKLOG_AGENT': 'w1'};
+    final env = {'KANBAN_AI_AGENT': 'w1'};
     final next = await backlog(['epic', epic, '--next'], env: env);
     expect(next.exitCode, 0, reason: '$next');
     expect(next.out, contains('Claimed $first for w1, on the branch agent/$epic of $epic.'));
@@ -191,7 +191,7 @@ void main() {
     expect(text.out, contains('v0.2 0/1'));
     expect(text.out, contains('later 0/1'));
 
-    final env = {'BACKLOG_AGENT': 'w1'};
+    final env = {'KANBAN_AI_AGENT': 'w1'};
     expect((await backlog(['epic', epic, '-m', 'v0.2', '--next'], env: env)).exitCode, 0);
     expect((await backlog(['set', now, 'status=review'])).exitCode, 0);
     final none = await backlog(['epic', epic, '-m', 'v0.2', '--next'], env: env);
@@ -351,7 +351,7 @@ void main() {
   test('instructions are available for agents', () async {
     final run = await backlog(['instructions']);
     expect(run.out, contains('backlog next'));
-    expect(run.out, contains('BACKLOG_AGENT'));
+    expect(run.out, contains('KANBAN_AI_AGENT'));
     expect(run.out, contains('backlog check T-7f3a'));
   });
 
@@ -546,7 +546,7 @@ void main() {
     final explicit = p.join(workspace.path, 'elsewhere.yaml');
     expect((await backlog(['projects', 'add', '--projects', explicit], env: env)).exitCode, 0);
     expect(File(explicit).readAsStringSync(), contains('path: $backlogDir'));
-    expect((await backlog(['projects'], env: {...env, 'BACKLOG_PROJECTS': explicit})).out, contains(backlogDir));
+    expect((await backlog(['projects'], env: {...env, 'KANBAN_AI_PROJECTS': explicit})).out, contains(backlogDir));
   });
 
   group('init presets', () {
@@ -723,7 +723,7 @@ statuses: [{id: open, category: open, pickable: true}, {id: doing, category: act
 
   test('comment and ask write the discussion; a question makes the item need a person', () async {
     final id = await create('Export', ['-s', 'todo', '--body', '## Context\n\nExport it.\n']);
-    final agent = {'BACKLOG_AGENT': 'monorepo-2'};
+    final agent = {'KANBAN_AI_AGENT': 'monorepo-2'};
     final asked = await backlog(['ask', id, 'CSV', 'or JSON?'], env: agent);
     expect(asked.exitCode, 0, reason: '$asked');
     expect(asked.out, contains('it waits for a person now'));
@@ -774,7 +774,7 @@ statuses: [{id: open, category: open, pickable: true}, {id: doing, category: act
 
   test('comment and ask --file take a long, multi-line text from a file', () async {
     final id = await create('Export', ['-s', 'todo']);
-    final agent = {'BACKLOG_AGENT': 'monorepo-2'};
+    final agent = {'KANBAN_AI_AGENT': 'monorepo-2'};
     File(p.join(workspace.path, 'question.md')).writeAsStringSync('Two options:\n\n1. CSV\n2. JSON\n');
     final asked = await backlog(['ask', id, '--file', 'question.md'], env: agent);
     expect(asked.exitCode, 0, reason: '$asked');
@@ -792,7 +792,7 @@ statuses: [{id: open, category: open, pickable: true}, {id: doing, category: act
 
   test('describe replaces the description or one section; the discussion stays', () async {
     final id = await create('Export', ['-s', 'todo', '--body', 'Old.\n\n## Acceptance criteria\n\n- old']);
-    await backlog(['ask', id, 'CSV?'], env: {'BACKLOG_AGENT': 'monorepo-2'});
+    await backlog(['ask', id, 'CSV?'], env: {'KANBAN_AI_AGENT': 'monorepo-2'});
     File(p.join(workspace.path, 'criteria.md')).writeAsStringSync('- CSV with a header\n- UTF-8\n');
     final section = await backlog(['describe', id, '--section', 'Acceptance criteria', '--file', 'criteria.md']);
     expect(section.exitCode, 0, reason: '$section');
@@ -825,7 +825,7 @@ statuses: [{id: open, category: open, pickable: true}, {id: doing, category: act
 
   test('comment --note keeps an open question open', () async {
     final id = await create('Export', ['-s', 'todo']);
-    await backlog(['ask', id, 'CSV or JSON?'], env: {'BACKLOG_AGENT': 'monorepo-2'});
+    await backlog(['ask', id, 'CSV or JSON?'], env: {'KANBAN_AI_AGENT': 'monorepo-2'});
     final noted = await backlog(['comment', id, '--note', 'Thinking.', '--as', 'tobik']);
     expect(noted.exitCode, 0, reason: '$noted');
     expect(noted.out, contains('does not wake its agent or answer a question'));

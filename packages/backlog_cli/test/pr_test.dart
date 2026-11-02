@@ -23,7 +23,7 @@ void main() {
         out: out,
         err: err,
         cwd: repo,
-        environment: const {'BACKLOG_AGENT': 'repo'},
+        environment: const {'KANBAN_AI_AGENT': 'repo'},
         clock: clock,
         readInput: input == null ? null : () async => input,
       ),

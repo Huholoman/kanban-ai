@@ -14,7 +14,7 @@ final class ProjectsCommand extends BacklogCommand {
       ..addOption(
         'projects',
         valueHelp: 'file',
-        help: 'Registry file (default: \$BACKLOG_PROJECTS, else \$XDG_CONFIG_HOME/kanban-ai/projects.yaml).',
+        help: 'Registry file (default: \$KANBAN_AI_PROJECTS, else \$XDG_CONFIG_HOME/kanban-ai/projects.yaml).',
       )
       ..addOption('id', help: 'add: project id used in URLs (default: slug of the project folder).')
       ..addOption('name', help: 'add: display name (default: the project folder).');

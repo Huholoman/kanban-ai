@@ -94,6 +94,7 @@ void main() {
           arguments: arguments,
           environment: {
             'PATH': Platform.environment['PATH'] ?? '/usr/bin:/bin',
+            'KANBAN_AI_WEB': '/nix/store/old-web',
             'BACKLOG_WEB': '/nix/store/old-web',
             'KANBAN_AI_PREVIEW': 'old',
             'KEEP': 'yes',

@@ -73,6 +73,7 @@ export 'src/settings/infrastructure/dispatcher_preview.dart';
 export 'src/settings/infrastructure/doctor_checks.dart';
 export 'src/settings/infrastructure/file_config.dart';
 export 'src/shared/clock.dart';
+export 'src/shared/environment.dart';
 export 'src/shared/errors.dart';
 export 'src/storage/domain/backlog_storage.dart';
 export 'src/storage/domain/change_source.dart';

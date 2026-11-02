@@ -8,6 +8,7 @@ import '../../planning/domain/backlog_snapshot.dart';
 import '../../planning/domain/epic_plan.dart';
 import '../../planning/domain/planned_item.dart';
 import '../../planning/domain/review_state.dart';
+import '../../shared/environment.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/action_definition.dart';
 import '../../workflow/domain/dispatcher_config.dart';
@@ -436,8 +437,8 @@ final class DispatchAssignment {
       command: [...profile.command.render(full), if (session != null) ...profile.resume!.render(full)],
       environment: {
         ...headlessGit,
-        'BACKLOG_AGENT': worktree.name,
-        'BACKLOG_DIR': backlogRoot,
+        ...toolVariables('AGENT', worktree.name),
+        ...toolVariables('DIR', backlogRoot),
         for (final MapEntry(:key, :value) in profile.environment.entries) key: value.render(full),
       },
       branch: branch,
@@ -466,7 +467,7 @@ final class DispatchAssignment {
     'You are the coding agent {worktree} on the epic {id} ("{title}") in this git worktree, on its branch {branch} '
     '(commit there and do not switch branches). Every item of the epic is implemented already (handed over or '
     'done): take no items (never run `backlog epic {id} --next`) and change no status of the epic or its items. '
-    'The epic is claimed for you (BACKLOG_AGENT={worktree}).\n'
+    'The epic is claimed for you (KANBAN_AI_AGENT={worktree}).\n'
     '{context}\n\n'
     'Do what the new comments ask for, on {branch}. If they only ask you something, answer with '
     '`backlog comment {id} "…"` and stop. Typically a merge of the epic failed (conflicts, checks) and its comment '
@@ -498,7 +499,7 @@ final class DispatchAssignment {
   static final epicFrame = TextTemplate(
     'You are the coding agent {worktree}, implementing the epic {id} ("{title}") in this git worktree: {items}, '
     'one after another, in this one session and on the one branch {branch} (commit there and do not switch '
-    'branches). The epic is claimed for you (BACKLOG_AGENT={worktree}); take no items outside it.\n'
+    'branches). The epic is claimed for you (KANBAN_AI_AGENT={worktree}); take no items outside it.\n'
     '{context}\n\n'
     '1. Run `backlog epic {id}{scope} --next`. It claims the next item of the epic for you (the one you have in '
     'progress, else the first that can start), puts it on {branch} and shows it. `backlog epic {id}{scope}` shows '
@@ -526,7 +527,7 @@ final class DispatchAssignment {
   /// again (which reviews it again) and stop; the talking and running rules follow.
   static final fixFrame = TextTemplate(
     'You are the agent {worktree} on backlog item {id} ("{title}") in this git worktree, on branch {branch}. The '
-    'item is claimed for you (BACKLOG_AGENT={worktree}) and shows as in progress while you work (it was '
+    'item is claimed for you (KANBAN_AI_AGENT={worktree}) and shows as in progress while you work (it was '
     '{status}).\n'
     '{context}\n\n'
     'An AI review of your work asks for changes (automatic fix round {round} of {rounds}). Fix its findings '
@@ -560,7 +561,7 @@ final class DispatchAssignment {
   /// else — and always for a review — never push).
   static final actionFrame = TextTemplate(
     'You are the agent {worktree}, started for the action "{action}" on backlog item {id} ("{title}") in this '
-    'git worktree, on branch {branch}. The item is claimed for you (BACKLOG_AGENT={worktree}) only while the '
+    'git worktree, on branch {branch}. The item is claimed for you (KANBAN_AI_AGENT={worktree}) only while the '
     'action runs; {state}, and you take no other items.\n'
     '{context}\n\n'
     'The action:\n{task}\n\n'
@@ -593,8 +594,8 @@ final class DispatchAssignment {
   final List<String> command;
 
   /// Set for the agent on top of the server's environment: [headlessGit],
-  /// `BACKLOG_AGENT` (the worktree name), `BACKLOG_DIR` (the backlog folder)
-  /// and the profile's `env` (which may replace any of them).
+  /// `KANBAN_AI_AGENT` (the worktree name), `KANBAN_AI_DIR` (the backlog folder),
+  /// each also under its older name `BACKLOG_…`, and the profile's `env` (which may replace any of them).
   final Map<String, String> environment;
 
   /// Git never opens an editor for agents and action commands, which nobody
@@ -1254,8 +1255,8 @@ final class DispatchPlan {
         command: action.command?.render(values),
         environment: {
           ...DispatchAssignment.headlessGit,
-          'BACKLOG_DIR': backlogRoot,
-          'BACKLOG_AGENT': ?home?.name,
+          ...toolVariables('DIR', backlogRoot),
+          if (home != null) ...toolVariables('AGENT', home.name),
           'KANBAN_AI_ITEM': id.value,
           'KANBAN_AI_ACTION': action.name,
         },

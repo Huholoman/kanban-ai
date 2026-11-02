@@ -10,7 +10,7 @@ import 'backlog_command.dart';
 /// discussion why it could not).
 final class ActionCommand extends BacklogCommand {
   ActionCommand(super.context) {
-    argParser.addOption('as', help: 'Who asks (default: \$BACKLOG_AGENT, else \$USER).', valueHelp: 'name');
+    argParser.addOption('as', help: 'Who asks (default: \$KANBAN_AI_AGENT, else \$USER).', valueHelp: 'name');
   }
 
   @override
@@ -82,7 +82,7 @@ final class ActionCommand extends BacklogCommand {
     if (!action.offeredIn(status)) {
       throw InvalidInputException('The action "${action.name}" is not offered for items in $status.');
     }
-    final by = args.option('as') ?? context.environment['BACKLOG_AGENT'] ?? context.environment['USER'];
+    final by = args.option('as') ?? toolVariable(context.environment, 'AGENT') ?? context.environment['USER'];
     await backlog.actionRequests.add(
       ActionRequest(item: planned.id.value, action: action.name, at: context.clock.now(), by: by),
     );

@@ -89,7 +89,7 @@ Future<Screen> _globalScreen(ConfigLocations locations) async {
         'Server',
         detail: switch (locations.serverFile) {
           final file? => 'addresses, port, allowed clients, token of backlog-server: $file',
-          null => 'no location: set HOME or BACKLOG_SERVER_CONFIG',
+          null => 'no location: set HOME or KANBAN_AI_SERVER_CONFIG',
         },
         enabled: locations.serverFile != null,
         onSelect: (_) => Navigator.task(() async {

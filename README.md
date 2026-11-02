@@ -89,7 +89,7 @@ The `kanban-ai` package contains `backlog` and `backlog-server`. The web app (`p
             user = "me";                           # needs write access to the backlog folder
             host = [ "127.0.0.1" "10.77.1.2" ];    # default 127.0.0.1; 0.0.0.0 = everywhere
             allow = [ "127.0.0.1" "10.77.0.0/16" ];  # optional client allowlist
-            tokenFile = "/run/secrets/kanban-ai";  # contains BACKLOG_TOKEN=…
+            tokenFile = "/run/secrets/kanban-ai";  # contains KANBAN_AI_TOKEN=…
             openFirewall = true;
           };
         }
@@ -124,7 +124,7 @@ dart pub get
 dart compile exe packages/backlog_cli/bin/backlog.dart -o ~/.local/bin/backlog
 dart compile exe packages/backlog_server/bin/backlog_server.dart -o ~/.local/bin/backlog-server
 (cd packages/backlog_app && flutter pub get && flutter build web --no-web-resources-cdn --pwa-strategy=none && tool/precompress.sh)
-# the server looks for the app in packages/backlog_app/build/web; otherwise --web <dir> or BACKLOG_WEB
+# the server looks for the app in packages/backlog_app/build/web; otherwise --web <dir> or KANBAN_AI_WEB
 ```
 
 ## Quick start
@@ -144,7 +144,7 @@ backlog view board
 backlog-server --token secret          # prints its URLs, e.g. http://192.168.1.10:8640/?token=secret
 ```
 
-The backlog is found by walking up from the current folder, looking for `backlog.yaml` or a `backlog/backlog.yaml` subfolder. An agent in `myapp/monorepo-3/src/…` therefore finds `myapp/backlog/` without any configuration. Otherwise use `-C <dir>` or `BACKLOG_DIR`.
+The backlog is found by walking up from the current folder, looking for `backlog.yaml` or a `backlog/backlog.yaml` subfolder. An agent in `myapp/monorepo-3/src/…` therefore finds `myapp/backlog/` without any configuration. Otherwise use `-C <dir>` or `KANBAN_AI_DIR`.
 
 **Why a separate repository, outside the code:** worktrees are on different branches. A backlog inside the code repository would differ per branch, and agents would not see each other's claims.
 
@@ -166,7 +166,7 @@ Add this to the project's `CLAUDE.md` (or `AGENTS.md`):
 ## Backlog
 Tasks live in ../backlog and are managed with the `backlog` CLI. At the start of a session
 run `backlog instructions` and follow them. Use the name of your worktree as the agent name
-(`export BACKLOG_AGENT=$(basename $(git rev-parse --show-toplevel))`).
+(`export KANBAN_AI_AGENT=$(basename $(git rev-parse --show-toplevel))`).
 ```
 
 `backlog instructions` prints the full guide. In short:
@@ -196,7 +196,7 @@ backlog lint                    # before ending the session
 
 **Ready** means the status is `pickable` (`todo` by default), all `depends_on` items are done, there are no open children, nobody holds a claim, the item's `touches` do not overlap an item in progress, and no question in it waits for a person.
 
-**Discussion:** `backlog comment <id> "text"` and `backlog ask <id> "question"` append to a `## Discussion` section at the end of the item's body (author = `--as`, `BACKLOG_AGENT` or `$USER`; text `-` reads stdin). A question that nobody else has answered yet makes the item **need a person** (`needs_human`): it is not ready, so `next` and the dispatcher skip it, until someone answers with a comment. `backlog comment --note` adds only a note: it answers no question and does not wake the item's agent (see *Talking to the agent*). `backlog review <id> --ok "…"` / `--changes "…"` records the verdict of a review (by an AI review agent or a person) the same way, naming the reviewed commit of the item's branch. `backlog list -w needs_human=true` lists them; `show` says `NEEDS A PERSON`. When a discussion changes what the item asks for, the description or acceptance criteria above `## Discussion` are updated and the comments stay as the history.
+**Discussion:** `backlog comment <id> "text"` and `backlog ask <id> "question"` append to a `## Discussion` section at the end of the item's body (author = `--as`, `KANBAN_AI_AGENT` or `$USER`; text `-` reads stdin). A question that nobody else has answered yet makes the item **need a person** (`needs_human`): it is not ready, so `next` and the dispatcher skip it, until someone answers with a comment. `backlog comment --note` adds only a note: it answers no question and does not wake the item's agent (see *Talking to the agent*). `backlog review <id> --ok "…"` / `--changes "…"` records the verdict of a review (by an AI review agent or a person) the same way, naming the reviewed commit of the item's branch. `backlog list -w needs_human=true` lists them; `show` says `NEEDS A PERSON`. When a discussion changes what the item asks for, the description or acceptance criteria above `## Discussion` are updated and the comments stay as the history.
 
 **The backlog commits itself:** agents never commit the backlog (its own git repository, outside their worktrees). The server does — after a quiet half minute and right after each agent run — one commit naming the items and what happened (`Backlog: KA-7f3a status review, comment by wt-2; KA-9k2d new`), when the backlog folder is the top of its own repository. `git: {commit: off}` in `backlog.yaml` turns it off, `git: {push: true}` pushes each commit.
 
@@ -214,7 +214,7 @@ cd ~/p/myapp && backlog projects add               # or register every backlog o
 backlog-server --token secret                      # …and serve them all from one server
 ```
 
-**Several projects:** without `-C`, the server serves every backlog of the project registry (`~/.config/kanban-ai/projects.yaml`, see `backlog projects` below) when it exists, otherwise the backlog found from the current folder. The board switches between them; the API has them under `/api/p/<id>/…` (`/api/projects` lists them) and the plain `/api/…` paths mean the first, default project. The registry is watched, so `backlog projects add/remove` apply without a restart. A project with a missing folder or a broken `backlog.yaml` does not stop the server, it is listed with its error. `-C` (or `BACKLOG_DIR`) always means just that one backlog.
+**Several projects:** without `-C`, the server serves every backlog of the project registry (`~/.config/kanban-ai/projects.yaml`, see `backlog projects` below) when it exists, otherwise the backlog found from the current folder. The board switches between them; the API has them under `/api/p/<id>/…` (`/api/projects` lists them) and the plain `/api/…` paths mean the first, default project. The registry is watched, so `backlog projects add/remove` apply without a restart. A project with a missing folder or a broken `backlog.yaml` does not stop the server, it is listed with its error. `-C` (or `KANBAN_AI_DIR`) always means just that one backlog.
 
 To keep the board off the LAN without a firewall, bind only to localhost and the VPN interface, and/or allow only some clients:
 
@@ -225,16 +225,16 @@ backlog-server --allow 127.0.0.1,10.77.11.22,10.77.0.0/16  # answer only these c
 
 | Option | Default | |
 |---|---|---|
-| `-C`, `--dir` | `BACKLOG_DIR` | serve only this backlog folder |
-| `--projects` | `BACKLOG_PROJECTS`, else `~/.config/kanban-ai/projects.yaml` if it exists, else the backlog found from the current folder | project registry to serve |
+| `-C`, `--dir` | `KANBAN_AI_DIR` | serve only this backlog folder |
+| `--projects` | `KANBAN_AI_PROJECTS`, else `~/.config/kanban-ai/projects.yaml` if it exists, else the backlog found from the current folder | project registry to serve |
 | `--host` | `0.0.0.0` | addresses to bind, repeatable or comma-separated; `127.0.0.1` = local only |
-| `--allow` | `BACKLOG_ALLOW` | only these client IPs or CIDR ranges get an answer, others 403 |
+| `--allow` | `KANBAN_AI_ALLOW` | only these client IPs or CIDR ranges get an answer, others 403 |
 | `-p`, `--port` | `8640` | |
-| `--token` | `BACKLOG_TOKEN` | when set, `/api/` and `/mcp` require it |
+| `--token` | `KANBAN_AI_TOKEN` | when set, `/api/` and `/mcp` require it |
 | `--generate-token` | | require a random token; it is printed at start, inside the URLs |
-| `--web` | `BACKLOG_WEB`, else `packages/backlog_app/build/web` | the built web app (served with ETags and `no-cache`, so browsers pick up a new build at once; Brotli or gzip copies made by the build are sent to browsers that accept them) |
+| `--web` | `KANBAN_AI_WEB`, else `packages/backlog_app/build/web` | the built web app (served with ETags and `no-cache`, so browsers pick up a new build at once; Brotli or gzip copies made by the build are sent to browsers that accept them) |
 | `-q` | | do not log requests |
-| `--config` | `BACKLOG_SERVER_CONFIG`, else `~/.config/kanban-ai/server.yaml` if it exists | settings file (below) |
+| `--config` | `KANBAN_AI_SERVER_CONFIG`, else `~/.config/kanban-ai/server.yaml` if it exists | settings file (below) |
 
 **Settings file:** instead of long command lines, put the settings into `~/.config/kanban-ai/server.yaml` (edit it in `backlog config` › Global › Server, which can also generate a token); options and environment variables still win:
 
@@ -470,7 +470,7 @@ The `claude` profile runs Claude Code headless on your subscription login: no AP
 
 **Talking to the agent of an item.** When someone other than the agent comments on an unfinished item whose last session can be continued — an answer to the agent's `backlog ask`, or a question like "why did you do it this way?" on an item in review — the dispatcher resumes that session in its worktree with the new comments in `{news}`: right away, in `manual` mode too (manual only means the dispatcher takes no new work by itself; a reply is an explicit instruction), before other work and even for held items. The default resume prompt tells the agent to answer with `backlog comment` and stop when it was only asked something, or to reply and continue the work when it got an answer or a change request, and to bring the description up to date when the discussion changed the assignment. If the session's worktree is busy, the reply waits for it. When there is no session to continue (the item was worked on elsewhere, or its session's worktree is gone), a reply — also the dispatcher's comment about a failed merge — starts a **new session** of the agent instead, in the worktree with the item's branch if one is free, with the new comments in `{news}`; the item keeps its status. When such an agent cannot start yet, the item's agent box and the *Agents* panel say why (*Waiting for an agent: no free worktree*). A **note** (`backlog comment --note`, *Note only* on the board, `note: true` in the API) is the exception: it does not wake the agent and does not answer its question; the agent sees notes as context in `{news}` the next time it continues.
 
-Commands are split into arguments like in a shell, but no shell runs them (use `[sh, -c, "…"]` if you need one). Placeholders in the prompt, commands and `env`: `{id}`, `{title}`, `{worktree}`, `{path}` (absolute path of the worktree), `{backlog}`, `{branch}`; commands and `env` also `{prompt}`. The agent always gets `BACKLOG_AGENT=<worktree>` and `BACKLOG_DIR=<backlog folder>`; agents and action commands also `GIT_EDITOR=true` and `GIT_SEQUENCE_EDITOR=true`, so git never waits for an editor (a profile's `env` may replace them). The older `command: …` (instead of `agent`) still works as a plain profile. Mistakes in the section are configuration errors; `lint` warns about worktree paths that do not exist, a `repo` that is not a folder, an agent command that is not on the `PATH` and unverified presets. A running `backlog-server` re-plans after every change and whenever a claim expires: ready items in the order of `backlog next` go to free worktrees, at most `max_agents` at once, and it logs the plan. In `auto` mode it starts each new assignment by itself; in `manual` mode it only proposes new work and a person presses *Start agent* on the board (or `POST /api/dispatch/start`) — on any ready item, not only the proposed ones, while fewer than `max_agents` run and a worktree is free or can be created; proposals reserve nothing — replies to an agent still resume it by itself.
+Commands are split into arguments like in a shell, but no shell runs them (use `[sh, -c, "…"]` if you need one). Placeholders in the prompt, commands and `env`: `{id}`, `{title}`, `{worktree}`, `{path}` (absolute path of the worktree), `{backlog}`, `{branch}`; commands and `env` also `{prompt}`. The agent always gets `KANBAN_AI_AGENT=<worktree>` and `KANBAN_AI_DIR=<backlog folder>`; agents and action commands also `GIT_EDITOR=true` and `GIT_SEQUENCE_EDITOR=true`, so git never waits for an editor (a profile's `env` may replace them). The older `command: …` (instead of `agent`) still works as a plain profile. Mistakes in the section are configuration errors; `lint` warns about worktree paths that do not exist, a `repo` that is not a folder, an agent command that is not on the `PATH` and unverified presets. A running `backlog-server` re-plans after every change and whenever a claim expires: ready items in the order of `backlog next` go to free worktrees, at most `max_agents` at once, and it logs the plan. In `auto` mode it starts each new assignment by itself; in `manual` mode it only proposes new work and a person presses *Start agent* on the board (or `POST /api/dispatch/start`) — on any ready item, not only the proposed ones, while fewer than `max_agents` run and a worktree is free or can be created; proposals reserve nothing — replies to an agent still resume it by itself.
 
 **Implementing an epic** (a person's start, never automatic): one agent, one branch, one session and one pull request for a whole epic. The epic is checked first (`backlog epic`, see above; *cannot start* refuses), then the agent claims the epic, works on its branch (`agent/<epic id>`) and takes the items with `backlog epic <id> --next` one by one — each implemented in commits with its id and handed over to `review` — picking up items unblocked meanwhile. When the rest waits for something outside the epic it asks on the epic (`backlog ask`) and stops; the answer resumes it in the same session. At the end it opens one pull request for the epic (with `dispatcher.pr`) and sets the epic to `review`, where an AI review hook reviews the whole branch. Meanwhile the items under the epic are never handed to other agents and their own `on_enter` actions are dropped; when the agent ends, its claims on them are given back (unfinished ones to `todo`; handed-over ones keep the epic's branch as theirs). Once every item of an epic is handed over, a comment on the epic (yours, or the dispatcher's about a failed merge) wakes its agent on the epic's branch by itself, in manual mode too and without Implement epic: it takes no items, does what the comment asks — typically rebases on the base, resolves the conflicts, runs the checks and publishes with `backlog pr <epic> --force` — and leaves the epic in `review` for you to deploy again; a conflict it cannot resolve unambiguously ends in a question on the epic. Any other comment on an item with open children that is not implemented this way wakes no agent; the board says *start Implement epic to take the reply up*.
 
@@ -616,11 +616,11 @@ Views can filter and group by every item field, by custom keys and by the comput
 | `projects`, `projects add [dir] [--id] [--name]`, `projects remove <id>`, `projects pin\|unpin <id>` | the registry of backlogs on this machine (`~/.config/kanban-ai/projects.yaml`), see below |
 | `config [--projects f]` | configuration in a terminal UI, see below |
 
-**Project registry:** `backlog init` registers the new backlog by itself (`--no-register` skips it); `backlog projects add` (in a project) registers an existing backlog in `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` (default `~/.config/kanban-ai/projects.yaml`; elsewhere with `BACKLOG_PROJECTS` or `--projects <file>`). The file is plain YAML you can also edit by hand — `projects:` is a list of `{id?, name?, path}`, paths absolute, `~/…` or relative to the file; the id defaults to the project folder's name (the parent of a folder called `backlog`), the first project is the default one, and `pinned: true` puts a project into the board switcher's short list (`backlog projects pin|unpin <id>`, or the pin in the switcher's *All projects…*).
+**Project registry:** `backlog init` registers the new backlog by itself (`--no-register` skips it); `backlog projects add` (in a project) registers an existing backlog in `$XDG_CONFIG_HOME/kanban-ai/projects.yaml` (default `~/.config/kanban-ai/projects.yaml`; elsewhere with `KANBAN_AI_PROJECTS` or `--projects <file>`). The file is plain YAML you can also edit by hand — `projects:` is a list of `{id?, name?, path}`, paths absolute, `~/…` or relative to the file; the id defaults to the project folder's name (the parent of a folder called `backlog`), the first project is the default one, and `pinned: true` puts a project into the board switcher's short list (`backlog projects pin|unpin <id>`, or the pin in the switcher's *All projects…*).
 
 **Configuration TUI:** `backlog config` opens a terminal UI with two separate parts: **Global** (this machine — the project registry: add, remove, reorder (the first is the default), id, name, pin, whether each backlog opens; the server settings; and a doctor that checks the installed tools and where they come from, whether a server answers, whether every project opens and whether the dispatchers' worktrees exist and are clean) and **Project** (the `backlog.yaml` of the backlog here or of a registered project). *Project › Workflow* edits statuses (order, category, pickable), priorities, types, milestones (title, due date), the defaults, the id prefix and length and the claim lease; renaming a status also renames it in the defaults, colours and dispatcher actions (items keep the old one, `backlog lint` lists them). *Views* edits each saved view (name, section, layout, grouping, columns, sort, filter, pinned) or adds one; *Claims* lists who holds what, live or expired, and releases; *Lint* lists the problems and offers fixes (a known status/priority/type/milestone, removing a reference to a missing item, releasing an expired claim, removing a stale lock) — these two act at once. *Appearance* sets the mode, the light and dark palettes and the colours of statuses, priorities, types and labels, with swatches in the terminal. *Dispatcher* sets the mode, limits, worktrees (add, remove, check that each exists and is clean), worktrees on demand, the base branch and the agent profile, and previews the command an agent would be started with. Everything else (agent profiles, prompts, actions, pull requests) *Edit a value…* changes key by key (`claims.lease_minutes`, `statuses[1].pickable`, a YAML value; empty removes it). Nothing is written until *Review and save*, which shows the diff, checks that the file is still valid and saves after `y`, keeping comments and unknown keys; a file edited meanwhile by someone else is not overwritten. ↑↓ move, `/` filters, Enter choose, Esc back, `q` quit.
 
-Global options are `-C <dir>` and `--json`. The agent comes from `--as` or `BACKLOG_AGENT`. **Exit codes:** 0 ok, 1 error, 2 nothing to do, 3 claim conflict, 4 not found, 64 usage. JSON fields are only ever added, never renamed.
+Global options are `-C <dir>` and `--json`. The agent comes from `--as` or `KANBAN_AI_AGENT`. Environment variables are named `KANBAN_AI_…`; the older names `BACKLOG_…` still work when the new one is not set. **Exit codes:** 0 ok, 1 error, 2 nothing to do, 3 claim conflict, 4 not found, 64 usage. JSON fields are only ever added, never renamed.
 
 ## Architecture
 
@@ -703,7 +703,7 @@ mise tasks                      # analyze, test, format, build, build-web, playg
 | `mise run build-web` | the web app in `packages/backlog_app/build/web`: CanvasKit bundled (nothing from Google's CDN), no service worker, Brotli/gzip copies for the server (`brotli` optional) |
 | `mise run build` | the web app plus `build/backlog` and `build/backlog-server`, built in parallel |
 | `mise run playground` | regenerate `playground/` with demo data |
-| `mise run serve` | serve the playground (or `BACKLOG_DIR`) with the built web app |
+| `mise run serve` | serve the playground (or `KANBAN_AI_DIR`) with the built web app |
 | `mise run install [ref]` | install `backlog` and `backlog-server` from `main` (or a branch, tag or commit) into `~/.local/bin` with Nix |
 | `mise run install-dev [--nix]` | install `backlog-dev` and `backlog-server-dev` from this worktree, uncommitted changes included; built in parallel with mise's Flutter and Dart, or with Nix |
 

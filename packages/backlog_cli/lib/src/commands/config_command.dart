@@ -12,7 +12,7 @@ final class ConfigCommand extends BacklogCommand {
     argParser.addOption(
       'projects',
       valueHelp: 'file',
-      help: 'Registry file (default: \$BACKLOG_PROJECTS, else \$XDG_CONFIG_HOME/kanban-ai/projects.yaml).',
+      help: 'Registry file (default: \$KANBAN_AI_PROJECTS, else \$XDG_CONFIG_HOME/kanban-ai/projects.yaml).',
     );
   }
 

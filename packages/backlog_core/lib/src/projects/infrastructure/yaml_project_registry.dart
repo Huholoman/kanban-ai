@@ -8,7 +8,7 @@ import '../../infrastructure/backlog_layout.dart';
 import '../../shared/errors.dart';
 import '../domain/project_registry.dart';
 
-/// The registry file: `$BACKLOG_PROJECTS`, else
+/// The registry file: `$KANBAN_AI_PROJECTS` (or the older `$BACKLOG_PROJECTS`), else
 /// `$XDG_CONFIG_HOME/kanban-ai/projects.yaml`, else
 /// `~/.config/kanban-ai/projects.yaml`; null without any of these variables.
 String? projectRegistryFile(Map<String, String> environment) {
@@ -17,7 +17,7 @@ String? projectRegistryFile(Map<String, String> environment) {
     return value == null || value.isEmpty ? null : value;
   }
 
-  if (given('BACKLOG_PROJECTS') case final file?) return p.normalize(p.absolute(file));
+  if (given('KANBAN_AI_PROJECTS') ?? given('BACKLOG_PROJECTS') case final file?) return p.normalize(p.absolute(file));
   final config =
       given('XDG_CONFIG_HOME') ??
       switch (given('HOME')) {

@@ -232,7 +232,7 @@ final class AgentProfile {
   final CommandTemplate command;
 
   /// Set for the agent's process on top of the server's environment (and of
-  /// `BACKLOG_AGENT`, `BACKLOG_DIR`); values may use the command's placeholders.
+  /// `KANBAN_AI_AGENT`, `KANBAN_AI_DIR`); values may use the command's placeholders.
   final Map<String, TextTemplate> environment;
   final AgentOutput output;
 
@@ -573,7 +573,7 @@ final class DispatcherConfig {
   static const defaultPrompt =
       'You are the coding agent {worktree}, working on backlog item {id} ("{title}") in this git worktree.\n'
       '1. First run `backlog instructions` and `backlog show {id}` and follow them. The item is already claimed '
-      'for you (BACKLOG_AGENT={worktree}); do not take other items. $readCommentsRule\n'
+      'for you (KANBAN_AI_AGENT={worktree}); do not take other items. $readCommentsRule\n'
       '2. The worktree is on branch {branch}, prepared for this item: commit there and do not switch branches. '
       'Make small commits; every commit message contains {id}.\n'
       '3. When the work is finished, run `backlog set {id} status={handover}`.\n'
@@ -617,7 +617,7 @@ final class DispatcherConfig {
   static const defaultPullRequestPrompt =
       'You are the coding agent {worktree}, working on backlog item {id} ("{title}") in this git worktree.\n'
       '1. First run `backlog instructions` and `backlog show {id}` and follow them. The item is already claimed '
-      'for you (BACKLOG_AGENT={worktree}); do not take other items. $readCommentsRule\n'
+      'for you (KANBAN_AI_AGENT={worktree}); do not take other items. $readCommentsRule\n'
       '2. The worktree is on branch {branch}, prepared for this item: commit there and do not switch branches. '
       'Make small commits; every commit message contains {id}.\n'
       '3. When the work is finished, open a pull request: write its description yourself (what changed and why, '

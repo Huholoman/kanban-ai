@@ -75,7 +75,7 @@ final class ProcessServerControl implements ServerControl {
   /// [previewVariable] for the new one.
   Map<String, String> environmentFor(String program, {String? preview}) => {
     for (final MapEntry(:key, :value) in _environment.entries)
-      if (key != 'BACKLOG_WEB' && key != previewVariable) key: value,
+      if (key != 'KANBAN_AI_WEB' && key != 'BACKLOG_WEB' && key != previewVariable) key: value,
     programVariable: program,
     previewVariable: ?preview,
   };

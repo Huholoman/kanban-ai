@@ -94,8 +94,8 @@ run = [
 ]
 
 [tasks.serve]
-description = "Serve the playground (or BACKLOG_DIR) with the built web app"
-run = "dart run packages/backlog_server/bin/backlog_server.dart -C ${BACKLOG_DIR:-playground/backlog} --web packages/backlog_app/build/web"
+description = "Serve the playground (or KANBAN_AI_DIR) with the built web app"
+run = "dart run packages/backlog_server/bin/backlog_server.dart -C ${KANBAN_AI_DIR:-playground/backlog} --web packages/backlog_app/build/web"
 
 [tasks.install]
 description = "Install backlog and backlog-server into ~/.local/bin with Nix, from main or the given branch, tag or commit"

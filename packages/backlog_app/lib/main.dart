@@ -14,7 +14,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final drafts = await draftStore();
   final query = Uri.base.queryParameters;
-  final server = query['server'] ?? const String.fromEnvironment('BACKLOG_SERVER');
+  final server =
+      query['server'] ??
+      const String.fromEnvironment('KANBAN_AI_SERVER', defaultValue: String.fromEnvironment('BACKLOG_SERVER'));
   final base = server.isNotEmpty ? Uri.parse(server) : Uri.base.replace(path: '/', query: '', fragment: '');
   final token = query['token'] == null || query['token']!.isEmpty ? null : query['token'];
   final agent = query['as'];

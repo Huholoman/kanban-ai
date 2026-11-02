@@ -199,7 +199,7 @@ Work on ${project} is planned in a kanban-ai backlog (Markdown files, ids
 
 - At the start of a session run `backlog instructions` and follow them.
 - Use the name of your worktree as the agent name:
-  `export BACKLOG_AGENT=$(basename $(git rev-parse --show-toplevel))` (or `--as <worktree>`).
+  `export KANBAN_AI_AGENT=$(basename $(git rev-parse --show-toplevel))` (or `--as <worktree>`).
 - Change status, claims and relations (claim, status, parent, depends_on, done, release) only
   through the CLI, never by editing item files; tick checklists with `backlog check <id> <n>`.
   Edit by hand only the body of an item (context, plan, notes).

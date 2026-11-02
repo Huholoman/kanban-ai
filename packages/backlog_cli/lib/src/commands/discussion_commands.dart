@@ -5,10 +5,10 @@ import '../render/text_output.dart';
 import 'backlog_command.dart';
 
 /// Shared by `comment` and `ask`: `<id> <text…>`, text `-` reads stdin,
-/// `--file` a file; the author is `--as`, `$BACKLOG_AGENT` or `$USER`.
+/// `--file` a file; the author is `--as`, `$KANBAN_AI_AGENT` or `$USER`.
 abstract class _DiscussionCommand extends BacklogCommand {
   _DiscussionCommand(super.context) {
-    argParser.addOption('as', help: 'Author (default: \$BACKLOG_AGENT, else \$USER).', valueHelp: 'name');
+    argParser.addOption('as', help: 'Author (default: \$KANBAN_AI_AGENT, else \$USER).', valueHelp: 'name');
     addTextFileOption();
   }
 
@@ -27,9 +27,9 @@ abstract class _DiscussionCommand extends BacklogCommand {
     }
     final author =
         args.option('as') ??
-        context.environment['BACKLOG_AGENT'] ??
+        toolVariable(context.environment, 'AGENT') ??
         context.environment['USER'] ??
-        (throw UsageException('Say who you are: --as <name> or BACKLOG_AGENT.', usage));
+        (throw UsageException('Say who you are: --as <name> or KANBAN_AI_AGENT.', usage));
     final text = await textOf(args.rest.skip(1).toList());
     final backlog = await openBacklog();
     final item = await backlog.items.comment(
@@ -98,7 +98,7 @@ final class AskCommand extends _DiscussionCommand {
 final class ReviewCommand extends BacklogCommand {
   ReviewCommand(super.context) {
     argParser
-      ..addOption('as', help: 'Author (default: \$BACKLOG_AGENT, else \$USER).', valueHelp: 'name')
+      ..addOption('as', help: 'Author (default: \$KANBAN_AI_AGENT, else \$USER).', valueHelp: 'name')
       ..addFlag('ok', negatable: false, help: 'Nothing to change (the text is a short summary, optional).')
       ..addFlag('changes', negatable: false, help: 'Changes needed: a summary, then the findings as a numbered list.')
       ..addOption(
@@ -129,9 +129,9 @@ final class ReviewCommand extends BacklogCommand {
     if (args.rest.isEmpty) throw UsageException('Expected an item id.', usage);
     final author =
         args.option('as') ??
-        context.environment['BACKLOG_AGENT'] ??
+        toolVariable(context.environment, 'AGENT') ??
         context.environment['USER'] ??
-        (throw UsageException('Say who you are: --as <name> or BACKLOG_AGENT.', usage));
+        (throw UsageException('Say who you are: --as <name> or KANBAN_AI_AGENT.', usage));
     final text = await textOf(args.rest.skip(1).toList());
     final backlog = await openBacklog();
     final outcome = await ReviewRecorder(environment: context.environment.isEmpty ? null : context.environment).record(

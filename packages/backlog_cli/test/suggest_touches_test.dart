@@ -15,7 +15,7 @@ void main() {
     final out = StringBuffer(), err = StringBuffer();
     final code = await runBacklogCli(
       args,
-      CliContext(out: out, err: err, cwd: repo, environment: {'BACKLOG_DIR': backlogDir}),
+      CliContext(out: out, err: err, cwd: repo, environment: {'KANBAN_AI_DIR': backlogDir}),
     );
     return (code: code, out: '$out', err: '$err');
   }

@@ -11,7 +11,7 @@ Add `--json` to any command for machine-readable output.
 
 Identify yourself once per session, e.g. by the worktree name:
 
-    export BACKLOG_AGENT=monorepo-2      # or pass --as monorepo-2
+    export KANBAN_AI_AGENT=monorepo-2     # or pass --as monorepo-2
 
 ## Picking up work
 

@@ -7,6 +7,7 @@ import '../../backlog.dart';
 import '../../dispatch/infrastructure/process_agent_launcher.dart';
 import '../../projects/domain/project_registry.dart';
 import '../../projects/infrastructure/yaml_project_registry.dart';
+import '../../shared/environment.dart';
 import '../../shared/errors.dart';
 import '../../workflow/domain/dispatcher_config.dart';
 import '../domain/doctor.dart';
@@ -19,7 +20,7 @@ const doctorTools = ['backlog', 'backlog-server', 'backlog-dev', 'backlog-server
 /// Looks at this machine: [doctorTools] on the `PATH` and where they were
 /// installed from (`release.txt`/`dev.txt`, written by `tool/install.sh`
 /// next to the links in the state folder), whether a server answers on the
-/// port of the server settings [serverFile] (and `$BACKLOG_PORT`), whether
+/// port of the server settings [serverFile] (and `$KANBAN_AI_PORT`), whether
 /// the registry [registryFile] parses and each of its projects opens, and
 /// whether the worktrees of their dispatchers exist and are clean.
 Future<List<DoctorSection>> runDoctor({
@@ -116,7 +117,7 @@ Future<DoctorSection> _server(
   }
   final hosts = settings.hosts ?? const ['0.0.0.0'];
   final host = hosts.contains('0.0.0.0') || hosts.contains('::') ? '127.0.0.1' : hosts.first;
-  final ports = {settings.port ?? 8640, ?int.tryParse(environment['BACKLOG_PORT'] ?? '')};
+  final ports = {settings.port ?? 8640, ?int.tryParse(toolVariable(environment, 'PORT') ?? '')};
   for (final port in ports) {
     final url = Uri(scheme: 'http', host: host, port: port, path: '/api/health');
     final answer = await _get(url, timeout);

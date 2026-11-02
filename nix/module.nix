@@ -57,7 +57,7 @@ in
     tokenFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
-      description = "File with the access token (BACKLOG_TOKEN=…), kept out of the Nix store.";
+      description = "File with the access token (KANBAN_AI_TOKEN=…), kept out of the Nix store.";
     };
 
     openFirewall = lib.mkOption {

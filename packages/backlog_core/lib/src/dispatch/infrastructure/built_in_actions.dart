@@ -69,8 +69,8 @@ final class BuiltInActionContext {
   final Map<String, String> values;
 
   /// The environment for programs it runs: the server's plus
-  /// `BACKLOG_DIR`, `KANBAN_AI_ITEM`, `KANBAN_AI_ACTION` (and
-  /// `BACKLOG_AGENT` in a worktree).
+  /// `KANBAN_AI_DIR`, `KANBAN_AI_ITEM`, `KANBAN_AI_ACTION` (and
+  /// `KANBAN_AI_AGENT` in a worktree; both also as `BACKLOG_…`).
   final Map<String, String> environment;
   final void Function(String line) _log;
 

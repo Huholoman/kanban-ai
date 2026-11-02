@@ -332,7 +332,7 @@ final class ActionRequest {
   final String action;
   final DateTime at;
 
-  /// Who asked (`BACKLOG_AGENT`, `$USER`), when known.
+  /// Who asked (`KANBAN_AI_AGENT`, `$USER`), when known.
   final String? by;
 
   Map<String, Object?> toJson() => {'item': item, 'action': action, 'at': at.toUtc().toIso8601String(), 'by': by};
@@ -384,8 +384,8 @@ final class ActionJob {
   final List<String>? command;
 
   /// Added to the server's environment: `DispatchAssignment.headlessGit`,
-  /// `BACKLOG_DIR`, `KANBAN_AI_ITEM`, `KANBAN_AI_ACTION` and, in a worktree,
-  /// `BACKLOG_AGENT`.
+  /// `KANBAN_AI_DIR`, `KANBAN_AI_ITEM`, `KANBAN_AI_ACTION` and, in a worktree,
+  /// `KANBAN_AI_AGENT` (both also as `BACKLOG_…`).
   final Map<String, String> environment;
 
   ItemId get id => item.id;

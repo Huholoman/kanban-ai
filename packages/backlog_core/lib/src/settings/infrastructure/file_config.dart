@@ -66,7 +66,8 @@ ConfigEditor registryConfigEditor(String file, {String? home}) {
   );
 }
 
-/// The server settings file: `$BACKLOG_SERVER_CONFIG`, else
+/// The server settings file: `$KANBAN_AI_SERVER_CONFIG` (or the older
+/// `$BACKLOG_SERVER_CONFIG`), else
 /// `$XDG_CONFIG_HOME/kanban-ai/server.yaml`, else
 /// `~/.config/kanban-ai/server.yaml`; null without any of these variables.
 String? serverConfigFile(Map<String, String> environment) {
@@ -75,7 +76,9 @@ String? serverConfigFile(Map<String, String> environment) {
     return value == null || value.isEmpty ? null : value;
   }
 
-  if (given('BACKLOG_SERVER_CONFIG') case final file?) return p.normalize(p.absolute(file));
+  if (given('KANBAN_AI_SERVER_CONFIG') ?? given('BACKLOG_SERVER_CONFIG') case final file?) {
+    return p.normalize(p.absolute(file));
+  }
   final config =
       given('XDG_CONFIG_HOME') ??
       switch (given('HOME')) {

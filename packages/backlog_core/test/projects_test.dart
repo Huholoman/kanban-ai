@@ -33,8 +33,13 @@ void main() {
     });
   });
 
-  test('projectRegistryFile: BACKLOG_PROJECTS, XDG_CONFIG_HOME, then ~/.config', () {
-    expect(projectRegistryFile({'BACKLOG_PROJECTS': '/etc/p.yaml', 'XDG_CONFIG_HOME': '/x'}), '/etc/p.yaml');
+  test('projectRegistryFile: KANBAN_AI_PROJECTS (or BACKLOG_PROJECTS), XDG_CONFIG_HOME, then ~/.config', () {
+    expect(projectRegistryFile({'KANBAN_AI_PROJECTS': '/etc/p.yaml', 'XDG_CONFIG_HOME': '/x'}), '/etc/p.yaml');
+    expect(projectRegistryFile({'BACKLOG_PROJECTS': '/etc/old.yaml', 'XDG_CONFIG_HOME': '/x'}), '/etc/old.yaml');
+    expect(
+      projectRegistryFile({'KANBAN_AI_PROJECTS': '/etc/p.yaml', 'BACKLOG_PROJECTS': '/etc/old.yaml'}),
+      '/etc/p.yaml',
+    );
     expect(projectRegistryFile({'XDG_CONFIG_HOME': '/x', 'HOME': '/h'}), '/x/kanban-ai/projects.yaml');
     expect(projectRegistryFile({'HOME': '/h'}), '/h/.config/kanban-ai/projects.yaml');
     expect(projectRegistryFile({}), isNull);

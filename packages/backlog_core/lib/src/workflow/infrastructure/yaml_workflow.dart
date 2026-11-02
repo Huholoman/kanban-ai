@@ -651,7 +651,7 @@ claims:
 #   agents:
 #     claude-sonnet:
 #       command: 'claude -p {prompt} --model sonnet --output-format stream-json --verbose --permission-mode acceptEdits --allowedTools "Bash(backlog *) Bash(git *) Read Edit Write Grep Glob"'
-#       env: {MY_SETTING: "{worktree}"}   # BACKLOG_AGENT and BACKLOG_DIR are always set
+#       env: {MY_SETTING: "{worktree}"}   # KANBAN_AI_AGENT and KANBAN_AI_DIR are always set
 #       output: claude-stream-json        # text | claude-stream-json | json-lines
 #       resume: --resume {session}        # appended to continue the item's last session
 #   # The prompt every agent gets (default: claim is yours, read backlog

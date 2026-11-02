@@ -35,7 +35,7 @@ Future<int> runBacklogCli(List<String> arguments, CliContext context) async {
     ..argParser.addOption(
       'dir',
       abbr: 'C',
-      help: 'Backlog folder (default: \$BACKLOG_DIR, or found from the current folder upwards).',
+      help: 'Backlog folder (default: \$KANBAN_AI_DIR, or found from the current folder upwards).',
     )
     ..argParser.addFlag('json', negatable: false, help: 'Machine-readable output.');
   for (final command in [

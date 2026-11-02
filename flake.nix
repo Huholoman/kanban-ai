@@ -73,7 +73,7 @@
             nativeBuildInputs = [ pkgs.makeWrapper ];
             # The server serves the web app from the store unless told otherwise.
             postBuild = ''
-              wrapProgram $out/bin/backlog-server --set-default BACKLOG_WEB ${web}
+              wrapProgram $out/bin/backlog-server --set-default KANBAN_AI_WEB ${web}
             '';
             meta = {
               description = "File-based backlog for parallel AI coding agents: `backlog` CLI and `backlog-server`";

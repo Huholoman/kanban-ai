@@ -116,7 +116,11 @@ void main() {
       ...openValueEditor,
       ...type('claims.lease_minutes'),
       enter,
-      backspace, backspace, backspace, ...type('60'), enter, // the value was 240
+      backspace,
+      backspace,
+      backspace,
+      ...type('60'),
+      enter, // the value was 240
       end, enter, // Review and save
       char('y'),
       char('q'),
@@ -270,7 +274,7 @@ void main() {
     final (code, err) = await run(
       ['config', '--projects', p.join(workspace.path, 'projects.yaml')],
       driver,
-      env: {'BACKLOG_SERVER_CONFIG': server},
+      env: {'KANBAN_AI_SERVER_CONFIG': server},
     );
     expect(code, 0, reason: err);
     expect(driver.showed('backlog config › Global › Server'), isTrue);
@@ -423,7 +427,7 @@ void main() {
     final (code, err) = await run(
       ['config', '--projects', registry],
       driver,
-      env: {'PATH': '', 'BACKLOG_SERVER_CONFIG': p.join(workspace.path, 'server.yaml'), 'BACKLOG_PORT': '1'},
+      env: {'PATH': '', 'KANBAN_AI_SERVER_CONFIG': p.join(workspace.path, 'server.yaml'), 'KANBAN_AI_PORT': '1'},
     );
     expect(code, 0, reason: err);
     expect(driver.showed('backlog config › Global › Doctor'), isTrue);

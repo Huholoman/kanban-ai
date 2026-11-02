@@ -22,15 +22,15 @@ abstract class BacklogCommand extends Command<int> {
 
   Future<Backlog> openBacklog() async => Backlog.open(backlogRoot, clock: context.clock);
 
-  /// The backlog folder: `--dir`, `\$BACKLOG_DIR` or found from the current folder.
+  /// The backlog folder: `--dir`, `\$KANBAN_AI_DIR` or found from the current folder.
   String get backlogRoot {
-    final explicit = globalResults!.option('dir') ?? context.environment['BACKLOG_DIR'];
+    final explicit = globalResults!.option('dir') ?? toolVariable(context.environment, 'DIR');
     return explicit != null
         ? p.normalize(p.join(context.cwd, explicit))
         : Backlog.locate(context.cwd) ??
               (throw const NotFoundException(
                 'No backlog found here or in any parent folder (looked for backlog.yaml and backlog/backlog.yaml). '
-                'Use --dir, BACKLOG_DIR or `backlog init`.',
+                'Use --dir, KANBAN_AI_DIR or `backlog init`.',
               ));
   }
 
@@ -47,14 +47,15 @@ abstract class BacklogCommand extends Command<int> {
   void addAgentOption({bool mandatory = true}) => argParser.addOption(
     'as',
     help: mandatory
-        ? 'Agent name, e.g. the worktree (default: \$BACKLOG_AGENT).'
-        : 'Acting agent; required to touch a claim held by someone (default: \$BACKLOG_AGENT).',
+        ? 'Agent name, e.g. the worktree (default: \$KANBAN_AI_AGENT).'
+        : 'Acting agent; required to touch a claim held by someone (default: \$KANBAN_AI_AGENT).',
     valueHelp: 'agent',
   );
 
-  String? get optionalAgent => args.option('as') ?? context.environment['BACKLOG_AGENT'];
+  String? get optionalAgent => args.option('as') ?? toolVariable(context.environment, 'AGENT');
 
-  String get agent => optionalAgent ?? (throw UsageException('Say who you are: --as <agent> or BACKLOG_AGENT.', usage));
+  String get agent =>
+      optionalAgent ?? (throw UsageException('Say who you are: --as <agent> or KANBAN_AI_AGENT.', usage));
 
   /// `--file <path>`: the command's text from a file (relative to the
   /// current folder; `-` reads standard input) instead of the arguments —
