@@ -55,18 +55,24 @@
             meta.description = "Web board of kanban-ai (static files, served by backlog-server)";
           };
 
-          tools = pkgs.buildDartApplication {
-            pname = "kanban-ai";
+          # The programs alone, so that they build in parallel with the web app.
+          programs = pkgs.buildDartApplication {
+            pname = "kanban-ai-programs";
             inherit version src;
             autoPubspecLock = ./pubspec.lock;
             dartEntryPoints = {
               "bin/backlog" = "packages/backlog_cli/bin/backlog.dart";
               "bin/backlog-server" = "packages/backlog_server/bin/backlog_server.dart";
             };
-            nativeBuildInputs = [ pkgs.makeWrapper ];
             preBuild = "mkdir -p bin";
+          };
+
+          tools = pkgs.symlinkJoin {
+            name = "kanban-ai-${version}";
+            paths = [ programs ];
+            nativeBuildInputs = [ pkgs.makeWrapper ];
             # The server serves the web app from the store unless told otherwise.
-            postFixup = ''
+            postBuild = ''
               wrapProgram $out/bin/backlog-server --set-default BACKLOG_WEB ${web}
             '';
             meta = {

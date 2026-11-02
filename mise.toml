@@ -103,5 +103,6 @@ usage = 'arg "[ref]" help="Branch, tag or commit of this clone" default="main"'
 run = 'tool/install.sh "${usage_ref:-main}"'
 
 [tasks.install-dev]
-description = "Install backlog-dev and backlog-server-dev into ~/.local/bin with Nix, from this worktree (uncommitted changes included)"
-run = "tool/install.sh --dev"
+description = "Install backlog-dev and backlog-server-dev into ~/.local/bin from this worktree (uncommitted changes included): built in parallel with this Flutter and Dart, or with Nix (--nix)"
+usage = 'flag "--nix" help="Build with Nix instead"'
+run = 'tool/install.sh --dev $([ "${usage_nix:-false}" = true ] && echo --nix)'
