@@ -294,7 +294,8 @@ void storageContract(String name, Future<OpenStorage> Function() prepare, {bool 
 
       test('writes of items, claims, views and action requests by other storages', () async {
         await stores().items.save(_item('T-0001'));
-        final item = await reported((change) => change.paths.isNotEmpty && !change.configuration);
+        // the setup's write of backlog.yaml may come late and in the same batch
+        final item = await reported((change) => change.paths.any((path) => path.startsWith('items/')));
         expect(item.paths, everyElement(isNot(contains('.tmp'))));
 
         seen.clear();
