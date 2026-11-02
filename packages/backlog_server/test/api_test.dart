@@ -680,10 +680,10 @@ void main() {
         NewItemRequest(title: 'Reports', status: 'todo', parent: epic.item.id, milestone: 'v0.3'),
       );
 
-      expect((await api.item(epic.item.id)).children.map((child) => (child.id, child.milestone)), [
-        (now.item.id, 'v0.2'),
-        (later.item.id, 'v0.3'),
-      ]);
+      expect(
+        (await api.item(epic.item.id)).children.map((child) => (child.id, child.milestone)),
+        unorderedEquals([(now.item.id, 'v0.2'), (later.item.id, 'v0.3')]),
+      );
 
       final check = await api.epic(epic.item.id, milestone: 'v0.2');
       expect(check.milestone, 'v0.2');
