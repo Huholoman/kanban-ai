@@ -418,6 +418,20 @@ void main() {
     expect(show.out, contains('attachment: error-2.log (5 B)\nattachment: error.log (5 B)\n'));
     expect(((await backlog(['--json', 'show', id])).json! as Map)['attachments'], hasLength(4));
 
+    final worktree = p.join(workspace.path, 'monorepo-2');
+    Directory(worktree).createSync();
+    final export = await backlog(['attach', id, '--export'], cwd: worktree);
+    final exported = p.join(worktree, '.kanban-ai', 'attachments', id);
+    expect(
+      export.out,
+      startsWith('Copied 4 attachment(s) of $id to $exported:\n  ${p.join(exported, 'error-2.log')}\n'),
+    );
+    expect(File(p.join(exported, 'steps.md')).readAsStringSync(), '1. log in\n');
+    final to = await backlog(['--json', 'attach', id, '--to', 'out']);
+    expect((to.json! as Map)['exported'], hasLength(4));
+    expect(File(p.join(workspace.path, 'out', 'error.log')).readAsStringSync(), 'boom\n');
+    expect((await backlog(['attach', id, 'x', '--export'])).exitCode, ExitCode.usage);
+
     final detach = await backlog(['--json', 'detach', id, 'error-2.log', 'text.txt']);
     expect((detach.json! as Map)['removed'], ['error-2.log', 'text.txt']);
     expect(((detach.json! as Map)['attachments'] as List).map((a) => (a as Map)['name']), ['error.log', 'steps.md']);

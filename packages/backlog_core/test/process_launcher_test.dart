@@ -186,8 +186,16 @@ dispatcher:
 
   test('starts a detached agent on its own branch and lets it hand over for review', () async {
     await backlog.items.create(const NewItem(title: 'Usage section', status: 'todo'));
+    await backlog.items.attach('T-0001', 'shot.png', [1, 2]);
+    final stale = File(path('wt-1/.kanban-ai/attachments/T-0001/old.txt'))..createSync(recursive: true);
     final assignment = (await plan()).assignmentFor('T-0001');
     await launcher.launch(assignment);
+    expect(
+      File(path('wt-1/.kanban-ai/attachments/T-0001/shot.png')).readAsBytesSync(),
+      [1, 2],
+      reason: 'the agent finds the attachments in its worktree',
+    );
+    expect(stale.existsSync(), isFalse);
 
     final item = await planned('T-0001');
     expect(item.claim!.agent, 'wt-1');
