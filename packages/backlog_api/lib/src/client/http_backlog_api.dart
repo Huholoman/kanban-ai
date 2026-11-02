@@ -82,6 +82,28 @@ final class HttpBacklogApi implements BacklogApi {
       ItemDetailDto.fromJson(asJson(await _send('POST', ApiPaths.itemAction(reference, 'rank'), request.toJson())));
 
   @override
+  Future<ItemDetailDto> attach(String reference, String name, List<int> content, {bool replace = false}) async =>
+      ItemDetailDto.fromJson(
+        asJson(
+          await _handle(() {
+            final request =
+                http.Request('PUT', _uri(ApiPaths.attachment(reference, name), {if (replace) 'replace': 'true'}))
+                  ..headers.addAll({..._headers, 'content-type': 'application/octet-stream'})
+                  ..bodyBytes = content;
+            return _client.send(request).then(http.Response.fromStream);
+          }),
+        ),
+      );
+
+  @override
+  Future<ItemDetailDto> detach(String reference, String name) async =>
+      ItemDetailDto.fromJson(asJson(await _send('DELETE', ApiPaths.attachment(reference, name), const {})));
+
+  @override
+  Uri attachmentUri(String reference, String name, {bool download = false}) =>
+      _uri(ApiPaths.attachment(reference, name), {'token': ?token, if (download) 'download': 'true'});
+
+  @override
   Future<List<ViewSummaryDto>> views() async => _list(await _get(ApiPaths.views)).map(ViewSummaryDto.fromJson).toList();
 
   @override

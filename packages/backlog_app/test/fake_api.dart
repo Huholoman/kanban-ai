@@ -90,6 +90,10 @@ final class FakeBacklogApi implements BacklogApi {
   /// The orders [rank] was asked for, by moved item.
   final ranks = <(String, List<String>)>[];
 
+  /// The attachments of each item, by name; [attach] and [detach] change
+  /// them.
+  final attachments = <String, Map<String, List<int>>>{};
+
   /// The discussion of each item; [comment] appends (author `you` when the
   /// request names none) and answers an open question.
   final discussions = <String, List<CommentDto>>{};
@@ -175,8 +179,42 @@ final class FakeBacklogApi implements BacklogApi {
           if (other.conflictsWith.contains(found.id)) link(other),
       ],
       discussion: discussions[found.id] ?? const [],
+      attachments: [
+        for (final name in (attachments[found.id]?.keys.toList() ?? <String>[])..sort())
+          AttachmentDto(name: name, size: attachments[found.id]![name]!.length),
+      ],
     );
   }
+
+  /// Like the server: a taken name gets `-2`, `-3`, … unless [replace].
+  @override
+  Future<ItemDetailDto> attach(String reference, String name, List<int> content, {bool replace = false}) async {
+    final files = attachments[reference] ??= {};
+    var stored = name;
+    if (!replace) {
+      final dot = name.lastIndexOf('.');
+      for (var n = 2; files.containsKey(stored); n++) {
+        stored = dot > 0 ? '${name.substring(0, dot)}-$n${name.substring(dot)}' : '$name-$n';
+      }
+    }
+    files[stored] = content;
+    _changes.add(BacklogChangeEvent(['items/$reference/$stored']));
+    return item(reference);
+  }
+
+  @override
+  Future<ItemDetailDto> detach(String reference, String name) async {
+    if (attachments[reference]?.remove(name) == null) {
+      throw BacklogApiException(404, 'not_found', '$reference has no attachment "$name".');
+    }
+    _changes.add(BacklogChangeEvent(['items/$reference/$name']));
+    return item(reference);
+  }
+
+  @override
+  Uri attachmentUri(String reference, String name, {bool download = false}) => Uri.parse(
+    'http://fake/api/items/$reference/attachments/${Uri.encodeComponent(name)}${download ? '?download=true' : ''}',
+  );
 
   /// Ranks every item of the order by its position (1, 2, …), unlike the
   /// server, which changes as few as it can.
