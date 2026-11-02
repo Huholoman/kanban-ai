@@ -282,6 +282,41 @@ void main() {
       expect(seen.headers['authorization'], 'Bearer t0k');
     });
 
+    test('attachments: raw upload, delete and links with the token', () async {
+      final requests = <http.Request>[];
+      final detail = ItemDetailDto(
+        item: ItemDto.fromJson(const {'id': 'X-1', 'title': 'One', 'type': 'task', 'status': 'todo', 'priority': 'p2'}),
+        attachments: [AttachmentDto(name: 'a b.png', size: 3, modified: DateTime.utc(2026, 11, 2))],
+      );
+      final api = HttpBacklogApi(
+        Uri.parse('http://server:8640'),
+        token: 't0k',
+        project: 'hobbyo',
+        client: MockClient((request) async {
+          requests.add(request);
+          return http.Response(jsonEncode(detail.toJson()), 200, headers: {'content-type': 'application/json'});
+        }),
+      );
+      final attached = await api.attach('X-1', 'a b.png', [1, 2, 3], replace: true);
+      expect(attached.attachments.single.toJson(), detail.attachments.single.toJson());
+      expect(requests.last.method, 'PUT');
+      expect(
+        requests.last.url.toString(),
+        'http://server:8640/api/p/hobbyo/items/X-1/attachments/a%20b.png?replace=true',
+      );
+      expect(requests.last.bodyBytes, [1, 2, 3]);
+      expect(requests.last.headers['content-type'], 'application/octet-stream');
+      expect(requests.last.headers['authorization'], 'Bearer t0k');
+
+      await api.detach('X-1', 'a b.png');
+      expect(requests.last.method, 'DELETE');
+      expect(requests.last.url.path, '/api/p/hobbyo/items/X-1/attachments/a%20b.png');
+      expect(
+        api.attachmentUri('X-1', 'a b.png', download: true).toString(),
+        'http://server:8640/api/p/hobbyo/items/X-1/attachments/a%20b.png?token=t0k&download=true',
+      );
+    });
+
     test('network failures and non-JSON answers become api errors', () async {
       final unreachable = HttpBacklogApi(
         Uri.parse('http://server'),

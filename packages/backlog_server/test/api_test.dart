@@ -317,6 +317,50 @@ void main() {
     );
   });
 
+  test('attachments: uploaded, listed in the detail, served safely, deleted', () async {
+    final id = (await api.createItem(const NewItemRequest(title: 'Crash'))).item.id;
+    final tokened = client(token: 'secret', serverToken: 'secret');
+    var detail = await tokened.attach(id, 'shot.png', [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    detail = await tokened.attach(id, 'crash log.txt', utf8.encode('Příliš žluťoučký kůň\n'));
+    detail = await tokened.attach(id, 'page.html', utf8.encode('<script>alert(1)</script>'));
+    detail = await tokened.attach(id, 'data.bin', [0, 1, 2]);
+    expect(detail.attachments.map((a) => a.name), ['crash log.txt', 'data.bin', 'page.html', 'shot.png']);
+    expect(detail.item.path, 'items/$id-crash/index.md');
+    expect((await api.item(id)).attachments.first.size, 30);
+    expect((await api.attach(id, 'shot.png', [1])).attachments.map((a) => a.name), contains('shot-2.png'));
+    expect((await api.attach(id, 'shot.png', [1], replace: true)).attachments, hasLength(5));
+
+    final handler = BacklogServer.buildHandler(
+      projects: ProjectHub.single(BacklogHost.folder(dir.path)),
+      token: 'secret',
+    );
+    Future<http.Response> fetch(String name, {bool download = false}) =>
+        inMemory(handler).get(tokened.attachmentUri(id, name, download: download));
+    final text = await fetch('crash log.txt');
+    expect(text.statusCode, 200);
+    expect(utf8.decode(text.bodyBytes), 'Příliš žluťoučký kůň\n');
+    expect(text.headers['content-type'], 'text/plain; charset=utf-8');
+    expect(text.headers['content-disposition'], "inline; filename*=UTF-8''crash%20log.txt");
+    expect(text.headers['content-security-policy'], 'sandbox');
+    expect(text.headers['x-content-type-options'], 'nosniff');
+    expect((await fetch('shot.png')).headers['content-type'], 'image/png');
+    expect((await fetch('page.html')).headers['content-type'], 'text/plain; charset=utf-8');
+    final binary = await fetch('data.bin');
+    expect(binary.headers['content-type'], 'application/octet-stream');
+    expect(binary.headers['content-disposition'], startsWith('attachment;'));
+    expect((await fetch('crash log.txt', download: true)).headers['content-disposition'], startsWith('attachment;'));
+    expect((await fetch('missing.txt')).statusCode, 404);
+    expect((await inMemory(handler).get(api.attachmentUri(id, 'shot.png'))).statusCode, 401);
+
+    expect((await api.detach(id, 'shot-2.png')).attachments, hasLength(4));
+    await expectLater(() => api.detach(id, 'shot-2.png'), throwsA(apiError(404, 'not_found')));
+    await expectLater(() => api.attach(id, '.env', [1]), throwsA(apiError(400, 'invalid_input')));
+    await expectLater(
+      () => api.attach(id, 'huge.bin', List.filled(AttachmentDto.maxSize + 1, 0)),
+      throwsA(apiError(400, 'invalid_input')),
+    );
+  });
+
   test('a token protects the api but not the health check', () async {
     await expectLater(() => client(serverToken: 'secret').items(), throwsA(apiError(401, 'unauthorized')));
     expect(await client(token: 'secret', serverToken: 'secret').items(), isEmpty);

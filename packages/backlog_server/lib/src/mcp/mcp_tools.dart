@@ -237,6 +237,7 @@ Name yourself with `agent` (the same name on every call) and never work on an it
       snapshot,
       path: location == null ? null : backlog.storage.displayLocation(location),
       reviewing: _reviewing(project),
+      attachments: await backlog.items.attachmentsOf(planned.id),
     ).toJson();
   }
 
