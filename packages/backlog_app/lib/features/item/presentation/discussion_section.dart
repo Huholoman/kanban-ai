@@ -224,7 +224,7 @@ class _Comment extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 2),
-          MarkdownBody(data: comment.text, selectable: true),
+          FoldBox(child: MarkdownBody(data: comment.text, selectable: true)),
         ],
       ),
     );
