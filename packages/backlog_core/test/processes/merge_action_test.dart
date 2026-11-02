@@ -1,6 +1,7 @@
 // Real processes and git: slow when `mise run check` runs every suite at once.
 @Timeout(Duration(minutes: 2))
 @TestOn('linux || mac-os')
+@Tags(['processes'])
 library;
 
 import 'dart:convert';
@@ -10,7 +11,7 @@ import 'package:backlog_core/backlog_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-import 'support.dart';
+import '../support.dart';
 
 /// The built-in action `merge` against real git repositories: a primary
 /// clone `repo` on main, a bare `origin`, the listed worktree `wt-1` and

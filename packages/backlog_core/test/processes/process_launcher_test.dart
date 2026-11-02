@@ -1,6 +1,7 @@
 // Real processes and git: slow when `mise run check` runs every suite at once.
 @Timeout(Duration(minutes: 2))
 @TestOn('linux || mac-os')
+@Tags(['processes'])
 library;
 
 import 'dart:async';
@@ -11,7 +12,7 @@ import 'package:backlog_core/backlog_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-import 'support.dart';
+import '../support.dart';
 
 /// A fake agent: prints what it got, starts a child (to check that stopping
 /// kills the whole group), then waits for `<worktree>/../go-<id>` and exits

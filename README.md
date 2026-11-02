@@ -714,7 +714,8 @@ The same commands without mise:
 ```bash
 dart pub get && (cd packages/backlog_app && flutter pub get)
 dart analyze packages/backlog_core packages/backlog_cli packages/backlog_api packages/backlog_server
-dart test packages/backlog_core packages/backlog_cli packages/backlog_api packages/backlog_server
+dart test packages/backlog_cli packages/backlog_api packages/backlog_server
+(cd packages/backlog_core && dart test -x processes && dart test --compiler exe test/processes)
 (cd packages/backlog_app && flutter analyze && flutter test)
 dart format packages            # page width 120
 ```

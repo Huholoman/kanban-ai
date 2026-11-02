@@ -34,7 +34,17 @@ depends = ["test-core", "test-cli", "test-api", "test-server"]
 
 [tasks.test-core]
 description = "Tests of backlog_core"
-run = "dart test packages/backlog_core"
+depends = ["test-core-pure", "test-core-processes"]
+
+[tasks.test-core-pure]
+description = "Tests of backlog_core without the suites tagged processes"
+dir = "packages/backlog_core"
+run = "dart test -x processes"
+
+[tasks.test-core-processes]
+description = "Tests of backlog_core that start real processes, compiled to executables (cheap forks)"
+dir = "packages/backlog_core"
+run = "dart test --compiler exe test/processes"
 
 [tasks.test-cli]
 description = "Tests of backlog_cli"

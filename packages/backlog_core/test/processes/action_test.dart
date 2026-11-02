@@ -1,5 +1,6 @@
 // The review loop runs real git: slow when `mise run check` runs every suite at once.
 @Timeout(Duration(minutes: 2))
+@Tags(['processes'])
 library;
 
 import 'dart:async';
@@ -8,7 +9,7 @@ import 'dart:io';
 import 'package:backlog_core/backlog_core.dart';
 import 'package:test/test.dart';
 
-import 'support.dart';
+import '../support.dart';
 
 const _root = '/work/backlog';
 
