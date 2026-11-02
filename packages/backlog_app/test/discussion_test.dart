@@ -8,6 +8,7 @@ import 'package:backlog_app/features/item/application/drafts.dart';
 import 'package:backlog_app/features/item/application/item_body.dart';
 import 'package:backlog_app/features/item/presentation/item_page.dart';
 import 'package:backlog_app/shared/tokens.dart';
+import 'package:backlog_app/shared/ui/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -185,6 +186,29 @@ void main() {
     expect(_key('note-only'), findsOneWidget);
     await _reply(tester, 'CSV.', 'send-comment');
     expect(_key('note-only'), findsNothing, reason: 'nothing left that a note would keep quiet');
+  });
+
+  testWidgets('a long comment is folded with Show more, a short one is not', (tester) async {
+    await _pump(tester);
+    expect(_key('fold-toggle'), findsNothing, reason: 'the question is short');
+
+    final long = List.generate(40, (i) => 'Line ${i + 1} of the plan.').join('\n\n');
+    await _reply(tester, long, 'send-comment');
+    final comment = find.ancestor(of: find.textContaining('Line 40'), matching: find.byType(FoldBox));
+    final folded = tester.getSize(comment).height;
+    expect(find.text('Show more'), findsOneWidget);
+
+    await tester.ensureVisible(_key('fold-toggle'));
+    await tester.tap(_key('fold-toggle'));
+    await tester.pumpAndSettle();
+    expect(find.text('Show less'), findsOneWidget);
+    expect(tester.getSize(comment).height, greaterThan(folded + 200));
+
+    await tester.ensureVisible(_key('fold-toggle'));
+    await tester.tap(_key('fold-toggle'));
+    await tester.pumpAndSettle();
+    expect(find.text('Show more'), findsOneWidget);
+    expect(tester.getSize(comment).height, folded);
   });
 
   testWidgets('the History tab lists who changed what, newest first, and filters', (tester) async {
