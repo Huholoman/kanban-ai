@@ -459,7 +459,12 @@ final class ProcessAgentLauncher extends AgentLauncher {
   Future<void> _exportAttachments(Backlog backlog, DispatchAssignment assignment) async {
     final id = assignment.id;
     try {
-      await exportAttachments(backlog.items, id, p.join(assignment.path, DispatcherConfig.attachmentsFolder(id.value)));
+      await exportAttachments(
+        backlog.items,
+        id,
+        p.join(assignment.path, DispatcherConfig.attachmentsFolder(id.value)),
+        prune: true,
+      );
     } on Object catch (error) {
       _log('Dispatcher: could not copy the attachments of $id into ${assignment.agent}: $error');
     }

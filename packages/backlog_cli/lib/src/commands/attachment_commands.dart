@@ -105,8 +105,11 @@ extension on AttachCommand {
   Future<int> _export(String reference) async {
     final backlog = await openBacklog();
     final id = (await backlog.items.get(reference)).id;
-    final folder = p.normalize(p.join(context.cwd, args.option('to') ?? DispatcherConfig.attachmentsFolder(id.value)));
-    final written = await exportAttachments(backlog.items, id, folder);
+    final to = args.option('to');
+    final folder = p.normalize(p.join(context.cwd, to ?? DispatcherConfig.attachmentsFolder(id.value)));
+    // Only the item's own folder is tidied; a folder given with --to may
+    // hold anything (even the worktree itself), so it only gets copies.
+    final written = await exportAttachments(backlog.items, id, folder, prune: to == null);
     if (this.json) {
       final snapshot = await backlog.planning.snapshot();
       final attachments = await backlog.items.attachmentsOf(id);

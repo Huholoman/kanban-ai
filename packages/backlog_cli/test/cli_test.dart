@@ -427,9 +427,18 @@ void main() {
       startsWith('Copied 4 attachment(s) of $id to $exported:\n  ${p.join(exported, 'error-2.log')}\n'),
     );
     expect(File(p.join(exported, 'steps.md')).readAsStringSync(), '1. log in\n');
+    File(p.join(exported, 'gone.txt')).writeAsStringSync('no longer attached');
+    await backlog(['attach', id, '--export'], cwd: worktree);
+    expect(File(p.join(exported, 'gone.txt')).existsSync(), isFalse, reason: 'its own folder is tidied');
+
+    final other = File(p.join(workspace.path, 'out', 'notes', 'keep.md'))..createSync(recursive: true);
     final to = await backlog(['--json', 'attach', id, '--to', 'out']);
     expect((to.json! as Map)['exported'], hasLength(4));
     expect(File(p.join(workspace.path, 'out', 'error.log')).readAsStringSync(), 'boom\n');
+    expect(other.existsSync(), isTrue, reason: 'a folder given with --to only gets copies');
+    final empty = await backlog(['--json', 'new', 'Nothing attached']);
+    await backlog(['attach', (empty.json! as Map)['id'] as String, '--to', 'out']);
+    expect(other.existsSync(), isTrue, reason: 'nor is it removed for an item without attachments');
     expect((await backlog(['attach', id, 'x', '--export'])).exitCode, ExitCode.usage);
 
     final detach = await backlog(['--json', 'detach', id, 'error-2.log', 'text.txt']);
