@@ -92,6 +92,9 @@ final class Workflow {
       for (final listed in [?action.onEnter, ?action.then, ...?action.statuses]) {
         _require(statuses.any((s) => s.id == listed), 'dispatcher.actions "${action.name}": unknown status "$listed".');
       }
+      for (final listed in [...?action.types]) {
+        _require(types.contains(listed), 'dispatcher.actions "${action.name}": unknown type "$listed".');
+      }
     }
 
     return Workflow._(

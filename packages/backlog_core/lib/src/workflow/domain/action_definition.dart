@@ -25,6 +25,7 @@ final class ActionDefinition {
   ActionDefinition({
     required this.name,
     List<String>? statuses,
+    List<String>? types,
     this.onEnter,
     this.prompt,
     this.command,
@@ -32,21 +33,26 @@ final class ActionDefinition {
     this.agent,
     bool fresh = false,
     this.review = false,
+    this.split = false,
     this.autoFix = 0,
     this.changesCode = false,
     this.then,
   }) : statuses = statuses == null ? null : List.unmodifiable(statuses),
-       fresh = fresh || review {
+       types = types == null ? null : List.unmodifiable(types),
+       fresh = fresh || review || split {
     final label = 'dispatcher.actions "$name"';
     if (name.trim().isEmpty || name != name.trim()) {
       throw const ConfigurationException('dispatcher.actions[].name must not be empty or start/end with a space.');
     }
     if (name.contains('/')) throw ConfigurationException('$label: the name must not contain "/".');
     final kinds = [prompt, command, builtIn].nonNulls.length;
-    if (review && (command != null || builtIn != null)) {
-      throw ConfigurationException('$label: a review runs an agent; it takes no run.');
+    if (review && split) throw ConfigurationException('$label: give review or split, not both.');
+    if ((review || split) && (command != null || builtIn != null)) {
+      throw ConfigurationException('$label: ${review ? 'a review' : 'a split'} runs an agent; it takes no run.');
     }
-    if (!review && kinds != 1) throw ConfigurationException('$label: give exactly one of prompt, run and review.');
+    if (!review && !split && kinds != 1) {
+      throw ConfigurationException('$label: give exactly one of prompt, run, review and split.');
+    }
     if (builtIn case final builtIn? when !builtIns.containsKey(builtIn)) {
       throw ConfigurationException(
         '$label: unknown built-in action "$builtIn" (known: ${builtIns.keys.join(', ')}); '
@@ -61,14 +67,17 @@ final class ActionDefinition {
         '$label: then needs on_enter (the status the review runs in) and must name another status.',
       );
     }
-    if (changesCode && (kind != ActionKind.prompt || review)) {
-      throw ConfigurationException('$label: changes_code only applies to prompt actions (not to a review).');
+    if (changesCode && (kind != ActionKind.prompt || review || split)) {
+      throw ConfigurationException('$label: changes_code only applies to prompt actions (not to a review or split).');
     }
     if (kind != ActionKind.prompt && (agent != null || fresh)) {
       throw ConfigurationException('$label: agent and fresh only apply to prompt actions.');
     }
     if (statuses != null && statuses.toSet().length != statuses.length) {
       throw ConfigurationException('$label: statuses lists a status twice.');
+    }
+    if (types != null && types.toSet().length != types.length) {
+      throw ConfigurationException('$label: types lists a type twice.');
     }
   }
 
@@ -112,6 +121,13 @@ final class ActionDefinition {
   /// status, or only [onEnter] when that is set. Empty: never a button.
   final List<String>? statuses;
 
+  /// Types of items that offer the action as a button and run it as a hook;
+  /// null means every type, or `epic` and `story` for a [split] ([splitTypes]).
+  final List<String>? types;
+
+  /// The types a [split] is offered for when it names none.
+  static const splitTypes = ['epic', 'story'];
+
   /// The action runs by itself, once, whenever an item enters this status.
   final String? onEnter;
 
@@ -138,6 +154,12 @@ final class ActionDefinition {
   /// the item's review state `running`.
   final bool review;
 
+  /// An AI split (`split: true`): an agent in a new session with the
+  /// built-in task ([splitTask]; [prompt], when given, adds to it) that
+  /// proposes the tasks the item consists of as drafts under it
+  /// (`kanban-ai new --draft --parent`), for a person to approve or discard.
+  final bool split;
+
   /// For a [review]: when it asks for changes, the dispatcher wakes the
   /// item's agent to fix them and reviews again, at most this many rounds
   /// (0: never, the default).
@@ -155,7 +177,7 @@ final class ActionDefinition {
   /// typically `review`, where a person looks at it (`then: review`).
   final String? then;
 
-  ActionKind get kind => prompt != null || review
+  ActionKind get kind => prompt != null || review || split
       ? ActionKind.prompt
       : command != null
       ? ActionKind.command
@@ -193,16 +215,46 @@ final class ActionDefinition {
         'language the people in the item use.';
   }
 
-  /// Whether items in [status] show the action as a button.
-  bool offeredIn(String status) => switch (statuses) {
-    final listed? => listed.contains(status),
-    null => onEnter == null || onEnter == status,
-  };
+  /// The task of a [split] agent for an item with the action prompt's
+  /// [values] (`id`, …): propose the tasks the item consists of as drafts
+  /// under it, change nothing else. [extra] (the rendered [prompt]) is added
+  /// as further instructions.
+  static String splitTask(Map<String, String> values, {String? extra}) {
+    const folder = DispatcherConfig.scratchFolder;
+    final id = values['id']!;
+    return 'Split backlog item $id into the tasks it consists of, as drafts for a person to approve. '
+        'Read the item with its discussion (`kanban-ai show $id`), the items already under it '
+        '(`kanban-ai list --all --where parent=$id`), the project\'s rules for contributors where the repository has '
+        'them (CLAUDE.md, AGENTS.md, CONTRIBUTING.md, README.md) and the code the work will touch.\n'
+        'Propose small tasks, each one change an agent can make and verify in one go, that together deliver the '
+        'item and do not repeat the items already under it. Create each with\n'
+        '  kanban-ai new "<short imperative title>" --draft --parent $id -t task -p <priority> '
+        '--body-file $folder/split-$id-<n>.md [--depends-on <id of an earlier draft>] [--touches <paths>]\n'
+        'writing its body first with your Write tool to $folder/split-$id-<n>.md in this worktree (git ignores '
+        '$folder/): what to do and why, and an acceptance checklist (`- [ ] …` lines). Create them in the order '
+        'they can be done, so that --depends-on names drafts created before; use it only for hard prerequisites. '
+        'Do not give a milestone or status: a draft takes its parent\'s.\n'
+        'Change nothing else: no edits (except those body files), no commits, no pushes, no changes to existing '
+        'items. You approve nothing; a person approves or discards the drafts.'
+        '${extra == null || extra.trim().isEmpty ? '' : '\n\nAlso: ${extra.trim()}'}';
+  }
+
+  /// Whether items in [status] (of [type], when given) show the action as
+  /// a button.
+  bool offeredIn(String status, {String? type}) =>
+      (type == null || appliesTo(type)) &&
+      switch (statuses) {
+        final listed? => listed.contains(status),
+        null => onEnter == null || onEnter == status,
+      };
+
+  /// Whether the action is for items of [type] ([types]).
+  bool appliesTo(String type) => (types ?? (split ? splitTypes : null))?.contains(type) ?? true;
 
   /// One line for logs and lists: `prompt`, `run: sh -c …`, `run: merge`.
   String get summary => switch (kind) {
     ActionKind.prompt =>
-      '${review ? 'AI review${autoFix > 0 ? ' (auto-fix $autoFix)' : ''}${then == null ? '' : ', then $then'}, ' : ''}agent${agent == null ? '' : ' $agent'}${fresh ? ', new session' : ''}${changesCode ? ', changes code' : ''}',
+      '${review ? 'AI review${autoFix > 0 ? ' (auto-fix $autoFix)' : ''}${then == null ? '' : ', then $then'}, ' : ''}${split ? 'AI split, ' : ''}agent${agent == null ? '' : ' $agent'}${fresh ? ', new session' : ''}${changesCode ? ', changes code' : ''}',
     ActionKind.command => 'run: $command',
     ActionKind.builtIn => 'run: $builtIn',
   };

@@ -516,13 +516,50 @@ dispatcher:
       expect(dispatcher.action('merge'), isNull);
     });
 
+    test('a split action proposes tasks for epics and stories; types limit any action', () {
+      final [split, own, tests] = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [a]
+  actions:
+    - {name: Split, split: true}
+    - {name: Split bugs, split: true, types: [bug], prompt: "Keep {id} small."}
+    - {name: Tests, types: [task, bug], run: [make, test]}
+''').dispatcher!.actions;
+      expect((split.kind, split.split, split.fresh, split.review), (ActionKind.prompt, true, true, false));
+      expect(split.summary, 'AI split, agent, new session');
+      expect(
+        [
+          for (final type in ['epic', 'story', 'task']) split.offeredIn('todo', type: type),
+        ],
+        [true, true, false],
+      );
+      expect(split.offeredIn('todo'), isTrue, reason: 'without a type only the status counts');
+      expect([own.appliesTo('bug'), own.appliesTo('epic')], [true, false]);
+      expect([tests.offeredIn('todo', type: 'bug'), tests.offeredIn('todo', type: 'epic')], [true, false]);
+      expect(tests.types, ['task', 'bug']);
+
+      final task = ActionDefinition.splitTask({'id': 'T-1'}, extra: 'Keep it small.');
+      expect(task, contains('kanban-ai new "<short imperative title>" --draft --parent T-1'));
+      expect(task, contains('Change nothing else'));
+      expect(task, endsWith('Also: Keep it small.'));
+      expect(ActionDefinition.splitTask({'id': 'T-1'}), isNot(contains('Also:')));
+    });
+
     test('rejects broken actions', () {
       void rejects(String actions, String message) => expect(
         () => parseWorkflowYaml('dispatcher: {worktrees: [a], actions: [$actions]}'),
         throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
       );
-      rejects('{name: A}', 'give exactly one of prompt, run and review');
-      rejects('{name: A, prompt: x, run: noop}', 'give exactly one of prompt, run and review');
+      rejects('{name: A}', 'give exactly one of prompt, run, review and split');
+      rejects('{name: A, prompt: x, run: noop}', 'give exactly one of prompt, run, review and split');
+      rejects('{name: A, split: true, review: true}', 'give review or split, not both');
+      rejects('{name: A, split: true, run: noop}', 'a split runs an agent; it takes no run');
+      rejects('{name: A, split: true, fresh: false}', 'a split always runs in a new session');
+      rejects('{name: A, split: maybe}', 'split must be true or false');
+      rejects('{name: A, split: true, changes_code: true}', 'changes_code only applies to prompt actions');
+      rejects('{name: A, split: true, auto_fix: 1}', 'auto_fix only applies to a review');
+      rejects('{name: A, prompt: x, types: [task, saga]}', 'unknown type "saga"');
+      rejects('{name: A, prompt: x, types: [task, task]}', 'types lists a type twice');
       rejects('{name: A, review: true, run: noop}', 'a review runs an agent; it takes no run');
       rejects('{name: A, review: true, fresh: false}', 'a review always runs in a new session');
       rejects('{name: A, review: yes please}', 'review must be true or false');

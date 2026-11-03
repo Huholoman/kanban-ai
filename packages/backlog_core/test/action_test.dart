@@ -111,6 +111,20 @@ void main() {
       expect(state.pending.map((p) => '${p.item} ${p.action}'), ['T-2 Noop', 'T-1 AI review'], reason: 'deduplicated');
     });
 
+    test('an on_enter hook limited to types queues only for items of those types', () {
+      final hooks = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [w1]
+  actions:
+    - {name: Split, split: true, on_enter: todo}
+''').dispatcher!.actions;
+      BacklogSnapshot typed(String status) =>
+          snapshotOf([item('T-1', type: 'epic', status: status), item('T-2', status: status)]);
+      final (state, _) = const ActionState().observe(typed('backlog'), hooks, now);
+      final (_, queued) = state.observe(typed('todo'), hooks, now);
+      expect(queued.map((p) => '${p.item} ${p.action}'), ['T-1 Split']);
+    });
+
     test('survives a round trip through JSON', () {
       final state = ActionState(
         statuses: {ItemId('T-1'): 'review'},
@@ -240,6 +254,39 @@ dispatcher:
       expect(prompt, isNot(contains('kanban-ai comment T-1 "…"` and stop')));
       expect(prompt, isNot(contains('Also:')));
       expect(plan.actionStart('T-1', 'Strict review').agent!.prompt, contains('Also: Be strict about main.'));
+    });
+
+    test('a split action is offered for epics and stories and proposes drafts under the item', () {
+      final workflow = parseWorkflowYaml('''
+dispatcher:
+  worktrees: [w1, w2]
+  pr: {create: tea pulls create}
+  actions:
+    - {name: Split, split: true, prompt: "Use at most {action} tasks."}
+''');
+      final plan = _plan([
+        item('T-1', type: 'epic', status: 'backlog'),
+        item('T-2', status: 'backlog'),
+      ], workflow: workflow);
+      expect(
+        [
+          for (final id in ['T-1', 'T-2']) plan.actionsFor(plan.snapshot[ItemId(id)]!).length,
+        ],
+        [1, 0],
+      );
+      expect(
+        () => plan.actionStart('T-2', 'Split'),
+        throwsA(isA<InvalidInputException>().having((e) => e.message, 'message', contains('items of type task'))),
+      );
+      final agent = plan.actionStart('T-1', 'Split').agent!;
+      expect(agent.resume, isNull, reason: 'always a new session');
+      final prompt = agent.prompt;
+      expect(prompt, contains('Split backlog item T-1 into the tasks it consists of'));
+      expect(prompt, contains('--draft --parent T-1'));
+      expect(prompt, contains('Also: Use at most Split tasks.'));
+      expect(prompt, contains('When the drafts are created, stop without a comment.'));
+      expect(prompt, contains('Never push.'));
+      expect(prompt, isNot(contains('kanban-ai pr T-1')));
     });
 
     test('a command runs in the worktree of the item branch, else in the primary clone', () {
