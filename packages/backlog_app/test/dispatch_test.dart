@@ -595,7 +595,11 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
-    expect(find.text('hello'), findsOneWidget, reason: 'the live log is open while the agent runs');
+    expect(find.text('hello'), findsOneWidget, reason: 'the closed log shows its last line');
+    expect(find.text('Live · /state/logs/R-1.log'), findsNothing, reason: 'the log starts closed');
+    await tester.tap(_key('agent-log-toggle'));
+    await tester.pump();
+    await tester.pump();
     expect(find.text('Live · /state/logs/R-1.log'), findsOneWidget);
     api.agentLogUpdates.add(
       const AgentLogUpdateDto(item: 'R-1', path: '/state/logs/R-1.log', running: true, lines: ['▸ Bash git status']),
@@ -835,7 +839,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Needs you: the last run ended with a problem'), findsOneWidget);
     expect(find.text('• a tool call was denied: Bash(git push)'), findsOneWidget);
-    expect(find.text('Fixed it, but git push was denied.'), findsOneWidget);
+    expect(find.text('Fixed it, but git push was denied.'), findsOneWidget, reason: 'folded to its first lines');
+    expect(find.byType(SelectableText), findsNothing);
+    await tester.tap(_key('agent-result-toggle'));
+    await tester.pump();
+    expect(find.widgetWithText(SelectableText, 'Fixed it, but git push was denied.'), findsOneWidget);
+    await tester.tap(_key('agent-result-toggle'));
+    await tester.pump();
+    expect(find.byType(SelectableText), findsNothing);
 
     await tester.tap(_key('dismiss-problems'));
     await tester.pumpAndSettle();
@@ -930,6 +941,10 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
+    await tester.tap(_key('agent-log-toggle'));
+    await tester.pump();
+    await tester.pump();
+    expect(_key('agent-log'), findsOneWidget);
     expect(find.text('▸ Edit a.dart'), findsOneWidget);
     await tester.tap(_key('agent-open-runner'));
     await tester.pumpAndSettle();
@@ -951,6 +966,11 @@ void main() {
 
     api.agentLogUpdates.add(lines(0, 100, reset: true));
     await tester.pumpAndSettle();
+    await tester.tap(_key('agent-log-toggle'));
+    await tester.pumpAndSettle();
+    final screen = tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    final box = find.ancestor(of: _key('agent-panel'), matching: find.byType(SingleChildScrollView)).first;
+    expect(tester.getSize(box).height, lessThanOrEqualTo(screen * 0.4), reason: 'the item stays in sight');
     expect(position().pixels, position().maxScrollExtent);
     expect(position().maxScrollExtent, greaterThan(0));
 

@@ -141,13 +141,19 @@ class _ItemDetailViewState extends State<ItemDetailView> {
             onAddChild: widget.onAddChild,
             milestone: widget.milestone,
           ),
+          // At most 40 % of the height, so the item itself stays in sight.
           if (controller.item case final item?)
-            AgentPanel(
-              key: ValueKey('agent-${item.id}'),
-              item: item,
-              workflow: controller.workflow,
-              onOpen: _open,
-              question: controller.detail?.discussion.where((comment) => comment.question).lastOrNull,
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.4),
+              child: SingleChildScrollView(
+                child: AgentPanel(
+                  key: ValueKey('agent-${item.id}'),
+                  item: item,
+                  workflow: controller.workflow,
+                  onOpen: _open,
+                  question: controller.detail?.discussion.where((comment) => comment.question).lastOrNull,
+                ),
+              ),
             ),
           const Divider(height: 1),
           Expanded(
