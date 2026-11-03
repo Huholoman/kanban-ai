@@ -30,6 +30,16 @@ class DispatchController extends ChangeNotifier {
 
   bool get configured => plan.configured;
 
+  /// Whether the agent box of a detail shows the log: closed until the
+  /// reader opens it, then open for every item until they close it again.
+  bool get logOpen => _logOpen;
+  bool _logOpen = false;
+  set logOpen(bool open) {
+    if (open == _logOpen) return;
+    _logOpen = open;
+    notifyListeners();
+  }
+
   Map<String, dynamic> profiles = const {};
   String? selectedAgent;
 

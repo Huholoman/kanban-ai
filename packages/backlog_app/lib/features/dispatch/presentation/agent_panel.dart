@@ -33,7 +33,8 @@ String sinceText(DateTime time, {DateTime? now}) {
 /// the agent working on it (worktree, since when, branch, the last line of
 /// its log, *Stop*), why the dispatcher holds it back or lets it wait, or
 /// how its last run ended — fine, or with problems that need a person —
-/// with the agent's final message; the log on demand. An item another
+/// with the agent's final message (folded to its first lines); the log on
+/// demand. An item another
 /// item's agent works on (an epic's agent going through its children) shows
 /// that agent and its log, with a link to that item ([onOpen]). Its first
 /// line starts with who has the ball ([BallBadge]), followed by the next
@@ -63,8 +64,8 @@ class _AgentPanelState extends State<AgentPanel> {
   /// has them until it reports that run again.
   AgentRunEndDto? _dismissed;
 
-  /// Shown or hidden by the reader; by default shown while an agent runs.
-  bool? _showLogChoice;
+  /// Whether the agent's final message shows in full.
+  bool _resultOpen = false;
 
   @override
   void didChangeDependencies() {
@@ -150,7 +151,7 @@ class _AgentPanelState extends State<AgentPanel> {
         problems.isEmpty) {
       return const SizedBox.shrink();
     }
-    final showLog = hasLog && (_showLogChoice ?? running);
+    final showLog = hasLog && dispatch.logOpen;
     final (icon, color, text) = switch (run ?? via) {
       final run? when run == via => (
         Icons.smart_toy,
@@ -245,7 +246,7 @@ class _AgentPanelState extends State<AgentPanel> {
                 LinkButton(
                   key: const ValueKey('agent-log-toggle'),
                   label: showLog ? 'Hide log' : 'Log',
-                  onPressed: () => setState(() => _showLogChoice = !showLog),
+                  onPressed: () => dispatch.logOpen = !showLog,
                 ),
               if (run != null && run.kind != 'builtin')
                 SecondaryButton(
@@ -355,6 +356,8 @@ class _AgentPanelState extends State<AgentPanel> {
             const SizedBox(height: 8),
             _FinalMessage(
               result,
+              open: _resultOpen,
+              onToggle: () => setState(() => _resultOpen = !_resultOpen),
               color: problems.isEmpty
                   ? tokens.success
                   : needsYou
@@ -398,18 +401,22 @@ class _AgentPanelState extends State<AgentPanel> {
   }
 }
 
-/// The agent's final message of its last run, selectable, with a stripe in
-/// [color] (how the run went); long messages scroll.
+/// The agent's final message of its last run, with a stripe in [color] (how
+/// the run went): folded to its first lines, opened (by a click on its
+/// heading) selectable in full; long messages scroll.
 class _FinalMessage extends StatelessWidget {
-  const _FinalMessage(this.text, {required this.color});
+  const _FinalMessage(this.text, {required this.color, required this.open, required this.onToggle});
 
   final String text;
   final Color color;
+  final bool open;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     final tokens = BoardTokens.of(context);
     final small = Theme.of(context).textTheme.bodySmall;
+    final style = small?.copyWith(color: tokens.text, height: 1.4);
     return Container(
       key: const ValueKey('agent-result'),
       constraints: const BoxConstraints(maxHeight: 240),
@@ -422,9 +429,25 @@ class _FinalMessage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Last message of the agent', style: small?.copyWith(color: tokens.muted)),
+            InkWell(
+              key: const ValueKey('agent-result-toggle'),
+              onTap: onToggle,
+              child: Row(
+                children: [
+                  Icon(open ? Icons.expand_less : Icons.expand_more, size: 16, color: tokens.muted),
+                  const SizedBox(width: 4),
+                  Text('Last message of the agent', style: small?.copyWith(color: tokens.muted)),
+                ],
+              ),
+            ),
             const SizedBox(height: 2),
-            SelectableText(text, style: small?.copyWith(color: tokens.text, height: 1.4)),
+            if (open)
+              SelectableText(text, style: style)
+            else
+              GestureDetector(
+                onTap: onToggle,
+                child: Text(text, style: style, maxLines: 2, overflow: TextOverflow.ellipsis),
+              ),
           ],
         ),
       ),
