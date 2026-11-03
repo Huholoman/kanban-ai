@@ -317,7 +317,7 @@ final class DashboardSections {
   List<_ActionButton> _actions(ProjectDigest digest, ItemDto item) {
     final busy = controller.isPending(digest, item.id) || digest.plan.runFor(item.id) != null;
     return [
-      for (final action in digest.workflow?.actionsIn(item.status) ?? const <ActionDto>[])
+      for (final action in digest.workflow?.actionsIn(item.status, type: item.type) ?? const <ActionDto>[])
         _ActionButton(
           key: ValueKey('action-${item.id}-${action.name}'),
           label: action.name,

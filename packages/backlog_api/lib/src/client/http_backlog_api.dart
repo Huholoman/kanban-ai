@@ -90,6 +90,18 @@ final class HttpBacklogApi implements BacklogApi {
       ItemDetailDto.fromJson(asJson(await _send('POST', ApiPaths.itemAction(reference, 'rank'), request.toJson())));
 
   @override
+  Future<List<String>> approveDrafts(List<String> items) async => [
+    for (final json in _list(await _send('POST', ApiPaths.draftsApprove, DraftsRequest(items).toJson())))
+      json.string('id'),
+  ];
+
+  @override
+  Future<List<String>> discardDrafts(List<String> items) async => [
+    for (final json in _list(await _send('POST', ApiPaths.draftsDiscard, DraftsRequest(items).toJson())))
+      json.string('id'),
+  ];
+
+  @override
   Future<ItemDetailDto> attach(String reference, String name, List<int> content, {bool replace = false}) async =>
       ItemDetailDto.fromJson(
         asJson(

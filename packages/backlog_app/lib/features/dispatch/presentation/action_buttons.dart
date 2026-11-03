@@ -58,7 +58,7 @@ class CardActionsMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dispatch = DispatchScope.maybeOf(context);
-    final actions = workflow?.actionsIn(item.status) ?? const <ActionDto>[];
+    final actions = workflow?.actionsIn(item.status, type: item.type) ?? const <ActionDto>[];
     if (dispatch == null || !dispatch.configured || actions.isEmpty) return const SizedBox.shrink();
     final tokens = BoardTokens.of(context);
     final run = dispatch.runFor(item.id);

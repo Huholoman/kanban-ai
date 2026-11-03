@@ -187,7 +187,7 @@ final class FakeBacklogApi implements BacklogApi {
       conflicts: [for (final id in found.conflictsWith) linkTo(id)],
       actions: [
         for (final action in actions)
-          if (action.offeredIn(found.status)) action,
+          if (action.offeredIn(found.status, type: found.type)) action,
       ],
       waiting: [
         for (final other in items_.values)
@@ -233,6 +233,41 @@ final class FakeBacklogApi implements BacklogApi {
 
   /// Ranks every item of the order by its position (1, 2, …), unlike the
   /// server, which changes as few as it can.
+  /// The drafts [approveDrafts] and [discardDrafts] were asked for.
+  final approved = <List<String>>[];
+  final discarded = <List<String>>[];
+
+  @override
+  Future<List<String>> approveDrafts(List<String> items) async {
+    _checkDrafts(items);
+    approved.add(items);
+    for (final id in items) {
+      items_[id] = _with(items_[id]!, draft: false);
+    }
+    _changes.add(BacklogChangeEvent([for (final id in items) 'items/$id.md']));
+    return items;
+  }
+
+  @override
+  Future<List<String>> discardDrafts(List<String> items) async {
+    _checkDrafts(items);
+    discarded.add(items);
+    items.forEach(items_.remove);
+    for (final other in items_.values.toList()) {
+      if (other.dependsOn.any(items.contains)) {
+        items_[other.id] = _with(other, dependsOn: other.dependsOn.where((id) => !items.contains(id)).toList());
+      }
+    }
+    _changes.add(BacklogChangeEvent([for (final id in items) 'items/$id.md']));
+    return items;
+  }
+
+  void _checkDrafts(List<String> items) {
+    for (final id in items) {
+      if (items_[id]?.draft != true) throw BacklogApiException(400, 'invalid_input', '$id is not a draft.');
+    }
+  }
+
   @override
   Future<ItemDetailDto> rank(String reference, RankRequest request) async {
     ranks.add((reference, request.order));
@@ -629,8 +664,11 @@ final class FakeBacklogApi implements BacklogApi {
     Progress? children,
     bool? needsHuman,
     num? Function()? rank,
+    bool? draft,
+    List<String>? dependsOn,
   }) => ItemDto(
     id: item.id,
+    draft: draft ?? item.draft,
     rank: rank == null ? item.rank : rank(),
     title: item.title,
     type: item.type,
@@ -646,7 +684,7 @@ final class FakeBacklogApi implements BacklogApi {
     parent: item.parent,
     branch: item.branch,
     pr: item.pr,
-    dependsOn: item.dependsOn,
+    dependsOn: dependsOn ?? item.dependsOn,
     blocked: item.blocked,
     blockedBy: item.blockedBy,
     children: children ?? item.children,

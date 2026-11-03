@@ -148,10 +148,10 @@ final class WorkflowDto {
   /// Whether the server can estimate touches (`touches.suggest`).
   final bool suggestTouches;
 
-  /// The actions items in [status] show as buttons.
-  List<ActionDto> actionsIn(String status) => [
+  /// The actions items in [status] (of [type], when given) show as buttons.
+  List<ActionDto> actionsIn(String status, {String? type}) => [
     for (final action in actions)
-      if (action.offeredIn(status)) action,
+      if (action.offeredIn(status, type: type)) action,
   ];
 
   StatusCategoryDto? categoryOf(String status) {

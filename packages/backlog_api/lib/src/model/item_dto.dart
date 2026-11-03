@@ -65,6 +65,7 @@ final class ItemDto {
     required this.status,
     this.category,
     required this.priority,
+    this.draft = false,
     this.rank,
     this.milestone,
     this.parent,
@@ -109,6 +110,7 @@ final class ItemDto {
       status: json.string('status'),
       category: category == null ? null : StatusCategoryDto.values.byName(category),
       priority: json.string('priority'),
+      draft: json.boolean('draft'),
       rank: json['rank'] as num?,
       milestone: json.optionalString('milestone'),
       parent: json.optionalString('parent'),
@@ -153,6 +155,10 @@ final class ItemDto {
   final String status;
   final StatusCategoryDto? category;
   final String priority;
+
+  /// A proposal nobody has approved yet (`draft: true`): never ready; a
+  /// person approves or discards it.
+  final bool draft;
 
   /// Manual order where a view sorts by `rank` (lower first); null for none.
   final num? rank;
@@ -223,6 +229,7 @@ final class ItemDto {
     'status': status,
     'category': category?.name,
     'priority': priority,
+    'draft': draft,
     'rank': rank,
     'milestone': milestone,
     'parent': parent,
