@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 
 import '../features/dashboard/application/dashboard_controller.dart';
 import '../features/item/application/drafts.dart';
+import '../features/projects/application/commands_controller.dart';
 import '../features/projects/application/preview_controller.dart';
 import '../features/projects/application/projects_controller.dart';
 import 'appearance_controller.dart';
@@ -26,6 +27,7 @@ class AppScope extends InheritedWidget {
     this.projects,
     this.dashboard,
     this.preview,
+    this.commands,
     this.drafts,
     required super.child,
   });
@@ -49,6 +51,10 @@ class AppScope extends InheritedWidget {
   /// screen.
   final PreviewController? preview;
 
+  /// The server's global commands; null in tests that build a single
+  /// screen.
+  final CommandsController? commands;
+
   /// Unsent text of the open project; null in tests that build a single
   /// screen (text then lasts as long as its field).
   final Drafts? drafts;
@@ -67,5 +73,6 @@ class AppScope extends InheritedWidget {
       projects != oldWidget.projects ||
       dashboard != oldWidget.dashboard ||
       preview != oldWidget.preview ||
+      commands != oldWidget.commands ||
       drafts != oldWidget.drafts;
 }

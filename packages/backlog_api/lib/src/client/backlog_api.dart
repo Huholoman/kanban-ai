@@ -149,11 +149,17 @@ abstract interface class ProjectsApi {
   /// "Back to main": ends the preview; the server restarts as its main
   /// build right after answering. Returns the ended preview.
   Future<PreviewDto> backToMain();
+
+  /// The global commands of the server and the run of the last one.
+  Future<CommandsDto> commands();
+
+  /// Starts the global command [name]; refused (409) while one runs.
+  Future<CommandRunDto> runCommand(String name);
 }
 
 /// URL paths of the API, shared by the server and the client.
 ///
-/// Every path except [health], [projects] and [preview] also exists per project under
+/// Every path except [health], [projects], [preview] and [commands] also exists per project under
 /// [projectPrefix] (`/api/p/<id>/items`, …); the unprefixed paths address
 /// the default project.
 abstract final class ApiPaths {
@@ -178,6 +184,11 @@ abstract final class ApiPaths {
   /// main.
   static const preview = '/api/preview';
   static const previewMain = '/api/preview/main';
+
+  /// The server's global commands (`GET`); `POST` [command] starts one.
+  static const commands = '/api/commands';
+
+  static String command(String name) => '$commands/${Uri.encodeComponent(name)}';
 
   static String projectPrefix(String id) => '/api/p/${Uri.encodeComponent(id)}';
 

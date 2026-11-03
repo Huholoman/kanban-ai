@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../features/board/presentation/board_page.dart';
 import '../features/dashboard/application/dashboard_controller.dart';
 import '../features/item/application/drafts.dart';
+import '../features/projects/application/commands_controller.dart';
 import '../features/projects/application/preview_controller.dart';
 import '../features/projects/application/project_memory.dart';
 import '../features/projects/application/project_route.dart';
@@ -66,6 +67,9 @@ class _BacklogAppState extends State<BacklogApp> with WidgetsBindingObserver {
   /// The server's local preview, whichever project is open.
   late final _preview = PreviewController(widget.projects);
 
+  /// The server's global commands, whichever project is open.
+  late final _commands = CommandsController(widget.projects);
+
   late final _drafts = widget.drafts ?? InMemoryDraftStore();
 
   @override
@@ -77,6 +81,7 @@ class _BacklogAppState extends State<BacklogApp> with WidgetsBindingObserver {
     _dashboard = DashboardController(_projects, agent: widget.config.agent);
     unawaited(_projects.start());
     unawaited(_preview.start());
+    unawaited(_commands.start());
   }
 
   @override
@@ -84,6 +89,7 @@ class _BacklogAppState extends State<BacklogApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _dashboard.dispose();
     _preview.dispose();
+    _commands.dispose();
     _projects.dispose();
     super.dispose();
   }
@@ -105,6 +111,7 @@ class _BacklogAppState extends State<BacklogApp> with WidgetsBindingObserver {
         projects: _projects,
         dashboard: _dashboard,
         preview: _preview,
+        commands: _commands,
         drafts: _drafts,
         config: widget.config,
       ),
@@ -121,6 +128,7 @@ class _ProjectSession extends StatefulWidget {
     required this.projects,
     required this.dashboard,
     required this.preview,
+    required this.commands,
     required this.drafts,
     required this.config,
   });
@@ -129,6 +137,7 @@ class _ProjectSession extends StatefulWidget {
   final ProjectsController projects;
   final DashboardController dashboard;
   final PreviewController preview;
+  final CommandsController commands;
   final DraftStore drafts;
   final AppConfig config;
 
@@ -171,6 +180,7 @@ class _ProjectSessionState extends State<_ProjectSession> {
     projects: widget.projects,
     dashboard: widget.dashboard,
     preview: widget.preview,
+    commands: widget.commands,
     drafts: _drafts,
     child: ListenableBuilder(
       listenable: Listenable.merge([_appearance, widget.dashboard]),

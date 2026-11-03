@@ -49,6 +49,45 @@ projects: ~/projects.yaml
     }
   });
 
+  test('commands: a text runs with sh -c, a list as it is; dir is a path, restart true or a program', () {
+    final config = _parse('''
+commands:
+  - name: Update
+    command: [mise, run, install]
+    dir: ~/kanban-ai
+    restart: kanban-ai-server
+  - name: Pull
+    command: git pull && echo done
+    restart: true
+  - name: Status
+    command: [git, status]
+''');
+    final [update, pull, status] = config.commands;
+    expect((update.name, update.dir, update.restart), ('Update', '/home/me/kanban-ai', 'kanban-ai-server'));
+    expect(update.command, ['mise', 'run', 'install']);
+    expect(pull.command, ['sh', '-c', 'git pull && echo done']);
+    expect(pull.restart, ServerCommand.sameProgram);
+    expect((status.dir, status.restart), (null, null));
+    expect(_parse('port: 1').commands, isEmpty);
+
+    for (final (source, message) in [
+      ('commands: x', 'commands must be a list'),
+      ('commands: [x]', 'commands[1] must be a mapping'),
+      ('commands: [{command: ls}]', 'commands[1]: name must be a text'),
+      ('commands: [{name: A}]', 'commands[1]: command must be'),
+      ('commands: [{name: A, command: []}]', 'commands[1]: command must be'),
+      ('commands: [{name: A, command: ls}, {name: A, command: ls}]', 'commands[2]: there are two commands "A"'),
+      ('commands: [{name: A, command: ls, restart: 1}]', 'restart must be true or'),
+      ('commands: [{name: A, command: ls, cwd: /}]', 'unknown key "cwd"'),
+    ]) {
+      expect(
+        () => _parse(source),
+        throwsA(isA<ConfigurationException>().having((e) => e.message, 'message', contains(message))),
+        reason: source,
+      );
+    }
+  });
+
   test('address ranges', () {
     expect(['10.0.0.1', '10.0.0.0/8', '::1', 'fd00::/8', '0.0.0.0/0'].every(isAddressRange), isTrue);
     expect(['10.0.0', '10.0.0.1/40', 'fd00::/129', 'a/b/c', ''].any(isAddressRange), isFalse);
@@ -78,6 +117,38 @@ projects: ~/projects.yaml
     draft.set(['port'], 8642);
     await editor.save(draft);
     expect((await loadServerConfig(file)).port, 8642);
+  });
+
+  test('ServerSettings edits the commands', () {
+    final settings = ServerSettings(ConfigDraft('port: 8640\n'));
+    settings
+      ..addCommand(' Update ', 'mise run install')
+      ..addCommand('Status', 'git status')
+      ..setCommandDir(0, '~/kanban-ai')
+      ..setCommandRestart(0, 'yes')
+      ..setCommandRestart(1, 'kanban-ai-server-dev');
+    var config = _parse(settings.draft.text);
+    expect(
+      [for (final c in config.commands) (c.name, c.dir, c.restart)],
+      [('Update', '/home/me/kanban-ai', ServerCommand.sameProgram), ('Status', null, 'kanban-ai-server-dev')],
+    );
+    expect(config.commands.first.command, ['sh', '-c', 'mise run install']);
+    expect(settings.commands.first.restart, ServerCommand.sameProgram);
+
+    settings
+      ..setCommandRun(1, 'git status --short')
+      ..setCommandRestart(1, '')
+      ..setCommandDir(0, '')
+      ..removeCommand(0);
+    config = _parse(settings.draft.text);
+    expect([for (final c in config.commands) (c.name, c.dir, c.restart)], [('Status', null, null)]);
+    expect(settings.commands.single.command, 'git status --short');
+    expect(() => settings.addCommand('Status', 'ls'), throwsA(isA<InvalidInputException>()));
+    expect(() => settings.addCommand('X', ' '), throwsA(isA<InvalidInputException>()));
+    expect(() => settings.setCommandRestart(0, 'a b'), throwsA(isA<InvalidInputException>()));
+    expect(() => settings.removeCommand(3), throwsA(isA<InvalidInputException>()));
+    settings.removeCommand(0);
+    expect(settings.draft.text, 'port: 8640\n');
   });
 
   test('ServerSettings checks input; empty removes the key', () {

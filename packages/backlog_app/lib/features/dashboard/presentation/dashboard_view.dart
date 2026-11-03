@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../app/app_scope.dart';
 import '../../../shared/tokens.dart';
 import '../../../shared/ui/ui.dart';
+import '../../projects/presentation/commands_menu.dart';
 import '../application/dashboard_controller.dart';
 import 'dashboard_sections.dart';
 
@@ -105,7 +107,8 @@ class _DashboardViewState extends State<DashboardView> {
 }
 
 /// Top bar of the dashboard, in place of the board's header: the menu on
-/// narrow windows, the title with how much waits for you, and reload.
+/// narrow windows, the title with how much waits for you, reload and the
+/// server's commands.
 class _DashboardHeader extends StatelessWidget {
   const _DashboardHeader({required this.needsMe, required this.onRefresh, this.onMenu});
 
@@ -142,6 +145,7 @@ class _DashboardHeader extends StatelessWidget {
             icon: Icons.refresh,
             onPressed: () => unawaited(onRefresh()),
           ),
+          if (AppScope.of(context).commands case final commands?) CommandsMenu(controller: commands),
         ],
       ),
     );

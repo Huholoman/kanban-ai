@@ -91,3 +91,89 @@ final class PreviewDto {
     'main_server': mainServer,
   };
 }
+
+/// The global commands of the server (`GET /api/commands`, `commands` in
+/// `server.yaml`) and the [run] of the one running or run last.
+final class CommandsDto {
+  const CommandsDto({this.commands = const [], this.run});
+
+  factory CommandsDto.fromJson(Json json) => CommandsDto(
+    commands: json.objects('commands').map(ServerCommandDto.fromJson).toList(),
+    run: switch (json.optionalObject('run')) {
+      final Json run => CommandRunDto.fromJson(run),
+      null => null,
+    },
+  );
+
+  final List<ServerCommandDto> commands;
+  final CommandRunDto? run;
+
+  Json toJson() => {
+    'commands': [for (final command in commands) command.toJson()],
+    'run': run?.toJson(),
+  };
+}
+
+/// A global command of the server, started with `POST /api/commands/<name>`;
+/// [restarts] when the server restarts after it succeeded.
+final class ServerCommandDto {
+  const ServerCommandDto({required this.name, this.restarts = false});
+
+  factory ServerCommandDto.fromJson(Json json) =>
+      ServerCommandDto(name: json.string('name'), restarts: json.boolean('restarts'));
+
+  final String name;
+  final bool restarts;
+
+  Json toJson() => {'name': name, 'restarts': restarts};
+}
+
+/// A run of a global command: running until [finished], then [succeeded]
+/// or failed (exit code, or [error]); [output] is its end. [restart] is the
+/// program the server restarts as after it succeeded.
+final class CommandRunDto {
+  const CommandRunDto({
+    required this.name,
+    required this.started,
+    this.finished,
+    this.exitCode,
+    this.output = '',
+    this.error,
+    this.restart,
+  });
+
+  factory CommandRunDto.fromJson(Json json) => CommandRunDto(
+    name: json.string('name'),
+    started: DateTime.parse(json.string('started')),
+    finished: switch (json.optionalString('finished')) {
+      final String time => DateTime.parse(time),
+      null => null,
+    },
+    exitCode: json['exit_code'] as int?,
+    output: json.optionalString('output') ?? '',
+    error: json.optionalString('error'),
+    restart: json.optionalString('restart'),
+  );
+
+  final String name;
+  final DateTime started;
+  final DateTime? finished;
+  final int? exitCode;
+  final String output;
+  final String? error;
+  final String? restart;
+
+  bool get running => finished == null;
+
+  bool get succeeded => finished != null && exitCode == 0 && error == null;
+
+  Json toJson() => {
+    'name': name,
+    'started': started.toUtc().toIso8601String(),
+    'finished': finished?.toUtc().toIso8601String(),
+    'exit_code': exitCode,
+    'output': output,
+    'error': error,
+    'restart': restart,
+  };
+}

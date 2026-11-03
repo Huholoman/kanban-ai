@@ -5,6 +5,7 @@ import 'package:backlog_cli/backlog_cli.dart';
 import 'package:backlog_core/backlog_core.dart'
     show
         BacklogLayout,
+        ServerCommand,
         StatusCategory,
         ViewLayout,
         parseViewYaml,
@@ -285,6 +286,32 @@ void main() {
     expect(config.port, 8642);
     expect(config.token, matches(RegExp(r'^[A-Za-z0-9_-]{22}$')));
     expect(driver.showed('Token: ${config.token}'), isTrue);
+  });
+
+  test('the server settings: a global command that restarts the server', () async {
+    final server = p.join(workspace.path, 'server.yaml');
+    final driver = Driver([
+      enter, down, enter, // Global → Server
+      for (var i = 0; i < 6; i++) down, enter, // Commands
+      enter, ...type('Update'), enter, ...type('mise run install'), enter, // Add a command…
+      up, enter, // Update
+      down, down, enter, ...type('yes'), enter, // Restart
+      key(KeyCode.escape), key(KeyCode.escape), // back to Server
+      end, enter, // Review and save
+      char('y'),
+      ctrlC,
+    ]);
+    final (code, err) = await run(
+      ['config', '--projects', p.join(workspace.path, 'projects.yaml')],
+      driver,
+      env: {'KANBAN_AI_SERVER_CONFIG': server},
+    );
+    expect(code, 0, reason: err);
+    expect(driver.showed('Added command Update (not saved yet).'), isTrue, reason: driver.last);
+    expect(driver.showed('Saved $server.'), isTrue, reason: driver.last);
+    final command = parseServerConfigYaml(File(server).readAsStringSync(), baseDir: workspace.path).commands.single;
+    expect((command.name, command.restart), ('Update', ServerCommand.sameProgram));
+    expect(command.command, ['sh', '-c', 'mise run install']);
   });
 
   // Root → Project → This folder, then the n-th entry after Workflow.
