@@ -536,7 +536,7 @@ Agents then hand their work over to `ai-review` (the prompt's `{handover}`), the
       # prompt: "At most five tasks."
 ```
 
-A draft (`draft: true` in its file) is never ready: no agent takes it until you approve it. It takes its parent's milestone (and its status when that is `backlog` or `todo`). The parent's detail on the board lists them as *Proposed tasks* with *after …* (their dependencies), ✓ / × per draft and *Approve all* / *Discard all*; cards say *✎ Draft*. Approving removes the flag; discarding deletes the item and the references to it. From the shell: `kanban-ai approve <id>… | --of <parent>`, `kanban-ai discard …`.
+A draft (`draft: true` in its file) is never ready: no agent takes it until you approve it. It takes its parent's milestone (and its status when that is `backlog` or `todo`). The parent's detail on the board lists them as *Proposed tasks* with *after …* (their dependencies), ✓ / × per draft and *Approve all* / *Discard all* (discarding asks first); cards say *✎ Draft*. Approving removes the flag; discarding deletes the item and the references to it. From the shell: `kanban-ai approve <id>… | --of <parent>`, `kanban-ai discard …`.
 
 **Merging** (`run: merge`). A built-in action that merges an item's branch the way `dispatcher.merge` says — typically a hook on a `deploy` status (category `active`, after `review`), so that dragging a card to *deploy* merges it, and also a *Merge* button in review:
 

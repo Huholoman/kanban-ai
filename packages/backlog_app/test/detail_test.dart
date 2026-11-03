@@ -204,6 +204,11 @@ void main() {
       expect(_key('link-P-1'), findsOneWidget, reason: 'an approved draft is a child');
 
       await _tap(tester, _key('discard-P-3'));
+      expect(find.text('Discard P-3?'), findsOneWidget);
+      await _tap(tester, find.text('Cancel'));
+      expect(api.discarded, isEmpty, reason: 'nothing is deleted without a confirmation');
+      await _tap(tester, _key('discard-P-3'));
+      await _tap(tester, _key('discard-confirm'));
       expect(api.discarded, [
         ['P-3'],
       ]);
@@ -211,6 +216,28 @@ void main() {
 
       await _tap(tester, _key('approve-drafts'));
       expect(api.approved.last, ['P-2']);
+      expect(_key('drafts'), findsNothing);
+    });
+
+    testWidgets('discard all asks first and deletes every draft', (tester) async {
+      final api = await _pumpDetail(
+        tester,
+        'S-3',
+        setUp: (api) {
+          for (final draft in [item('P-1', parent: 'S-3', draft: true), item('P-2', parent: 'S-3', draft: true)]) {
+            api.items_[draft.id] = draft;
+          }
+        },
+      );
+      await _tap(tester, _key('discard-drafts'));
+      expect(find.text('Discard 2 drafts?'), findsOneWidget);
+      await _tap(tester, find.text('Cancel'));
+      expect(api.discarded, isEmpty);
+      await _tap(tester, _key('discard-drafts'));
+      await _tap(tester, _key('discard-confirm'));
+      expect(api.discarded, [
+        ['P-1', 'P-2'],
+      ]);
       expect(_key('drafts'), findsNothing);
     });
 

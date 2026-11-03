@@ -192,7 +192,7 @@ class DetailDrafts extends StatelessWidget {
                           iconSize: 18,
                           color: tokens.danger,
                           icon: const Icon(Icons.close),
-                          onPressed: enabled ? () => unawaited(controller.discardDrafts([draft.id])) : null,
+                          onPressed: enabled ? () => unawaited(_discard(context, [draft])) : null,
                         ),
                       ],
                     ),
@@ -217,13 +217,38 @@ class DetailDrafts extends StatelessWidget {
               key: const ValueKey('discard-drafts'),
               label: drafts.length == 1 ? 'Discard' : 'Discard all',
               icon: Icons.close,
-              onPressed: enabled ? () => unawaited(controller.discardDrafts()) : null,
+              onPressed: enabled ? () => unawaited(_discard(context, drafts)) : null,
             ),
           ],
         ),
         const SizedBox(height: 12),
       ],
     );
+  }
+
+  /// Discards [drafts] after a confirmation: their files are deleted.
+  Future<void> _discard(BuildContext context, List<ItemLinkDto> drafts) async {
+    final one = drafts.length == 1;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(one ? 'Discard ${drafts.single.id}?' : 'Discard ${drafts.length} drafts?'),
+        content: Text(
+          '${one ? 'The draft is' : 'The drafts are'} deleted with ${one ? 'its' : 'their'} attachments; '
+          'this cannot be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          FilledButton(
+            key: const ValueKey('discard-confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await controller.discardDrafts([for (final draft in drafts) draft.id]);
   }
 }
 
