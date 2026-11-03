@@ -32,6 +32,7 @@ abstract final class ItemFields {
       'type' => [item.type],
       'status' => [item.status],
       'priority' => [item.priority],
+      'draft' => ['${item.draft}'],
       'rank' => [if (item.rank case final rank?) '$rank'],
       'milestone' => [?item.milestone],
       'parent' => [?item.parent?.value],

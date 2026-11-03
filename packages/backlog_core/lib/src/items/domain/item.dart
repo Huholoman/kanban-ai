@@ -18,6 +18,7 @@ final class Item {
     required this.type,
     required this.status,
     required this.priority,
+    this.draft = false,
     this.rank,
     this.milestone,
     this.parent,
@@ -51,6 +52,7 @@ final class Item {
     'type',
     'status',
     'priority',
+    'draft',
     'rank',
     'milestone',
     'parent',
@@ -71,6 +73,11 @@ final class Item {
   final String type;
   final String status;
   final String priority;
+
+  /// A proposal nobody has approved yet (e.g. a task an AI split an epic
+  /// into): never ready, so no agent takes it, until a person approves it
+  /// (clearing the flag) or discards it (deleting the item).
+  final bool draft;
 
   /// Manual order: a lower rank comes first where a view sorts by `rank`;
   /// items without one come after all ranked ones.
@@ -125,6 +132,7 @@ final class Item {
     String? type,
     String? status,
     String? priority,
+    bool? draft,
     num? Function()? rank,
     String? Function()? milestone,
     ItemId? Function()? parent,
@@ -146,6 +154,7 @@ final class Item {
     type: type ?? this.type,
     status: status ?? this.status,
     priority: priority ?? this.priority,
+    draft: draft ?? this.draft,
     rank: rank == null ? this.rank : rank(),
     milestone: milestone == null ? this.milestone : milestone(),
     parent: parent == null ? this.parent : parent(),
@@ -177,6 +186,7 @@ final class Item {
       type == other.type &&
       status == other.status &&
       priority == other.priority &&
+      draft == other.draft &&
       rank == other.rank &&
       milestone == other.milestone &&
       parent == other.parent &&

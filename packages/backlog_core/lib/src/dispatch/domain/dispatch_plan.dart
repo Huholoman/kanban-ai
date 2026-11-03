@@ -1457,6 +1457,8 @@ final class DispatchPlan {
     final String why;
     if (planned.isDone) {
       why = 'it is $status';
+    } else if (planned.item.draft) {
+      why = 'it is a draft nobody has approved yet';
     } else if (snapshot.workflow.status(status)?.pickable != true) {
       why = 'its status $status is not ${snapshot.workflow.pickableStatus}';
     } else if (planned.isBlocked) {

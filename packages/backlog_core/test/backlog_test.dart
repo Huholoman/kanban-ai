@@ -249,6 +249,56 @@ void main() {
       expect(file, endsWith('- [x] new\n'));
       expect(file, isNot(contains('Old text')));
     });
+
+    test('drafts take the parent\'s plan, are never ready and are approved or discarded', () async {
+      final (backlog, clock) = await tempBacklog();
+      final epic = await backlog.items.update(
+        (await backlog.items.create(const NewItem(title: 'Epic', type: 'epic', status: 'todo'))).id.value,
+        [FieldChange.parse('milestone=v1')],
+      );
+      final first = await backlog.items.create(NewItem(title: 'First', parent: epic.id.value, draft: true));
+      final second = await backlog.items.create(
+        NewItem(title: 'Second', parent: epic.id.value, draft: true, dependsOn: [first.id.value]),
+      );
+      final other = await backlog.items.create(NewItem(title: 'Other', status: 'todo', related: [second.id.value]));
+      expect((first.draft, first.milestone, first.status), (true, 'v1', 'todo'));
+      expect(File((await backlog.items.locate(first.id.value))!).readAsStringSync(), contains('draft: true\n'));
+      expect((await backlog.items.get(first.id.value)).draft, isTrue);
+
+      final snapshot = await backlog.planning.snapshot();
+      expect(snapshot.ready.map((p) => p.id), [other.id]);
+      await expectLater(
+        () => backlog.claims.claim(first.id.value, 'agent-1'),
+        throwsA(isA<InvalidInputException>().having((e) => e.message, 'message', contains('is a draft'))),
+      );
+      await expectLater(() => backlog.items.approve([other.id.value]), throwsA(isA<InvalidInputException>()));
+
+      clock.advance(const Duration(hours: 1));
+      final approved = await backlog.items.approve([first.id.value]);
+      expect(approved.single.draft, isFalse);
+      expect(approved.single.updated, '2026-10-29T13:00:00Z');
+      expect(File((await backlog.items.locate(first.id.value))!).readAsStringSync(), isNot(contains('draft')));
+
+      await expectLater(() => backlog.items.discard([first.id.value]), throwsA(isA<InvalidInputException>()));
+      final secondPath = (await backlog.items.locate(second.id.value))!;
+      expect((await backlog.items.discard([second.id.value])).single.id, second.id);
+      expect(File(secondPath).existsSync(), isFalse);
+      expect((await backlog.items.get(other.id.value)).related, isEmpty);
+      await expectLater(() => backlog.items.get(second.id.value), throwsA(isA<NotFoundException>()));
+    });
+
+    test('set draft=true makes an item a draft again; discard keeps drafts with children', () async {
+      final (backlog, _) = await tempBacklog();
+      final parent = await backlog.items.create(const NewItem(title: 'Story', draft: true));
+      await backlog.items.create(NewItem(title: 'Child', parent: parent.id.value));
+      expect((await backlog.items.update(parent.id.value, [FieldChange.parse('draft=false')])).draft, isFalse);
+      expect((await backlog.items.update(parent.id.value, [FieldChange.parse('draft=true')])).draft, isTrue);
+      await expectLater(
+        () => backlog.items.update(parent.id.value, [FieldChange.parse('draft=maybe')]),
+        throwsA(isA<InvalidInputException>()),
+      );
+      await expectLater(() => backlog.items.discard([parent.id.value]), throwsA(isA<InvalidInputException>()));
+    });
   });
 
   group('claims', () {
@@ -787,6 +837,9 @@ final class _RecordingItems implements ItemRepository {
     _saved.add(item.id);
     await _inner.save(item);
   }
+
+  @override
+  Future<void> delete(ItemId id) => _inner.delete(id);
 
   @override
   Future<String?> locationOf(ItemId id) => _inner.locationOf(id);

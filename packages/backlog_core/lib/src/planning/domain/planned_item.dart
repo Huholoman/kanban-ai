@@ -50,8 +50,8 @@ final class PlannedItem {
   final Claim? claim;
   final bool isClaimExpired;
 
-  /// Pickable status, nothing blocking, no conflict, no open children, not
-  /// claimed.
+  /// Pickable status, not a draft, nothing blocking, no conflict, no open
+  /// children, not claimed.
   final bool isReady;
 
   /// Active items whose `touches` overlap this open item's: it waits for

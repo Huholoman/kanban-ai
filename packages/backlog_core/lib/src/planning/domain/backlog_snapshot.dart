@@ -101,7 +101,13 @@ final class BacklogSnapshot {
         claim: claim,
         isClaimExpired: expired,
         isReady:
-            pickable && !blocked && conflicts.isEmpty && !needsHuman && openKids == 0 && (claim == null || expired),
+            pickable &&
+            !item.draft &&
+            !blocked &&
+            conflicts.isEmpty &&
+            !needsHuman &&
+            openKids == 0 &&
+            (claim == null || expired),
         conflictsWith: conflicts,
         changedFiles: changed[item.id] ?? const [],
         needsHuman: needsHuman,

@@ -62,6 +62,7 @@ final class MarkdownItemCodec {
         type: optional('type') ?? defaults.type,
         status: optional('status') ?? defaults.status,
         priority: optional('priority') ?? defaults.priority,
+        draft: _flag(yaml['draft'], 'draft'),
         rank: _number(yaml['rank'], 'rank'),
         milestone: optional('milestone'),
         parent: switch (optional('parent')) {
@@ -138,6 +139,7 @@ final class MarkdownItemCodec {
     'type': item.type,
     'status': item.status,
     'priority': item.priority,
+    'draft': item.draft ? true : null,
     'rank': item.rank,
     'milestone': item.milestone,
     'parent': item.parent?.value,
@@ -174,6 +176,12 @@ final class MarkdownItemCodec {
     final text = '$value'.trim();
     return text.isEmpty ? null : text;
   }
+
+  static bool _flag(Object? value, String key) => switch (value) {
+    null || false => false,
+    true => true,
+    _ => throw FormatException('"$key" must be true or false, not "$value"'),
+  };
 
   static num? _number(Object? value, String key) => switch (_scalar(value, key)) {
     null => null,

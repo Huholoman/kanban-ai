@@ -199,6 +199,20 @@ final class FileSystemItemRepository implements ItemRepository {
   }
 
   @override
+  Future<void> delete(ItemId id) async {
+    final path = await _pathOf(id);
+    final folder = _folderOf(path);
+    _cache?.remove(path);
+    if (folder != null) {
+      await folder.delete(recursive: true);
+    } else {
+      await File(path).delete();
+    }
+    _paths.remove(id);
+    _archived.remove(id);
+  }
+
+  @override
   Future<String?> locationOf(ItemId id) async {
     if (!_paths.containsKey(id)) await load();
     return _paths[id];

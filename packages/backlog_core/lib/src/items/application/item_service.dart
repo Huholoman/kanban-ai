@@ -20,6 +20,7 @@ final class NewItem {
     this.type,
     this.status,
     this.priority,
+    this.draft = false,
     this.milestone,
     this.parent,
     this.dependsOn = const [],
@@ -37,6 +38,11 @@ final class NewItem {
   final String? type;
   final String? status;
   final String? priority;
+
+  /// A proposal to approve or discard ([Item.draft]). A draft with a
+  /// [parent] takes the parent's milestone when it names none, and its
+  /// status when that is an open one and it names none.
+  final bool draft;
   final String? milestone;
   final String? parent;
   final List<String> dependsOn;
@@ -83,15 +89,22 @@ final class ItemService {
     final items = (await _repository.load()).items;
     final known = {for (final item in items) item.id};
     final now = ItemTime.format(_clock.now());
+    final parent = draft.parent == null ? null : ItemReference.resolve(draft.parent!, known);
+    // A proposed child is planned like its parent until a person says otherwise.
+    final from = draft.draft && parent != null ? items.firstWhere((item) => item.id == parent) : null;
+    final milestone = draft.milestone ?? from?.milestone;
+    final status =
+        draft.status ?? (from != null && _workflow.categoryOf(from.status) == StatusCategory.open ? from.status : null);
 
     final item = Item(
       id: _freshId(known),
       title: draft.title.trim(),
       type: _checkType(draft.type ?? _workflow.defaultType),
-      status: _checkStatus(draft.status ?? _workflow.defaultStatus),
+      status: _checkStatus(status ?? _workflow.defaultStatus),
       priority: _checkPriority(draft.priority ?? _workflow.defaultPriority),
-      milestone: draft.milestone == null ? null : _checkMilestone(draft.milestone!),
-      parent: draft.parent == null ? null : ItemReference.resolve(draft.parent!, known),
+      draft: draft.draft,
+      milestone: milestone == null ? null : _checkMilestone(milestone),
+      parent: parent,
       dependsOn: _distinct(draft.dependsOn.map((r) => ItemReference.resolve(r, known))),
       related: _distinct(draft.related.map((r) => ItemReference.resolve(r, known))),
       labels: _distinct(draft.labels),
@@ -125,6 +138,63 @@ final class ItemService {
     if (!setsUpdated) {
       item = item.touchedSince(original, _clock.now());
     }
+    await _repository.save(item);
+    return item;
+  }
+
+  /// Approves the drafts [references] name ([Item.draft]): they become
+  /// ordinary items, planned as they are. Each must be a draft; nothing
+  /// changes when one is not. Returns the approved items.
+  Future<List<Item>> approve(List<String> references) async {
+    final drafts = await _drafts(references);
+    final now = _clock.now();
+    return [for (final before in drafts) await _saved(before.copyWith(draft: false).touchedSince(before, now))];
+  }
+
+  /// Deletes the drafts [references] name ([Item.draft]) with their
+  /// attachments, and removes them from the `depends_on` and `related` of
+  /// the remaining items. Each must be a draft without children (other than
+  /// drafts discarded with it); nothing changes when one is not. Returns the
+  /// discarded items.
+  Future<List<Item>> discard(List<String> references) async {
+    final drafts = await _drafts(references);
+    final gone = {for (final item in drafts) item.id};
+    final items = (await _repository.load()).items;
+    for (final item in items) {
+      if (item.parent case final parent? when gone.contains(parent) && !gone.contains(item.id)) {
+        throw InvalidInputException('$parent has the child ${item.id}; discard or move that first.');
+      }
+    }
+    final now = _clock.now();
+    for (final before in items) {
+      if (gone.contains(before.id)) continue;
+      if (!before.dependsOn.any(gone.contains) && !before.related.any(gone.contains)) continue;
+      await _repository.save(
+        before
+            .copyWith(
+              dependsOn: before.dependsOn.where((id) => !gone.contains(id)).toList(),
+              related: before.related.where((id) => !gone.contains(id)).toList(),
+            )
+            .touchedSince(before, now),
+      );
+    }
+    for (final item in drafts) {
+      await _repository.delete(item.id);
+    }
+    return drafts;
+  }
+
+  Future<List<Item>> _drafts(List<String> references) async {
+    if (references.isEmpty) throw const InvalidInputException('Name at least one draft.');
+    final items = (await _repository.load()).items;
+    final drafts = {for (final reference in references) find(items, reference)}.toList();
+    for (final item in drafts) {
+      if (!item.draft) throw InvalidInputException('${item.id} is not a draft.');
+    }
+    return drafts;
+  }
+
+  Future<Item> _saved(Item item) async {
     await _repository.save(item);
     return item;
   }
@@ -326,6 +396,7 @@ final class ItemService {
       'type' => item.copyWith(type: _checkType(_required(change))),
       'status' => item.copyWith(status: _checkStatus(_required(change))),
       'priority' => item.copyWith(priority: _checkPriority(_required(change))),
+      'draft' => item.copyWith(draft: !change.clears && _flag(change)),
       'milestone' => item.copyWith(milestone: () => optional(_checkMilestone)),
       'rank' => item.copyWith(rank: () => change.clears ? null : _number(change)),
       'parent' => item.copyWith(parent: () => change.clears ? null : resolve(_scalar(change))),
@@ -393,6 +464,12 @@ final class ItemService {
     }
     return change.value;
   }
+
+  bool _flag(FieldChange change) => switch (_scalar(change)) {
+    'true' => true,
+    'false' => false,
+    _ => throw InvalidInputException('"${change.field}" must be true or false, not "${change.value}".'),
+  };
 
   num _number(FieldChange change) => switch (num.tryParse(_scalar(change))) {
     final number? when number.isFinite => number,

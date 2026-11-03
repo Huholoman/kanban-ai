@@ -36,6 +36,10 @@ abstract interface class ItemRepository {
   /// an archived item that is no longer finished out of the archive.
   Future<void> save(Item item);
 
+  /// Deletes the item for good, with its attachments; a
+  /// [NotFoundException] when there is no such item.
+  Future<void> delete(ItemId id);
+
   /// Where the item is stored (a file path for the file-system adapter), so
   /// that a human or an agent can open it directly.
   Future<String?> locationOf(ItemId id);
