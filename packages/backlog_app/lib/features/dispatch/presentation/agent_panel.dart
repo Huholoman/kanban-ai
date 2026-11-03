@@ -33,8 +33,9 @@ String sinceText(DateTime time, {DateTime? now}) {
 /// the agent working on it (worktree, since when, branch, the last line of
 /// its log, *Stop*), why the dispatcher holds it back or lets it wait, or
 /// how its last run ended — fine, or with problems that need a person —
-/// with the agent's final message (folded to its first lines); the log on
-/// demand. An item another
+/// with the agent's final message (folded to its first lines); long texts
+/// (a hold reason, the next step, problems) folded to two lines each until
+/// clicked; the log on demand. An item another
 /// item's agent works on (an epic's agent going through its children) shows
 /// that agent and its log, with a link to that item ([onOpen]). Its first
 /// line starts with who has the ball ([BallBadge]), followed by the next
@@ -66,6 +67,12 @@ class _AgentPanelState extends State<AgentPanel> {
 
   /// Whether the agent's final message shows in full.
   bool _resultOpen = false;
+
+  /// Whether the state line, the next step and the problems show in full
+  /// (folded to two lines each, e.g. a long hold reason).
+  bool _textOpen = false;
+
+  void _toggleText() => setState(() => _textOpen = !_textOpen);
 
   @override
   void didChangeDependencies() {
@@ -220,10 +227,12 @@ class _AgentPanelState extends State<AgentPanel> {
                         padding: const EdgeInsets.only(bottom: 4),
                         child: BallBadge(ball, item: id),
                       ),
-                    Text(
+                    FoldedText(
                       text,
-                      key: ValueKey(run != null || via != null ? 'agent-running' : 'agent-held'),
+                      textKey: ValueKey(run != null || via != null ? 'agent-running' : 'agent-held'),
                       style: small?.copyWith(color: tokens.text),
+                      open: _textOpen,
+                      onToggle: _toggleText,
                     ),
                     if (lastLine case final line? when line.isNotEmpty && !showLog)
                       Text(
@@ -272,6 +281,8 @@ class _AgentPanelState extends State<AgentPanel> {
                     ? () => unawaited(confirmEpicStart(context, dispatch, id))
                     : null,
                 onOpen: widget.onOpen,
+                open: _textOpen,
+                onToggle: _toggleText,
               ),
             ),
           if (reply != null)
@@ -339,7 +350,12 @@ class _AgentPanelState extends State<AgentPanel> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   for (final problem in problems)
-                    Text('• $problem', style: small?.copyWith(color: needsYou ? tokens.danger : tokens.muted)),
+                    FoldedText(
+                      '• $problem',
+                      style: small?.copyWith(color: needsYou ? tokens.danger : tokens.muted),
+                      open: _textOpen,
+                      onToggle: _toggleText,
+                    ),
                   if (needsYou)
                     TextButton(
                       key: const ValueKey('dismiss-problems'),

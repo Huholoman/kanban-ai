@@ -9,7 +9,8 @@ import '../application/next_step.dart';
 /// buttons that do it: *Open PR*, the offered actions ([onAction]), *Start
 /// agent* ([onStart]), *Implement epic* ([onImplementEpic]) and *Open X-1*
 /// for blockers ([onOpen]). Buttons
-/// without a callback are left out; [busy] disables them.
+/// without a callback are left out; [busy] disables them. With [onToggle]
+/// a long step is folded to two lines unless [open].
 class NextStepLine extends StatelessWidget {
   const NextStepLine(
     this.step, {
@@ -20,6 +21,8 @@ class NextStepLine extends StatelessWidget {
     this.onImplementEpic,
     this.onOpen,
     this.busy = false,
+    this.open = false,
+    this.onToggle,
   });
 
   final NextStep step;
@@ -31,6 +34,8 @@ class NextStepLine extends StatelessWidget {
   final VoidCallback? onImplementEpic;
   final ValueChanged<String>? onOpen;
   final bool busy;
+  final bool open;
+  final VoidCallback? onToggle;
 
   static IconData icon(NextStepKind kind) => switch (kind) {
     NextStepKind.answer => Icons.help_outline,
@@ -45,7 +50,7 @@ class NextStepLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = BoardTokens.of(context);
-    final small = Theme.of(context).textTheme.bodySmall;
+    final style = Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.text, fontWeight: FontWeight.w500);
     final buttons = <Widget>[
       if (step.pr case final pr?)
         SecondaryButton(
@@ -89,11 +94,15 @@ class NextStepLine extends StatelessWidget {
             Icon(icon(step.kind), size: 16, color: tokens.warning),
             const SizedBox(width: 6),
             Expanded(
-              child: Text(
-                'Next: ${step.text}',
-                key: ValueKey('next-step-$item'),
-                style: small?.copyWith(color: tokens.text, fontWeight: FontWeight.w500),
-              ),
+              child: onToggle == null
+                  ? Text('Next: ${step.text}', key: ValueKey('next-step-$item'), style: style)
+                  : FoldedText(
+                      'Next: ${step.text}',
+                      textKey: ValueKey('next-step-$item'),
+                      style: style,
+                      open: open,
+                      onToggle: onToggle!,
+                    ),
             ),
           ],
         ),

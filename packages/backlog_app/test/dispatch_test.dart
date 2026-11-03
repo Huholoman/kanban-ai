@@ -622,6 +622,24 @@ void main() {
     expect(find.text('Held: stopped by a person'), findsOneWidget);
     expect(find.text('R-1 held'), findsOneWidget);
 
+    final reason = 'Cannot start in w2: the branch b is checked out elsewhere. ' * 12;
+    api.dispatchChange(
+      _plan(
+        held: [HeldItemDto(item: 'R-1', title: 'Item R-1', reason: reason)],
+      ),
+    );
+    await tester.pumpAndSettle();
+    Text held() => tester.widget<Text>(_key('agent-held'));
+    expect(held().maxLines, 2, reason: 'a long hold reason is folded');
+    expect(tester.widget<Text>(_key('next-step-R-1')).maxLines, 2);
+    await tester.tap(_key('agent-held'));
+    await tester.pump();
+    expect(held().maxLines, isNull);
+    expect(tester.widget<Text>(_key('next-step-R-1')).maxLines, isNull, reason: 'one click opens all of it');
+    await tester.tap(_key('agent-held'));
+    await tester.pump();
+    expect(held().maxLines, 2);
+
     api.dispatchChange(
       _plan(
         waiting: const [HeldItemDto(item: 'R-1', title: 'Item R-1', reason: 'no free worktree')],
