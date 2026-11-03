@@ -254,7 +254,7 @@ commands:                      # the board's command menu at the top right
     restart: true              # after a success restart the server (or: a program name)
 ```
 
-**Global commands** (`commands`, also in `kanban-ai config` › Global › Server) appear in a menu behind the terminal button at the top right of the board and the dashboard, whichever project is open. Choosing one runs it on the server's machine and shows its live output and result; one runs at a time. With `restart` the server restarts once the command succeeded (as the program it runs as, or the one named) — *Update* above works much like `mise run board-update`, from the board. Whoever can use the API can run them (token and `allow` apply).
+**Global commands** (`commands`, also in `kanban-ai config` › Global › Server) appear in a menu behind the terminal button at the top right of the board and the dashboard, whichever project is open. Choosing one runs it on the server's machine and shows its live output and result; one runs at a time. With `restart` the server restarts once the command succeeded (as the program it runs as, or the one named) — *Update* above works much like `mise run board-update`, from the board. Whoever can use the API can run them (token and `allow` apply); a web page of another site cannot.
 
 API responses (1 kB and more) are gzip-compressed for clients that accept it.
 

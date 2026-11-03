@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_core/backlog_core.dart';
 import 'package:backlog_server/backlog_server.dart';
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -150,6 +151,17 @@ void main() {
         api.runCommand('Nope'),
         throwsA(isA<BacklogApiException>().having((e) => e.statusCode, 'statusCode', 404)),
       );
+    });
+
+    test('a page of another site cannot start a command; the board of this server can', () async {
+      final url = server.uri.replace(path: ApiPaths.command('Slow check'));
+      final foreign = await http.post(url, headers: {'origin': 'http://evil.example'});
+      expect(foreign.statusCode, 403);
+      expect((await api.commands()).run, isNull);
+
+      final own = await http.post(url, headers: {'origin': 'http://${server.uri.authority}'});
+      expect(own.statusCode, 200, reason: own.body);
+      expect((await ended()).name, 'Slow check');
     });
   });
 

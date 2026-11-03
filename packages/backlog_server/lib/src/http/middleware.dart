@@ -27,6 +27,17 @@ Middleware requireToken(String token) =>
       );
     };
 
+/// Whether [request] comes from a page of this server or from no page at
+/// all. Browsers send `Origin`; a page of another site must not reach the
+/// server through the user's browser (cross-site requests, DNS rebinding).
+/// Other clients send none.
+bool isSameOrigin(Request request) {
+  final origin = request.headers['origin'];
+  if (origin == null || origin == 'null') return origin == null;
+  final host = request.headers['host'];
+  return host != null && Uri.tryParse(origin)?.authority == host;
+}
+
 /// Lets the app run from another origin (e.g. `flutter run -d web-server`).
 Middleware allowCrossOrigin() =>
     (inner) => (request) async {

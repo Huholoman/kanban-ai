@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shelf/shelf.dart';
 
+import '../http/middleware.dart';
 import 'mcp_tools.dart';
 
 /// The Model Context Protocol over streamable HTTP at `/mcp`, stateless:
@@ -24,7 +25,7 @@ final class McpHandler {
   static const protocolVersions = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
   Handler get handler => (request) async {
-    if (!_sameOrigin(request)) {
+    if (!isSameOrigin(request)) {
       return _rpcError(null, -32600, 'Requests from another origin are refused.', status: 403);
     }
     if (request.method != 'POST') {
@@ -73,16 +74,6 @@ final class McpHandler {
     if (name is! String || !_tools.has(name)) return _rpcError(id, -32602, 'Unknown tool: $name');
     if (arguments is! Map<String, Object?>) return _rpcError(id, -32602, '"arguments" must be an object.');
     return _result(id, await _tools.call(name, arguments));
-  }
-
-  /// Browsers send `Origin`; a page of another site must not reach the
-  /// backlog through the user's browser (DNS rebinding). Other clients send
-  /// none.
-  static bool _sameOrigin(Request request) {
-    final origin = request.headers['origin'];
-    if (origin == null || origin == 'null') return origin == null;
-    final host = request.headers['host'];
-    return host != null && Uri.tryParse(origin)?.authority == host;
   }
 
   static Response _result(Object? id, Object? result) => _json({'jsonrpc': '2.0', 'id': id, 'result': result});

@@ -7,6 +7,7 @@ import 'package:shelf/shelf.dart';
 
 import '../backlog_host.dart';
 import '../http/dto_mapper.dart';
+import '../http/middleware.dart';
 import 'hosted_project.dart';
 
 /// The projects a server hosts, in registry order, and the routing of `/api/`
@@ -126,6 +127,15 @@ final class ProjectHub {
     if (segments.length == 3 && segments[1] == 'commands' && request.method == 'POST') {
       final commands = this.commands;
       if (commands == null) return _notFound('This server has no commands.');
+      // They run shell commands on this machine: never for a page of another
+      // site (CORS allows every origin, and a POST without a body needs no
+      // preflight).
+      if (!isSameOrigin(request)) {
+        return _json(
+          const BacklogApiException(403, 'forbidden', 'Commands run only from the board of this server.').toJson(),
+          status: 403,
+        );
+      }
       try {
         return _json(_runDto(await commands.start(Uri.decodeComponent(segments[2])))!.toJson());
       } on BacklogException catch (error) {
