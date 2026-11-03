@@ -165,6 +165,7 @@ Future<void> main(List<String> arguments) async {
       log: quiet ? null : stdout.writeln,
       stateDir: stateDir,
       preview: LocalPreview(store: FilePreviewStore(stateDir), server: control),
+      commands: ServerCommands(settings.commands, server: control),
       launcher: (project, host, log) => WorktreeProvisioner(
         ProcessAgentLauncher(
           project: project,

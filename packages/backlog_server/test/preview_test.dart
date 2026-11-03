@@ -87,6 +87,72 @@ void main() {
     });
   });
 
+  group('/api/commands', () {
+    late BacklogServer server;
+    late HttpProjectsApi api;
+    late _FakeServer control;
+
+    setUp(() async {
+      final root = p.join(dir.path, 'backlog');
+      await Backlog.init(root, idPrefix: 'A');
+      control = _FakeServer();
+      server = await BacklogServer.start(
+        root: root,
+        addresses: [InternetAddress.loopbackIPv4],
+        port: 0,
+        commands: ServerCommands(
+          const [
+            ServerCommand(name: 'Update', command: ['sh', '-c', 'echo updated'], restart: ServerCommand.sameProgram),
+            ServerCommand(name: 'Slow check', command: ['sleep', '0.3']),
+          ],
+          server: control,
+          restartDelay: Duration.zero,
+        ),
+      );
+      api = HttpProjectsApi(server.uri);
+    });
+
+    tearDown(() async {
+      api.close();
+      await server.close();
+    });
+
+    Future<CommandRunDto> ended() async {
+      for (var i = 0; i < 100; i++) {
+        final run = (await api.commands()).run!;
+        if (!run.running) return run;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      fail('the command did not end');
+    }
+
+    test('lists the commands, runs one at a time and reports the result', () async {
+      final listed = await api.commands();
+      expect(
+        [for (final command in listed.commands) (command.name, command.restarts)],
+        [('Update', true), ('Slow check', false)],
+      );
+      expect(listed.run, isNull);
+
+      expect((await api.runCommand('Slow check')).running, isTrue);
+      await expectLater(
+        api.runCommand('Update'),
+        throwsA(isA<BacklogApiException>().having((e) => e.statusCode, 'statusCode', 409)),
+      );
+      expect((await ended()).succeeded, isTrue);
+
+      await api.runCommand('Update');
+      final run = await ended();
+      expect((run.name, run.exitCode, run.output, run.restart), ('Update', 0, 'updated\n', 'board-preview'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(control.restarts, ['board-preview']);
+      await expectLater(
+        api.runCommand('Nope'),
+        throwsA(isA<BacklogApiException>().having((e) => e.statusCode, 'statusCode', 404)),
+      );
+    });
+  });
+
   group('ProcessServerControl', () {
     ProcessServerControl control({int? processId, List<String> arguments = const [], void Function()? stopped}) =>
         ProcessServerControl(

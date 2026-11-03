@@ -36,7 +36,8 @@ final class BacklogServer {
   /// project's launcher made by [launcher]; without one it only logs what it
   /// would start. With [stateDir] the dispatchers remember status hooks
   /// (`on_enter` actions) there across restarts. [preview] answers
-  /// `/api/preview` (the local preview of the built-in action `preview`).
+  /// `/api/preview` (the local preview of the built-in action `preview`),
+  /// [commands] `/api/commands` (the global commands of `server.yaml`).
   /// [storage] decides where the backlog of a project folder is kept
   /// (default: [ProjectRuntime.folderStorage]).
   static Future<BacklogServer> start({
@@ -55,6 +56,7 @@ final class BacklogServer {
     Duration dispatchDebounce = const Duration(milliseconds: 500),
     String? stateDir,
     LocalPreview? preview,
+    ServerCommands? commands,
     StorageFactory storage = ProjectRuntime.folderStorage,
   }) async {
     if ((root == null) == (projectsFile == null)) {
@@ -75,6 +77,7 @@ final class BacklogServer {
       (entry) => HostedProject.live(entry, runtime),
       registry: store == null ? null : ProjectService(store),
       preview: preview,
+      commands: commands,
     );
     RegistryWatcher? watcher;
     try {

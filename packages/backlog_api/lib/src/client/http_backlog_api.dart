@@ -322,6 +322,13 @@ final class HttpProjectsApi implements ProjectsApi {
       PreviewDto.fromJson(asJson(await _default._send('POST', ApiPaths.previewMain, const {})));
 
   @override
+  Future<CommandsDto> commands() async => CommandsDto.fromJson(asJson(await _default._get(ApiPaths.commands)));
+
+  @override
+  Future<CommandRunDto> runCommand(String name) async =>
+      CommandRunDto.fromJson(asJson(await _default._send('POST', ApiPaths.command(name), const {})));
+
+  @override
   BacklogApi project(String id) =>
       HttpBacklogApi(baseUri, token: token, project: id, client: _client, connectSocket: _connectSocket);
 

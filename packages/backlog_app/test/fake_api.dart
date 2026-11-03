@@ -714,4 +714,25 @@ final class FakeProjectsApi implements ProjectsApi {
     currentPreview = null;
     return preview;
   }
+
+  /// The server's global commands and the last run; [runCommand] starts a
+  /// run that stays running until the test changes [commandList].
+  CommandsDto commandList = const CommandsDto();
+
+  /// The commands started, in order.
+  final ran = <String>[];
+
+  @override
+  Future<CommandsDto> commands() async => commandList;
+
+  @override
+  Future<CommandRunDto> runCommand(String name) async {
+    if (commandList.run?.running ?? false) {
+      throw const BacklogApiException(409, 'unavailable', 'A command is running.');
+    }
+    ran.add(name);
+    final run = CommandRunDto(name: name, started: DateTime.utc(2026, 11, 3, 12));
+    commandList = CommandsDto(commands: commandList.commands, run: run);
+    return run;
+  }
 }
