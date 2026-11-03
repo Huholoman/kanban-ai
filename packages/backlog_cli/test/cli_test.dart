@@ -670,6 +670,14 @@ void main() {
         'Merge',
         'Split',
       ]);
+      final split = (await Backlog.open(p.join(workspace.path, 'other'))).workflow.dispatcher!.action('Split')!;
+      expect(
+        [
+          for (final status in ['backlog', 'todo', 'review', 'done']) split.offeredIn(status, type: 'epic'),
+        ],
+        [true, true, false, false],
+        reason: 'a split only before the work starts',
+      );
       final again = await init(['third', '--preset', 'agents', '--agents-file', claude]);
       expect(again.out, contains('has the guide for agents already'));
       expect('## Backlog'.allMatches(read('repo/CLAUDE.md')), hasLength(1));

@@ -163,6 +163,7 @@ const _reviewActions = r'''
     # which you approve or discard in the item's detail.
     - name: Split
       split: true
+      statuses: [backlog, todo]   # before the work starts
   # The built-in merge: rebase onto base, run the check, fast-forward base;
   # pushing base stays with a person.
   merge:

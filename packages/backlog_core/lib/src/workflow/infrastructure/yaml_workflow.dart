@@ -712,6 +712,7 @@ claims:
 #     # a person approves or discards them in the item's detail.
 #     - name: Split
 #       split: true
+#       statuses: [backlog, todo]   # before the work starts
 #       # types: [epic, story]   # the default for a split
 #     # With a deploy status (category active) after review:
 #     # - name: Merge

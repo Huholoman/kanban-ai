@@ -533,6 +533,7 @@ Agents then hand their work over to `ai-review` (the prompt's `{handover}`), the
 ```yaml
     - name: Split
       split: true
+      statuses: [backlog, todo]          # before the work starts
       # prompt: "At most five tasks."
 ```
 
