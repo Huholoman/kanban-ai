@@ -451,6 +451,43 @@ void main() {
       expect(find.text('Last: Update – succeeded'), findsOneWidget);
     });
 
+    test('after a success with a restart it keeps asking until the restart fails or the server goes away', () async {
+      CommandRunDto done({String? error}) => CommandRunDto(
+        name: 'Update',
+        started: DateTime.utc(2026, 11, 3, 12),
+        finished: DateTime.utc(2026, 11, 3, 12, 1),
+        exitCode: 0,
+        error: error,
+        restart: 'kanban-ai-server',
+      );
+      Future<void> wait() => Future<void>.delayed(const Duration(milliseconds: 60));
+      final api = threeProjects()..commandList = CommandsDto(run: done());
+      final controller = CommandsController(api, every: const Duration(milliseconds: 10));
+      addTearDown(controller.dispose);
+      await controller.start();
+      expect(controller.restarting, isTrue);
+      await wait();
+      expect(api.commandCalls, greaterThan(2), reason: 'still asking while the restart may fail');
+
+      api.commandList = CommandsDto(run: done(error: 'the server could not restart as kanban-ai-server: boom'));
+      await wait();
+      expect(controller.run!.succeeded, isFalse);
+      expect(controller.run!.error, contains('boom'));
+      expect(controller.restarting, isFalse);
+      var calls = api.commandCalls;
+      await wait();
+      expect(api.commandCalls, calls, reason: 'the failure ends the polling');
+
+      api.commandList = CommandsDto(run: done());
+      await controller.refresh();
+      api.commandsFailure = Exception('connection refused');
+      await wait();
+      calls = api.commandCalls;
+      await wait();
+      expect(api.commandCalls, calls, reason: 'a server gone for its restart is not asked any more');
+      expect(controller.restarting, isTrue);
+    });
+
     test('a refused command says why', () async {
       final api = threeProjects()
         ..commandList = CommandsDto(

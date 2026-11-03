@@ -6,7 +6,8 @@ import 'package:flutter/foundation.dart';
 /// The global commands of the server (`commands` in `server.yaml`, e.g.
 /// "Update") for the command menu at the top right, whichever project is
 /// open: asked for at [start] and [refresh]ed when the menu opens; while a
-/// command runs, its run is asked for every [every] until it ends.
+/// command runs, its run is asked for every [every] until it ends (with a
+/// restart after it, until the server goes away or the restart failed).
 class CommandsController extends ChangeNotifier {
   CommandsController(this._api, {this.every = const Duration(seconds: 1)});
 
@@ -26,6 +27,10 @@ class CommandsController extends ChangeNotifier {
 
   bool get running => run?.running ?? false;
 
+  /// The last run succeeded and the server is about to restart; until it
+  /// goes away it may still report that the restart failed.
+  bool get restarting => run != null && run!.succeeded && run!.restart != null;
+
   Future<void> start() => refresh();
 
   Future<void> refresh() async {
@@ -35,7 +40,10 @@ class CommandsController extends ChangeNotifier {
     try {
       listed = await api.commands();
     } catch (_) {
-      return; // restarting, unreachable, or an older server: keep what we know
+      // Restarting, unreachable, or an older server: keep what we know. A
+      // server that went away for its restart is not asked any more.
+      if (restarting) _stop();
+      return;
     }
     if (_disposed) return;
     commands = listed.commands;
@@ -66,14 +74,19 @@ class CommandsController extends ChangeNotifier {
     }
   }
 
-  /// Polls while a command runs.
+  /// Polls while a command runs, and after one that restarts the server
+  /// until the server goes away or reports that the restart failed.
   void _follow() {
-    if (!running) {
-      _timer?.cancel();
-      _timer = null;
-    } else {
+    if (running || restarting) {
       _timer ??= Timer.periodic(every, (_) => unawaited(refresh()));
+    } else {
+      _stop();
     }
+  }
+
+  void _stop() {
+    _timer?.cancel();
+    _timer = null;
   }
 
   @override

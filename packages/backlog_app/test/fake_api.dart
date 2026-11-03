@@ -722,8 +722,18 @@ final class FakeProjectsApi implements ProjectsApi {
   /// The commands started, in order.
   final ran = <String>[];
 
+  /// Thrown by [commands] (e.g. the server went away to restart).
+  Object? commandsFailure;
+
+  /// How often [commands] was asked for.
+  var commandCalls = 0;
+
   @override
-  Future<CommandsDto> commands() async => commandList;
+  Future<CommandsDto> commands() async {
+    commandCalls++;
+    if (commandsFailure case final error?) throw error;
+    return commandList;
+  }
 
   @override
   Future<CommandRunDto> runCommand(String name) async {
