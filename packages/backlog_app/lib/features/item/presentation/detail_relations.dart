@@ -42,10 +42,11 @@ class _DetailChildrenState extends State<DetailChildren> {
   Widget build(BuildContext context) {
     final controller = widget.controller;
     final detail = controller.detail!;
-    if (detail.children.isEmpty) return const SizedBox.shrink();
+    final planned = controller.plannedChildren;
+    if (planned.isEmpty) return const SizedBox.shrink();
     final children = controller.shownChildren;
     final milestones = controller.childMilestones;
-    final hidden = detail.children.length - children.length;
+    final hidden = planned.length - children.length;
     final tokens = BoardTokens.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -103,6 +104,124 @@ class _DetailChildrenState extends State<DetailChildren> {
               ],
             ),
           ),
+      ],
+    );
+  }
+}
+
+/// The drafts among the item's children ("Proposed tasks", e.g. from an AI
+/// split), each with what it comes after and buttons to approve or discard
+/// it, and both for all of them at once.
+class DetailDrafts extends StatelessWidget {
+  const DetailDrafts({super.key, required this.controller, required this.onOpen});
+
+  final ItemController controller;
+
+  /// Navigates the panel to an item.
+  final ValueChanged<String> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final drafts = controller.drafts;
+    if (drafts.isEmpty) return const SizedBox.shrink();
+    final tokens = BoardTokens.of(context);
+    final small = Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.muted);
+    final enabled = !controller.busy;
+    return Column(
+      key: const ValueKey('drafts'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          height: 36,
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: tokens.border)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Proposed tasks',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+              Text('${drafts.length} draft${drafts.length == 1 ? '' : 's'}', style: small),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text('Nothing is planned until you approve them; discarded ones are deleted.', style: small),
+        const SizedBox(height: 6),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: tokens.border),
+            borderRadius: BorderRadius.circular(BoardTokens.radius),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (index, draft) in drafts.indexed) ...[
+                if (index > 0) const Divider(height: 1),
+                InkWell(
+                  key: ValueKey('draft-${draft.id}'),
+                  onTap: () => onOpen(draft.id),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              LinkLabel(link: draft),
+                              if (draft.dependsOn.isNotEmpty) Text('after ${draft.dependsOn.join(', ')}', style: small),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          key: ValueKey('approve-${draft.id}'),
+                          tooltip: 'Approve ${draft.id}',
+                          iconSize: 18,
+                          color: tokens.success,
+                          icon: const Icon(Icons.check),
+                          onPressed: enabled ? () => unawaited(controller.approveDrafts([draft.id])) : null,
+                        ),
+                        IconButton(
+                          key: ValueKey('discard-${draft.id}'),
+                          tooltip: 'Discard ${draft.id}',
+                          iconSize: 18,
+                          color: tokens.danger,
+                          icon: const Icon(Icons.close),
+                          onPressed: enabled ? () => unawaited(controller.discardDrafts([draft.id])) : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            PrimaryButton(
+              key: const ValueKey('approve-drafts'),
+              label: drafts.length == 1 ? 'Approve' : 'Approve all',
+              icon: Icons.check,
+              onPressed: enabled ? () => unawaited(controller.approveDrafts()) : null,
+            ),
+            SecondaryButton(
+              key: const ValueKey('discard-drafts'),
+              label: drafts.length == 1 ? 'Discard' : 'Discard all',
+              icon: Icons.close,
+              onPressed: enabled ? () => unawaited(controller.discardDrafts()) : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
       ],
     );
   }

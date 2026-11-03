@@ -10,8 +10,8 @@ import '../../../shared/tokens.dart';
 /// Compact summary of an item for boards and lists: id and priority, the
 /// title and one meta line that tells the state (waits for you, ready,
 /// blocked, waiting for overlapping work, claimed, claim expired, or just
-/// labels), the AI review and the pull request; a card that waits for a
-/// person has a warning border.
+/// labels, or that it is a draft), the AI review and the pull request; a
+/// card that waits for a person has a warning border.
 class ItemCard extends StatelessWidget {
   const ItemCard({
     super.key,
@@ -158,6 +158,17 @@ class ItemCard extends StatelessWidget {
             '? Waits for you',
             key: ValueKey('needs-human-${item.id}'),
             style: base.copyWith(color: tokens.warning, fontWeight: FontWeight.w600),
+          ),
+        ),
+      );
+    } else if (item.draft) {
+      parts.add(
+        Tooltip(
+          message: 'A proposed task: approve or discard it (in its parent\'s detail)',
+          child: Text(
+            '✎ Draft',
+            key: ValueKey('draft-${item.id}'),
+            style: base.copyWith(color: tokens.accent, fontWeight: FontWeight.w600),
           ),
         ),
       );

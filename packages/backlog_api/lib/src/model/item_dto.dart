@@ -264,7 +264,15 @@ final class ItemDto {
 
 /// A short reference to another item, as shown next to a detail.
 final class ItemLinkDto {
-  const ItemLinkDto({required this.id, this.title, this.status, this.category, this.milestone});
+  const ItemLinkDto({
+    required this.id,
+    this.title,
+    this.status,
+    this.category,
+    this.milestone,
+    this.draft = false,
+    this.dependsOn = const [],
+  });
 
   factory ItemLinkDto.fromJson(Json json) {
     final category = json.optionalString('category');
@@ -274,6 +282,8 @@ final class ItemLinkDto {
       status: json.optionalString('status'),
       category: category == null ? null : StatusCategoryDto.values.byName(category),
       milestone: json.optionalString('milestone'),
+      draft: json.boolean('draft'),
+      dependsOn: json['depends_on'] == null ? const [] : json.strings('depends_on'),
     );
   }
 
@@ -285,9 +295,23 @@ final class ItemLinkDto {
   final StatusCategoryDto? category;
   final String? milestone;
 
+  /// The linked item is a draft ([ItemDto.draft]).
+  final bool draft;
+
+  /// The ids the linked item depends on.
+  final List<String> dependsOn;
+
   bool get isMissing => title == null;
 
-  Json toJson() => {'id': id, 'title': title, 'status': status, 'category': category?.name, 'milestone': milestone};
+  Json toJson() => {
+    'id': id,
+    'title': title,
+    'status': status,
+    'category': category?.name,
+    'milestone': milestone,
+    'draft': draft,
+    'depends_on': dependsOn,
+  };
 }
 
 /// An item with its body and its neighbourhood in the backlog.

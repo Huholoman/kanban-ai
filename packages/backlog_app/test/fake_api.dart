@@ -41,10 +41,12 @@ ItemDto item(
   DateTime? createdAt,
   num? rank,
   String? milestone,
+  bool draft = false,
 }) => ItemDto(
   id: id,
   rank: rank,
   milestone: milestone,
+  draft: draft,
   branch: branch,
   pr: pr,
   blocked: blockedBy.isNotEmpty,
@@ -171,6 +173,8 @@ final class FakeBacklogApi implements BacklogApi {
       status: item.status,
       category: item.category,
       milestone: item.milestone,
+      draft: item.draft,
+      dependsOn: item.dependsOn,
     );
     ItemLinkDto linkTo(String id) => items_[id] == null ? ItemLinkDto(id: id) : link(items_[id]!);
     final children = items_.values.where((i) => i.parent == found.id).toList();

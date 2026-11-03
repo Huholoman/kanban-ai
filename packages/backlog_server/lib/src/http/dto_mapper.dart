@@ -374,6 +374,8 @@ abstract final class DtoMapper {
             status: other.item.status,
             category: _category(other.category),
             milestone: other.item.milestone,
+            draft: other.item.draft,
+            dependsOn: [for (final id in other.item.dependsOn) id.value],
           );
   }
 
