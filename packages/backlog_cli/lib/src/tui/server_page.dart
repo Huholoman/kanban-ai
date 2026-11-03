@@ -1,4 +1,5 @@
-import 'package:backlog_core/backlog_core.dart' show ConfigDraft, ConfigEditor, ServerSettings;
+import 'package:backlog_core/backlog_core.dart'
+    show ConfigDraft, ConfigEditor, ServerCommand, ServerCommandSetting, ServerSettings;
 import 'package:dart_tui/dart_tui.dart' show Cmd;
 
 import 'config_app.dart';
@@ -58,6 +59,17 @@ ConfigFileScreen serverScreen(ConfigEditor editor, ConfigDraft draft) => ConfigF
         'Registry file to serve, absolute, ~/… or relative to this file (empty: the default):',
         initial: settings.text('projects'),
         apply: (text) => ServerSettings(screen.draft).setPath('projects', text),
+      ),
+      MenuEntry(
+        'Commands',
+        detail: switch (settings.commands) {
+          [] => "none (the board's command menu stays hidden)",
+          final commands => commands.map((command) => command.name).join(', '),
+        },
+        onSelect: (navigator) {
+          navigator.push(_commandsScreen(screen));
+          return null;
+        },
       ),
       MenuEntry(
         'Request log',
@@ -149,6 +161,104 @@ Screen _tokenScreen(ConfigFileScreen screen) => MenuScreen(
     ),
   ],
 );
+
+/// The global commands the board offers in its command menu at the top
+/// right, and *Add a command…*.
+Screen _commandsScreen(ConfigFileScreen screen) => MenuScreen(
+  'Commands',
+  intro: () => [
+    'Commands the board runs on this machine from its menu at the top right, e.g. Update.',
+    Look.dim('One runs at a time; with a restart the server restarts once the command succeeded.'),
+  ],
+  entries: () => [
+    for (final (i, command) in ServerSettings(screen.draft).commands.indexed)
+      MenuEntry(
+        command.name,
+        detail: [command.command, if (command.restart != null) 'then restarts'].join('  '),
+        onSelect: (navigator) {
+          navigator.push(_commandScreen(screen, i));
+          return null;
+        },
+      ),
+    MenuEntry(
+      'Add a command…',
+      detail: 'a name, then the shell command',
+      onSelect: (navigator) {
+        navigator.push(
+          PromptScreen(
+            'Add a command',
+            'Name, as the menu shows it (e.g. Update):',
+            onSubmit: (name, navigator) {
+              navigator.push(
+                PromptScreen(
+                  'Add ${name.trim()}',
+                  'Shell command (runs with sh -c, e.g. mise run -C ~/kanban-ai install):',
+                  onSubmit: (command, navigator) =>
+                      _done(navigator, _added(ServerSettings(screen.draft), name, command)),
+                ),
+              );
+              return null;
+            },
+          ),
+        );
+        return null;
+      },
+    ),
+  ],
+);
+
+String _added(ServerSettings settings, String name, String command) {
+  settings.addCommand(name, command);
+  return 'Added command ${name.trim()} (not saved yet).';
+}
+
+/// One global command: what it runs, where and whether the server restarts
+/// after it.
+Screen _commandScreen(ConfigFileScreen screen, int index) {
+  ServerCommandSetting command() => ServerSettings(screen.draft).commands[index];
+  return MenuScreen(
+    command().name,
+    entries: () => [
+      _entry(
+        'Command',
+        command().command,
+        'Shell command (runs with sh -c):',
+        initial: command().command,
+        apply: (text) => ServerSettings(screen.draft).setCommandRun(index, text),
+      ),
+      _entry(
+        'Folder',
+        command().dir ?? "the server's working folder",
+        'Working folder, absolute, ~/… or relative to this file (empty: the server\'s):',
+        initial: command().dir,
+        apply: (text) => ServerSettings(screen.draft).setCommandDir(index, text),
+      ),
+      _entry(
+        'Restart',
+        switch (command().restart) {
+          null => 'no',
+          ServerCommand.sameProgram => 'yes, as the program it runs as',
+          final program => 'yes, as $program',
+        },
+        'After a success restart the server: yes (as the program it runs as), a program, or empty (no):',
+        initial: switch (command().restart) {
+          ServerCommand.sameProgram => 'yes',
+          final program => program,
+        },
+        apply: (text) => ServerSettings(screen.draft).setCommandRestart(index, text),
+      ),
+      MenuEntry(
+        'Remove',
+        onSelect: (navigator) {
+          final name = command().name;
+          ServerSettings(screen.draft).removeCommand(index);
+          navigator.pop();
+          return _done(navigator, 'Removed command $name (not saved yet).');
+        },
+      ),
+    ],
+  );
+}
 
 Cmd? _done(Navigator navigator, String message) {
   navigator.say(message);

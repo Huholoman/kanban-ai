@@ -119,6 +119,38 @@ commands:
     expect((await loadServerConfig(file)).port, 8642);
   });
 
+  test('ServerSettings edits the commands', () {
+    final settings = ServerSettings(ConfigDraft('port: 8640\n'));
+    settings
+      ..addCommand(' Update ', 'mise run install')
+      ..addCommand('Status', 'git status')
+      ..setCommandDir(0, '~/kanban-ai')
+      ..setCommandRestart(0, 'yes')
+      ..setCommandRestart(1, 'kanban-ai-server-dev');
+    var config = _parse(settings.draft.text);
+    expect(
+      [for (final c in config.commands) (c.name, c.dir, c.restart)],
+      [('Update', '/home/me/kanban-ai', ServerCommand.sameProgram), ('Status', null, 'kanban-ai-server-dev')],
+    );
+    expect(config.commands.first.command, ['sh', '-c', 'mise run install']);
+    expect(settings.commands.first.restart, ServerCommand.sameProgram);
+
+    settings
+      ..setCommandRun(1, 'git status --short')
+      ..setCommandRestart(1, '')
+      ..setCommandDir(0, '')
+      ..removeCommand(0);
+    config = _parse(settings.draft.text);
+    expect([for (final c in config.commands) (c.name, c.dir, c.restart)], [('Status', null, null)]);
+    expect(settings.commands.single.command, 'git status --short');
+    expect(() => settings.addCommand('Status', 'ls'), throwsA(isA<InvalidInputException>()));
+    expect(() => settings.addCommand('X', ' '), throwsA(isA<InvalidInputException>()));
+    expect(() => settings.setCommandRestart(0, 'a b'), throwsA(isA<InvalidInputException>()));
+    expect(() => settings.removeCommand(3), throwsA(isA<InvalidInputException>()));
+    settings.removeCommand(0);
+    expect(settings.draft.text, 'port: 8640\n');
+  });
+
   test('ServerSettings checks input; empty removes the key', () {
     final settings = ServerSettings(ConfigDraft('# server\nport: 8640 # default\n'));
     settings
