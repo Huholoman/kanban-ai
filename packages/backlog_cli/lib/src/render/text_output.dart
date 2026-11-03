@@ -30,6 +30,7 @@ abstract final class TextOutput {
     final item = planned.item;
     final checklist = planned.checklist;
     final badges = [
+      if (item.draft) 'DRAFT',
       if (item.type != 'task') '<${item.type}>',
       if (item.milestone != null) '[${item.milestone}]',
       for (final label in item.labels) '#$label',
@@ -121,6 +122,7 @@ abstract final class TextOutput {
       for (final id in item.related) 'related: ${describe(id)}',
       for (final id in planned.conflictsWith) 'waits for: ${describe(id)}, touches overlap',
       for (final other in snapshot.waitingOn(item.id)) 'holds up: ${describe(other.id)}, touches overlap',
+      if (item.draft) 'DRAFT: approve with kanban-ai approve ${item.id}, or kanban-ai discard ${item.id}',
       if (planned.isBlocked) 'BLOCKED',
       if (planned.isConflicting) 'WAITING',
       if (planned.needsHuman) 'NEEDS A PERSON: ${planned.item.discussion.openQuestion!.author} asked a question',

@@ -73,6 +73,8 @@ final class ApiHandler {
           ..get('$views/<id>', _view)
           ..patch('$views/<id>', _updateView)
           ..get(local(ApiPaths.lint), _lint)
+          ..post(local(ApiPaths.draftsApprove), _approveDrafts)
+          ..post(local(ApiPaths.draftsDiscard), _discardDrafts)
           ..get('/dispatch/profiles', _agentProfiles)
           ..put('/dispatch/profiles', _saveAgentProfiles)
           ..get(local(ApiPaths.dispatch), _dispatch)
@@ -325,6 +327,20 @@ final class ApiHandler {
     if (payload.pinned case final pinned?) view = await views.setPinned(id, pinned);
     return _json(DtoMapper.viewSummary(view!).toJson());
   }
+
+  Future<Response> _approveDrafts(Request request) async {
+    final payload = DraftsRequest.fromJson(await _body(request));
+    final approved = await (await _host.backlog).items.approve(payload.items);
+    return _json([for (final item in approved) _draftJson(item)]);
+  }
+
+  Future<Response> _discardDrafts(Request request) async {
+    final payload = DraftsRequest.fromJson(await _body(request));
+    final discarded = await (await _host.backlog).items.discard(payload.items);
+    return _json([for (final item in discarded) _draftJson(item)]);
+  }
+
+  static Map<String, Object?> _draftJson(Item item) => {'id': item.id.value, 'title': item.title};
 
   Future<Response> _lint(Request request) async {
     final issues = await (await _host.backlog).linter.run();

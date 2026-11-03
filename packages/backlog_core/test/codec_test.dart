@@ -69,6 +69,19 @@ estimate: 3d          # custom key
     expect(() => codec.decode(ranked.replaceFirst('rank: 1536', 'rank: .nan')), throwsFormatException);
   });
 
+  test('draft is written only when set; a value that is not a boolean makes the file unreadable', () {
+    final item = codec.decode(handWritten);
+    expect(item.draft, isFalse);
+    final drafted = codec.update(handWritten, item.copyWith(draft: true));
+    expect(drafted, contains('draft: true\n'));
+    expect(codec.decode(drafted).draft, isTrue);
+    expect(codec.encode(item.copyWith(draft: true)), contains('priority: p0\ndraft: true\n'));
+    expect(codec.encode(item), isNot(contains('draft')));
+    expect(codec.update(drafted, item), handWritten);
+    expect(codec.decode(drafted.replaceFirst('draft: true', 'draft: false')).draft, isFalse);
+    expect(() => codec.decode(drafted.replaceFirst('draft: true', 'draft: soon')), throwsFormatException);
+  });
+
   test('clearing a field removes its key', () {
     final item = codec.decode(handWritten);
     final updated = codec.update(handWritten, item.copyWith(labels: [], dependsOn: []));

@@ -68,7 +68,8 @@ final class EpicMember {
   final bool inScope;
 
   /// Not started and in an open status that is not pickable (`backlog`, the
-  /// parking lot): the run leaves it until a person moves it to `todo`.
+  /// parking lot), or a draft: the run leaves it until a person moves it to
+  /// `todo` (approves it).
   final bool parked;
 
   ItemId get id => item.id;
@@ -110,8 +111,9 @@ final class EpicMilestoneProgress {
 /// get stuck there.
 ///
 /// Only items in a pickable status (`todo`) are taken; those in another
-/// open status (`backlog`) are [parked] — a person decides what is next by
-/// moving them to `todo`, also while the run goes on. An item that comes
+/// open status (`backlog`) and drafts are [parked] — a person decides what
+/// is next by moving them to `todo` (approving drafts), also while the run
+/// goes on. An item that comes
 /// after a parked one is a warning.
 final class EpicPlan {
   const EpicPlan._({
@@ -164,7 +166,7 @@ final class EpicPlan {
       final planned = snapshot[member]!;
       return states[member] == EpicMemberState.remaining &&
           planned.category == StatusCategory.open &&
-          workflow.status(planned.item.status)?.pickable != true;
+          (planned.item.draft || workflow.status(planned.item.status)?.pickable != true);
     }
 
     // Children before their parent, dependencies before their dependents,

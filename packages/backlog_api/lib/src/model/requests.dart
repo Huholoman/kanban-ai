@@ -164,6 +164,18 @@ final class RankRequest {
   Json toJson() => {'order': order};
 }
 
+/// The drafts to approve or discard (`POST /api/drafts/approve`,
+/// `/api/drafts/discard`), by id or shortened id.
+final class DraftsRequest {
+  const DraftsRequest(this.items);
+
+  factory DraftsRequest.fromJson(Json json) => DraftsRequest(json.strings('items'));
+
+  final List<String> items;
+
+  Json toJson() => {'items': items};
+}
+
 /// Claim, release or completion of an item on behalf of [agent].
 final class ClaimRequest {
   const ClaimRequest({this.agent, this.status, this.force = false});

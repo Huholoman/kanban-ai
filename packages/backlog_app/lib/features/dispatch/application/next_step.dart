@@ -64,7 +64,7 @@ final class NextStep {
     final id = item.id;
     final ball = Ball.of(item, plan, workflow);
     if (ball != null && ball.holder != BallHolder.you) return null;
-    final offered = workflow?.actionsIn(item.status) ?? const <ActionDto>[];
+    final offered = workflow?.actionsIn(item.status, type: item.type) ?? const <ActionDto>[];
     if (item.needsHuman) {
       final asked = question?.text.trim().split('\n').first.trim();
       return NextStep(

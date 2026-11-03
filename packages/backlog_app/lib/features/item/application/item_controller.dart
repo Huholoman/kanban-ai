@@ -83,7 +83,7 @@ class ItemController extends ChangeNotifier {
   /// after them by name); the children can be filtered when there are two or
   /// more.
   List<String> get childMilestones {
-    final present = {for (final child in detail?.children ?? const <ItemLinkDto>[]) ?child.milestone};
+    final present = {for (final child in plannedChildren) ?child.milestone};
     final order = [for (final milestone in workflow?.milestones ?? const <MilestoneDto>[]) milestone.id];
     return [
       for (final milestone in order)
@@ -108,9 +108,15 @@ class ItemController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The children [childMilestone] lets through.
+  /// The children that are no drafts ([drafts] are those).
+  List<ItemLinkDto> get plannedChildren => [
+    for (final child in detail?.children ?? const <ItemLinkDto>[])
+      if (!child.draft) child,
+  ];
+
+  /// The [plannedChildren] [childMilestone] lets through.
   List<ItemLinkDto> get shownChildren {
-    final children = detail?.children ?? const <ItemLinkDto>[];
+    final children = plannedChildren;
     final milestone = childMilestone;
     return milestone == null
         ? children
@@ -267,6 +273,26 @@ class ItemController extends ChangeNotifier {
   /// Where the browser opens the attachment [name] (or saves it with
   /// [download]).
   Uri attachmentUri(String name, {bool download = false}) => _api.attachmentUri(_id, name, download: download);
+
+  /// The item's children that are drafts ([ItemLinkDto.draft]), proposed
+  /// e.g. by an AI split, in their order.
+  List<ItemLinkDto> get drafts => [
+    for (final child in detail?.children ?? const <ItemLinkDto>[])
+      if (child.draft) child,
+  ];
+
+  /// Approves the drafts [ids] (all of [drafts] when null): they become
+  /// ordinary items.
+  Future<bool> approveDrafts([List<String>? ids]) => _run(() async {
+    await _api.approveDrafts(ids ?? [for (final draft in drafts) draft.id]);
+    return _api.item(_id);
+  });
+
+  /// Deletes the drafts [ids] (all of [drafts] when null).
+  Future<bool> discardDrafts([List<String>? ids]) => _run(() async {
+    await _api.discardDrafts(ids ?? [for (final draft in drafts) draft.id]);
+    return _api.item(_id);
+  });
 
   Future<bool> claim() => _run(() => _api.claim(_id, ClaimRequest(agent: agent, force: true)));
 

@@ -413,13 +413,18 @@ final class DispatchAssignment {
                   'Run `kanban-ai show ${item.id}` to see the item as it is now.',
         'task': action.review
             ? ActionDefinition.reviewTask(actionValues, extra: action.prompt?.render(actionValues))
+            : action.split
+            ? ActionDefinition.splitTask(actionValues, extra: action.prompt?.render(actionValues))
             : action.prompt!.render(actionValues),
         'finish': action.review
             ? 'When you are done, record your verdict with `kanban-ai review` as described (that is your one '
                   'comment) and stop.'
+            : action.split
+            ? 'When the drafts are created, stop without a comment. When the item is too unclear to split, ask '
+                  'with `kanban-ai ask ${item.id} "…"` instead and stop.'
             : 'Comment only when the action asks you to (then in exactly one comment) or to answer a question a '
                   'person asked; otherwise finish without a comment.',
-        'publish': action.review
+        'publish': action.review || action.split
             ? 'Never push.'
             : config.pr == null
             ? 'Never push.'
@@ -1142,10 +1147,11 @@ final class DispatchPlan {
   /// [ReviewState.running] while a review runs or waits to run for it.
   ReviewState reviewOf(PlannedItem planned) => reviewing.contains(planned.id) ? ReviewState.running : planned.review;
 
-  /// The actions that items in [planned]'s status offer as buttons.
+  /// The actions that items in [planned]'s status and of its type offer as
+  /// buttons.
   List<ActionDefinition> actionsFor(PlannedItem planned) => [
     for (final action in config.actions)
-      if (action.offeredIn(planned.item.status)) action,
+      if (action.offeredIn(planned.item.status, type: planned.item.type)) action,
   ];
 
   /// What starting the action [name] on [reference] runs now: an agent for
@@ -1174,8 +1180,10 @@ final class DispatchPlan {
     final planned = snapshot[ItemReference.resolve(reference, snapshot.ids)]!;
     final id = planned.id;
     final status = planned.item.status;
-    if (trigger == ActionTrigger.request && !action.offeredIn(status)) {
-      throw InvalidInputException('The action "$name" is not offered for items in $status.');
+    if (trigger == ActionTrigger.request && !action.offeredIn(status, type: planned.item.type)) {
+      throw InvalidInputException(
+        'The action "$name" is not offered for ${action.appliesTo(planned.item.type) ? 'items in $status' : 'items of type ${planned.item.type}'}.',
+      );
     }
     if (runFor(id) case final run?) {
       throw UnavailableException(
@@ -1457,6 +1465,8 @@ final class DispatchPlan {
     final String why;
     if (planned.isDone) {
       why = 'it is $status';
+    } else if (planned.item.draft) {
+      why = 'it is a draft nobody has approved yet';
     } else if (snapshot.workflow.status(status)?.pickable != true) {
       why = 'its status $status is not ${snapshot.workflow.pickableStatus}';
     } else if (planned.isBlocked) {

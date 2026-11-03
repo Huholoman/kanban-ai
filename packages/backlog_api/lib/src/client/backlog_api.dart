@@ -48,6 +48,15 @@ abstract interface class BacklogApi {
   /// they need one; returns the item.
   Future<ItemDetailDto> rank(String reference, RankRequest request);
 
+  /// Approves the drafts [items] (`draft: true`): they become ordinary
+  /// items. All or none: refused when one is not a draft. Returns their ids.
+  Future<List<String>> approveDrafts(List<String> items);
+
+  /// Deletes the drafts [items] and the references of other items to them.
+  /// All or none: refused when one is not a draft or has other children.
+  /// Returns their ids.
+  Future<List<String>> discardDrafts(List<String> items);
+
   /// Attaches [content] to the item as [name]; a name the item has already
   /// gets `-2`, `-3`, … unless [replace]. Refused above
   /// [AttachmentDto.maxSize].
@@ -161,6 +170,10 @@ abstract final class ApiPaths {
   static const items = '/api/items';
   static const views = '/api/views';
   static const lint = '/api/lint';
+
+  /// `POST` with [DraftsRequest]: approve or discard drafts.
+  static const draftsApprove = '/api/drafts/approve';
+  static const draftsDiscard = '/api/drafts/discard';
   static const dispatch = '/api/dispatch';
   static const dispatchStart = '/api/dispatch/start';
   static const dispatchStop = '/api/dispatch/stop';

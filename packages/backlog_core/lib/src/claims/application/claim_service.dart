@@ -45,7 +45,7 @@ final class ClaimService {
 
   /// Claims the item for [agent] and moves it to the active status.
   ///
-  /// Refuses blocked items, items waiting for overlapping work in progress,
+  /// Refuses drafts, blocked items, items waiting for overlapping work in progress,
   /// items with open children and finished items unless [force] is set. Claiming an item the agent already holds just
   /// renews the claim. Without [mirror] only the lock is taken and the item
   /// file is left as it is (status, assignee): an action that works on an
@@ -292,6 +292,9 @@ final class ClaimService {
     final id = planned.id;
     if (planned.isDone) {
       throw InvalidInputException('$id is already ${planned.item.status}.');
+    }
+    if (planned.item.draft) {
+      throw InvalidInputException('$id is a draft; approve it first (kanban-ai approve $id) or use --force.');
     }
     if (planned.isBlocked) {
       throw InvalidInputException(

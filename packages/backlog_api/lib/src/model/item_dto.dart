@@ -65,6 +65,7 @@ final class ItemDto {
     required this.status,
     this.category,
     required this.priority,
+    this.draft = false,
     this.rank,
     this.milestone,
     this.parent,
@@ -109,6 +110,7 @@ final class ItemDto {
       status: json.string('status'),
       category: category == null ? null : StatusCategoryDto.values.byName(category),
       priority: json.string('priority'),
+      draft: json.boolean('draft'),
       rank: json['rank'] as num?,
       milestone: json.optionalString('milestone'),
       parent: json.optionalString('parent'),
@@ -153,6 +155,10 @@ final class ItemDto {
   final String status;
   final StatusCategoryDto? category;
   final String priority;
+
+  /// A proposal nobody has approved yet (`draft: true`): never ready; a
+  /// person approves or discards it.
+  final bool draft;
 
   /// Manual order where a view sorts by `rank` (lower first); null for none.
   final num? rank;
@@ -223,6 +229,7 @@ final class ItemDto {
     'status': status,
     'category': category?.name,
     'priority': priority,
+    'draft': draft,
     'rank': rank,
     'milestone': milestone,
     'parent': parent,
@@ -257,7 +264,15 @@ final class ItemDto {
 
 /// A short reference to another item, as shown next to a detail.
 final class ItemLinkDto {
-  const ItemLinkDto({required this.id, this.title, this.status, this.category, this.milestone});
+  const ItemLinkDto({
+    required this.id,
+    this.title,
+    this.status,
+    this.category,
+    this.milestone,
+    this.draft = false,
+    this.dependsOn = const [],
+  });
 
   factory ItemLinkDto.fromJson(Json json) {
     final category = json.optionalString('category');
@@ -267,6 +282,8 @@ final class ItemLinkDto {
       status: json.optionalString('status'),
       category: category == null ? null : StatusCategoryDto.values.byName(category),
       milestone: json.optionalString('milestone'),
+      draft: json.boolean('draft'),
+      dependsOn: json['depends_on'] == null ? const [] : json.strings('depends_on'),
     );
   }
 
@@ -278,9 +295,23 @@ final class ItemLinkDto {
   final StatusCategoryDto? category;
   final String? milestone;
 
+  /// The linked item is a draft ([ItemDto.draft]).
+  final bool draft;
+
+  /// The ids the linked item depends on.
+  final List<String> dependsOn;
+
   bool get isMissing => title == null;
 
-  Json toJson() => {'id': id, 'title': title, 'status': status, 'category': category?.name, 'milestone': milestone};
+  Json toJson() => {
+    'id': id,
+    'title': title,
+    'status': status,
+    'category': category?.name,
+    'milestone': milestone,
+    'draft': draft,
+    'depends_on': dependsOn,
+  };
 }
 
 /// An item with its body and its neighbourhood in the backlog.

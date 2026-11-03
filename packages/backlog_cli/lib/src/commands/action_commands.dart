@@ -34,6 +34,7 @@ final class ActionCommand extends BacklogCommand {
     final snapshot = await backlog.planning.snapshot();
     final planned = snapshot[ItemReference.resolve(args.rest.first, snapshot.ids)]!;
     final status = planned.item.status;
+    final type = planned.item.type;
 
     if (args.rest.length == 1) {
       if (json) {
@@ -42,12 +43,14 @@ final class ActionCommand extends BacklogCommand {
             {
               'name': action.name,
               'kind': action.kind.id,
-              'offered': action.offeredIn(status),
+              'offered': action.offeredIn(status, type: type),
               'on_enter': action.onEnter,
               'statuses': action.statuses,
+              'types': action.types ?? (action.split ? ActionDefinition.splitTypes : null),
               'agent': action.kind == ActionKind.prompt ? config.profileFor(action).name : null,
               'fresh': action.fresh,
               'review': action.review,
+              'split': action.split,
               'auto_fix': action.autoFix,
               'changes_code': action.changesCode,
               'then': action.then,
@@ -57,9 +60,9 @@ final class ActionCommand extends BacklogCommand {
       }
       final offered = [
         for (final action in config.actions)
-          if (action.offeredIn(status)) action,
+          if (action.offeredIn(status, type: type)) action,
       ];
-      if (offered.isEmpty) line('${planned.id} ($status) offers no actions.');
+      if (offered.isEmpty) line('${planned.id} ($status, $type) offers no actions.');
       for (final action in offered) {
         line(
           '${action.name}  —  ${action.summary}${action.onEnter == null ? '' : '; runs on entering ${action.onEnter}'}',
@@ -67,7 +70,7 @@ final class ActionCommand extends BacklogCommand {
       }
       final hooks = [
         for (final action in config.actions)
-          if (!action.offeredIn(status) && action.onEnter != null) action,
+          if (!action.offeredIn(status, type: type) && action.onEnter != null && action.appliesTo(type)) action,
       ];
       for (final hook in hooks) {
         line('(${hook.name} runs by itself on entering ${hook.onEnter})');
@@ -79,8 +82,11 @@ final class ActionCommand extends BacklogCommand {
     final action =
         config.action(name) ??
         (throw NotFoundException('No action "$name" (configured: ${config.actions.map((a) => a.name).join(', ')}).'));
-    if (!action.offeredIn(status)) {
-      throw InvalidInputException('The action "${action.name}" is not offered for items in $status.');
+    if (!action.offeredIn(status, type: type)) {
+      throw InvalidInputException(
+        'The action "${action.name}" is not offered for '
+        '${action.appliesTo(type) ? 'items in $status' : 'items of type $type'}.',
+      );
     }
     final by = args.option('as') ?? toolVariable(context.environment, 'AGENT') ?? context.environment['USER'];
     await backlog.actionRequests.add(

@@ -182,6 +182,7 @@ title: Everything
 type: bug
 status: done
 priority: p0
+draft: true
 milestone: v1
 rank: 2.5
 parent: T-9
@@ -226,6 +227,7 @@ Body.
     }
     expect(catalog.items.first.extra['ratio'], 1.5);
     expect(catalog.items.first.rank, 2.5);
+    expect(catalog.items.first.draft, isTrue);
   });
 
   test('files changed, added or deleted since are read again', () async {

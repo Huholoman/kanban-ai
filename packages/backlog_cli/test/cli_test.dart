@@ -229,6 +229,30 @@ void main() {
     expect((await backlog(['show', id])).out, contains('touches: lib/payments/, lib/*.{dart,yaml}\n'));
   });
 
+  test('drafts: new --draft, show, list, approve and discard by id or --of the parent', () async {
+    final epic = await create('Checkout', ['-t', 'epic', '-s', 'todo']);
+    final first = await create('Cart', ['--draft', '--parent', epic]);
+    final second = await create('Payment', ['--draft', '--parent', epic, '-d', first]);
+    final third = await create('Receipt', ['--draft', '--parent', epic, '-d', second]);
+    final json = (await backlog(['--json', 'show', first])).json! as Map;
+    expect((json['draft'], json['status'], json['ready']), (true, 'todo', false));
+    expect((await backlog(['show', first])).out, contains('DRAFT: approve with kanban-ai approve $first'));
+    expect((await backlog(['list'])).out, contains('Cart  DRAFT'));
+    expect((await backlog(['claim', first, '--as', 'wt-2'])).err, contains('is a draft'));
+
+    final approved = await backlog(['approve', first]);
+    expect(approved.out, startsWith('Approved 1:\n'));
+    expect(((await backlog(['--json', 'show', first])).json! as Map)['draft'], isFalse);
+    expect((await backlog(['approve', first])).err, contains('is not a draft'));
+
+    final discarded = await backlog(['--json', 'discard', '--of', epic]);
+    expect(discarded.exitCode, 0, reason: '$discarded');
+    expect([for (final item in discarded.json! as List) (item as Map)['id']], unorderedEquals([second, third]));
+    expect((await backlog(['show', second])).exitCode, isNot(0));
+    expect((await backlog(['discard', '--of', epic])).out, '$epic has no drafts.\n');
+    expect((await backlog(['approve'])).exitCode, 64);
+  });
+
   test('times: UTC in the file and JSON, local time in show; a day from an older file stays', () async {
     final id = await create('Payments');
     final json = (await backlog(['--json', 'show', id])).json! as Map;
@@ -644,6 +668,7 @@ void main() {
       expect((await Backlog.open(p.join(workspace.path, 'other'))).workflow.dispatcher!.actions.map((a) => a.name), [
         'AI review',
         'Merge',
+        'Split',
       ]);
       final again = await init(['third', '--preset', 'agents', '--agents-file', claude]);
       expect(again.out, contains('has the guide for agents already'));
@@ -864,9 +889,11 @@ statuses: [{id: open, category: open, pickable: true}, {id: doing, category: act
       'offered': false,
       'on_enter': 'review',
       'statuses': null,
+      'types': null,
       'agent': 'claude',
       'fresh': false,
       'review': false,
+      'split': false,
       'auto_fix': 0,
       'changes_code': false,
       'then': null,

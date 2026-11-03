@@ -69,6 +69,7 @@ abstract final class DtoMapper {
       status: item.status,
       category: _category(planned.category),
       priority: item.priority,
+      draft: item.draft,
       rank: item.rank,
       milestone: item.milestone,
       parent: item.parent?.value,
@@ -107,10 +108,12 @@ abstract final class DtoMapper {
     name: action.name,
     kind: action.kind.id,
     statuses: action.statuses,
+    types: action.types ?? (action.split ? ActionDefinition.splitTypes : null),
     onEnter: action.onEnter,
     agent: action.kind == ActionKind.prompt ? config.profileFor(action).name : null,
     fresh: action.fresh,
     review: action.review,
+    split: action.split,
     autoFix: action.autoFix,
     changesCode: action.changesCode,
     then: action.then,
@@ -162,7 +165,7 @@ abstract final class DtoMapper {
       actions: [
         if (dispatcher != null)
           for (final action in dispatcher.actions)
-            if (action.offeredIn(item.status)) DtoMapper.action(action, dispatcher),
+            if (action.offeredIn(item.status, type: item.type)) DtoMapper.action(action, dispatcher),
       ],
       attachments: [
         for (final attachment in attachments)
@@ -371,6 +374,8 @@ abstract final class DtoMapper {
             status: other.item.status,
             category: _category(other.category),
             milestone: other.item.milestone,
+            draft: other.item.draft,
+            dependsOn: [for (final id in other.item.dependsOn) id.value],
           );
   }
 

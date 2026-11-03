@@ -69,6 +69,12 @@ void main() {
     expect(find.text('ui'), findsNothing, reason: 'one meta line only');
   });
 
+  testWidgets('a draft says so, before what blocks it', (tester) async {
+    await pumpCard(tester, item('T-1', draft: true, blockedBy: ['T-9']));
+    expect(find.text('✎ Draft'), findsOneWidget);
+    expect(find.text('Blocked by T-9'), findsNothing, reason: 'one meta line only');
+  });
+
   testWidgets('a blocked item names its blockers', (tester) async {
     await pumpCard(tester, base(blocked: true, blockedBy: ['T-9']));
     expect(find.text('Blocked by T-9'), findsOneWidget);

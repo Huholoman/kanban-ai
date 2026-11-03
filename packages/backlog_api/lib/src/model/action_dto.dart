@@ -7,10 +7,12 @@ final class ActionDto {
     required this.name,
     required this.kind,
     this.statuses,
+    this.types,
     this.onEnter,
     this.agent,
     this.fresh = false,
     this.review = false,
+    this.split = false,
     this.autoFix = 0,
     this.changesCode = false,
     this.then,
@@ -20,10 +22,12 @@ final class ActionDto {
     name: json.string('name'),
     kind: json.string('kind'),
     statuses: json['statuses'] == null ? null : json.strings('statuses'),
+    types: json['types'] == null ? null : json.strings('types'),
     onEnter: json.optionalString('on_enter'),
     agent: json.optionalString('agent'),
     fresh: json.boolean('fresh'),
     review: json.boolean('review'),
+    split: json.boolean('split'),
     autoFix: json['auto_fix'] == null ? 0 : json.integer('auto_fix'),
     changesCode: json.boolean('changes_code'),
     then: json.optionalString('then'),
@@ -38,6 +42,10 @@ final class ActionDto {
   /// [onEnter] when set).
   final List<String>? statuses;
 
+  /// Types of items it is for (buttons and hooks); null: every type. A
+  /// split without its own lists `epic` and `story`.
+  final List<String>? types;
+
   /// It runs by itself when an item enters this status.
   final String? onEnter;
 
@@ -50,6 +58,10 @@ final class ActionDto {
   /// An AI review (`review: true`): a prompt action with the built-in review
   /// task that ends with `kanban-ai review`.
   final bool review;
+
+  /// An AI split (`split: true`): a prompt action with the built-in task
+  /// that proposes the tasks of an item as drafts under it.
+  final bool split;
 
   /// For a [review]: at most this many automatic fix rounds by the item's
   /// agent when it asks for changes (0: none).
@@ -65,20 +77,24 @@ final class ActionDto {
 
   bool get isPrompt => kind == 'prompt';
 
-  /// Whether items in [status] show it as a button.
-  bool offeredIn(String status) => switch (statuses) {
-    final listed? => listed.contains(status),
-    null => onEnter == null || onEnter == status,
-  };
+  /// Whether items in [status] (of [type], when given) show it as a button.
+  bool offeredIn(String status, {String? type}) =>
+      (type == null || (types?.contains(type) ?? true)) &&
+      switch (statuses) {
+        final listed? => listed.contains(status),
+        null => onEnter == null || onEnter == status,
+      };
 
   Json toJson() => {
     'name': name,
     'kind': kind,
     'statuses': statuses,
+    'types': types,
     'on_enter': onEnter,
     'agent': agent,
     'fresh': fresh,
     'review': review,
+    'split': split,
     'auto_fix': autoFix,
     'changes_code': changesCode,
     'then': then,

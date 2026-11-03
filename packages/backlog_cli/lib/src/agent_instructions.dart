@@ -104,6 +104,11 @@ do not pick overlapping work; `kanban-ai set T-7f3a touches+=lib/x/` later.
 Split work you discover into new items rather than growing the current one.
 Use `depends_on` only for hard prerequisites; use `related` for context.
 
+`--draft` makes the item a proposal (`draft: true`) that nobody takes until a
+person approves it (`kanban-ai approve <id>`, or `kanban-ai discard <id>`
+deletes it); under `--parent` it takes the parent's milestone. Never work on
+a draft.
+
 ## Before you stop
 
     kanban-ai lint                 # must report no errors

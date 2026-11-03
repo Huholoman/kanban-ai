@@ -232,7 +232,8 @@ final class ActionState {
   final List<QueuedStart> queue;
 
   /// Compares [snapshot] with [statuses]: every item whose status changed
-  /// to the `on_enter` status of an action gets that action queued (once
+  /// to the `on_enter` status of an action (of a type it applies to) gets
+  /// that action queued (once
   /// per transition, in the configured order). Items seen for the first
   /// time (new items, the very first evaluation) trigger nothing. Returns
   /// the new state and the newly queued actions.
@@ -246,7 +247,7 @@ final class ActionState {
         final status = planned.item.status;
         if (previous == null || previous == status) continue;
         for (final action in actions) {
-          if (action.onEnter == status) {
+          if (action.onEnter == status && action.appliesTo(planned.item.type)) {
             queued.add(
               PendingAction(item: planned.id, action: action.name, status: status, since: now.toUtc(), from: previous),
             );

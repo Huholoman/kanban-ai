@@ -235,6 +235,24 @@ void main() {
     await expectLater(api.rank(ids[0], RankRequest([ids[1]])), throwsA(apiError(400, 'invalid_input')));
   });
 
+  test('drafts: shown as such, approved or discarded all or none', () async {
+    final epic = await backlog.items.create(const NewItem(title: 'Epic', type: 'epic'));
+    final first = await backlog.items.create(NewItem(title: 'First', parent: epic.id.value, draft: true));
+    final second = await backlog.items.create(
+      NewItem(title: 'Second', parent: epic.id.value, draft: true, dependsOn: [first.id.value]),
+    );
+    final plain = await backlog.items.create(const NewItem(title: 'Plain'));
+    expect((await api.item(first.id.value)).item.draft, isTrue);
+    expect((await api.item(plain.id.value)).item.draft, isFalse);
+
+    await expectLater(api.approveDrafts([first.id.value, plain.id.value]), throwsA(apiError(400, 'invalid_input')));
+    expect((await api.item(first.id.value)).item.draft, isTrue, reason: 'all or none');
+    expect(await api.approveDrafts([first.id.value]), [first.id.value]);
+    expect((await api.item(first.id.value)).item.draft, isFalse);
+    expect(await api.discardDrafts([second.id.value]), [second.id.value]);
+    await expectLater(api.item(second.id.value), throwsA(apiError(404, 'not_found')));
+  });
+
   test('views are listed and evaluated', () async {
     await backlog.items.create(const NewItem(title: 'Doing', status: 'in-progress', priority: 'p0'));
     final views = await api.views();
@@ -730,7 +748,8 @@ void main() {
               '  actions:\n'
               '    - {name: Vyřeš připomínky z PR, statuses: [review], prompt: "Fix {pr}"}\n'
               '    - {name: AI review, on_enter: review, fresh: true, prompt: "Review"}\n'
-              '    - {name: Testy, statuses: [review], run: [sh, -c, "mise run check"]}\n',
+              '    - {name: Testy, statuses: [review], run: [sh, -c, "mise run check"]}\n'
+              '    - {name: Rozdělit, split: true}\n',
         ),
       );
       host.reload();
@@ -740,8 +759,19 @@ void main() {
         ('Vyřeš připomínky z PR', 'prompt', null, 'command'),
         ('AI review', 'prompt', 'review', 'command'),
         ('Testy', 'command', null, null),
+        ('Rozdělit', 'prompt', null, 'command'),
       ]);
-      expect(workflow.actionsIn('todo'), isEmpty);
+      final split = workflow.actions.last;
+      expect((split.split, split.fresh), (true, true));
+      expect(split.types, ['epic', 'story']);
+      expect(workflow.actionsIn('todo', type: 'task'), isEmpty);
+      expect(workflow.actionsIn('todo', type: 'epic').map((a) => a.name), ['Rozdělit']);
+      expect(
+        (await api.createItem(
+          const NewItemRequest(title: 'E', type: 'epic', status: 'todo'),
+        )).actions.map((a) => a.name),
+        ['Rozdělit'],
+      );
       final item = await api.createItem(const NewItemRequest(title: 'A', status: 'review'));
       final id = item.item.id;
       expect(item.actions.map((a) => a.name), ['Vyřeš připomínky z PR', 'AI review', 'Testy']);

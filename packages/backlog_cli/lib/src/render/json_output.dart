@@ -20,6 +20,7 @@ abstract final class JsonOutput {
       'status': item.status,
       'category': planned.category?.name,
       'priority': item.priority,
+      'draft': item.draft,
       'rank': item.rank,
       'milestone': item.milestone,
       'parent': item.parent?.value,

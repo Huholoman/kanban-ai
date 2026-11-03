@@ -177,6 +177,48 @@ void main() {
       expect(_key('sibling-position'), findsNothing);
     });
 
+    testWidgets('proposed tasks are approved or discarded one by one or all at once', (tester) async {
+      final api = await _pumpDetail(
+        tester,
+        'S-3',
+        setUp: (api) {
+          for (final draft in [
+            item('P-1', parent: 'S-3', draft: true),
+            item('P-2', parent: 'S-3', draft: true, dependsOn: ['P-1']),
+            item('P-3', parent: 'S-3', draft: true),
+          ]) {
+            api.items_[draft.id] = draft;
+          }
+        },
+      );
+      expect(find.text('Proposed tasks'), findsOneWidget);
+      expect(find.text('3 drafts'), findsOneWidget);
+      expect(find.text('after P-1'), findsOneWidget);
+      expect(_key('relation-children'), findsNothing, reason: 'drafts are no children yet');
+
+      await _tap(tester, _key('approve-P-1'));
+      expect(api.approved, [
+        ['P-1'],
+      ]);
+      expect(find.text('2 drafts'), findsOneWidget);
+      expect(_key('link-P-1'), findsOneWidget, reason: 'an approved draft is a child');
+
+      await _tap(tester, _key('discard-P-3'));
+      expect(api.discarded, [
+        ['P-3'],
+      ]);
+      expect(api.items_.containsKey('P-3'), isFalse);
+
+      await _tap(tester, _key('approve-drafts'));
+      expect(api.approved.last, ['P-2']);
+      expect(_key('drafts'), findsNothing);
+    });
+
+    testWidgets('a draft says so and where to approve it', (tester) async {
+      await _pumpDetail(tester, 'P-1', setUp: (api) => api.items_['P-1'] = item('P-1', parent: 'S-3', draft: true));
+      expect(find.text('draft: approve or discard it in S-3'), findsOneWidget);
+    });
+
     testWidgets('a child expands in place and opens from there', (tester) async {
       await _pumpDetail(tester, 'S-2');
       expect(find.text('Tasks'), findsOneWidget);

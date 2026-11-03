@@ -126,6 +126,7 @@ class DetailContent extends StatelessWidget {
                 _Fields(controller: controller, item: item, workflow: workflow),
               ],
               const SizedBox(height: 16),
+              DetailDrafts(controller: controller, onOpen: onOpen),
               DetailChildren(controller: controller, onOpen: onOpen),
               DetailRelations(controller: controller, onOpen: onOpen),
               const SizedBox(height: 16),
@@ -546,6 +547,15 @@ class _Status extends StatelessWidget {
     final claim = item.claim;
     final tags = [
       if (item.needsHuman) Tag('waits for you', icon: Icons.help_outline, color: tokens.warning),
+      if (item.draft)
+        Tag(
+          item.parent == null
+              ? 'draft: kanban-ai approve or discard'
+              : 'draft: approve or discard it in ${item.parent}',
+          key: const ValueKey('draft-tag'),
+          icon: Icons.edit_note,
+          color: tokens.accent,
+        ),
       if (item.ready) Tag('ready to pick', icon: Icons.play_arrow, color: tokens.success),
       if (ReviewBadge.label(item) != null) ReviewBadge(item),
       if (claim != null)

@@ -394,12 +394,14 @@ ActionDefinition _action(Object? node, String origin) {
   const known = {
     'name',
     'statuses',
+    'types',
     'on_enter',
     'prompt',
     'run',
     'agent',
     'fresh',
     'review',
+    'split',
     'auto_fix',
     'changes_code',
     'then',
@@ -415,17 +417,22 @@ ActionDefinition _action(Object? node, String origin) {
   if (fresh is! bool) throw ConfigurationException('$path.fresh must be true or false.');
   final review = yaml['review'] ?? false;
   if (review is! bool) throw ConfigurationException('$path.review must be true or false.');
+  final split = yaml['split'] ?? false;
+  if (split is! bool) throw ConfigurationException('$path.split must be true or false.');
   final autoFix = yaml['auto_fix'] ?? 0;
   if (autoFix is! int) throw ConfigurationException('$path.auto_fix must be a number of rounds.');
   final changesCode = yaml['changes_code'] ?? false;
   if (changesCode is! bool) throw ConfigurationException('$path.changes_code must be true or false.');
-  if (review && yaml['fresh'] == false) {
-    throw ConfigurationException('$path: a review always runs in a new session (fresh: false is not possible).');
+  if ((review || split) && yaml['fresh'] == false) {
+    throw ConfigurationException(
+      '$path: ${review ? 'a review' : 'a split'} always runs in a new session (fresh: false is not possible).',
+    );
   }
   final run = yaml['run'];
   return ActionDefinition(
     name: name,
     statuses: yaml['statuses'] == null ? null : _strings(yaml['statuses'], '$path.statuses', origin),
+    types: yaml['types'] == null ? null : _strings(yaml['types'], '$path.types', origin),
     onEnter: yaml['on_enter'] == null ? null : _string(yaml['on_enter'], '$path.on_enter', origin),
     prompt: yaml['prompt'] == null
         ? null
@@ -445,6 +452,7 @@ ActionDefinition _action(Object? node, String origin) {
     agent: yaml['agent'] == null ? null : _string(yaml['agent'], '$path.agent', origin),
     fresh: fresh,
     review: review,
+    split: split,
     autoFix: autoFix,
     changesCode: changesCode,
     then: yaml['then'] == null ? null : _string(yaml['then'], '$path.then', origin),
@@ -662,11 +670,12 @@ claims:
 #   # tells what happened since (how the run ended, new comments):
 #   resume_prompt: "Continue on {id}. Since your last run: {news}"
 #   # Actions: buttons on items (statuses: where they show; default every
-#   # status, or only the on_enter one) and hooks (on_enter: run by itself,
-#   # once, when an item enters that status). Each has exactly one of
-#   # prompt (an agent; it continues the item's session unless fresh: true),
-#   # run (a command as a list, or a built-in action by name: noop) and
-#   # review: true (an AI review, see below).
+#   # status, or only the on_enter one; types: for which item types) and
+#   # hooks (on_enter: run by itself, once, when an item enters that status).
+#   # Each has exactly one of prompt (an agent; it continues the item's
+#   # session unless fresh: true), run (a command as a list, or a built-in
+#   # action by name: noop), review: true (an AI review, see below) and
+#   # split: true (an AI split, see below).
 #   # Prompt placeholders as above plus {pr}, {status}, {base}, {action},
 #   # {news}; command placeholders {id} {title} {branch} {pr} {status}
 #   # {worktree} {path} {backlog} {base} {action}.
@@ -698,6 +707,12 @@ claims:
 #     - name: Tests
 #       statuses: [review]
 #       run: [sh, -c, "mise run check"]   # in the item's worktree; result as a note in the discussion
+#     # AI split: split: true has an agent (new session) propose the tasks of
+#     # an epic or story as drafts under it (kanban-ai new --draft --parent);
+#     # a person approves or discards them in the item's detail.
+#     - name: Split
+#       split: true
+#       # types: [epic, story]   # the default for a split
 #     # With a deploy status (category active) after review:
 #     # - name: Merge
 #     #   on_enter: deploy  # merges when an item is moved to deploy

@@ -49,6 +49,8 @@ Future<int> runBacklogCli(List<String> arguments, CliContext context) async {
     PathCommand(context),
     ArchiveCommand(context),
     SetCommand(context),
+    DraftCommand(context, discards: false),
+    DraftCommand(context, discards: true),
     SuggestTouchesCommand(context),
     DescribeCommand(context),
     CheckCommand(context),
