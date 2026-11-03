@@ -668,6 +668,7 @@ void main() {
       expect((await Backlog.open(p.join(workspace.path, 'other'))).workflow.dispatcher!.actions.map((a) => a.name), [
         'AI review',
         'Merge',
+        'Split',
       ]);
       final again = await init(['third', '--preset', 'agents', '--agents-file', claude]);
       expect(again.out, contains('has the guide for agents already'));

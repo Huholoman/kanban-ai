@@ -670,11 +670,12 @@ claims:
 #   # tells what happened since (how the run ended, new comments):
 #   resume_prompt: "Continue on {id}. Since your last run: {news}"
 #   # Actions: buttons on items (statuses: where they show; default every
-#   # status, or only the on_enter one) and hooks (on_enter: run by itself,
-#   # once, when an item enters that status). Each has exactly one of
-#   # prompt (an agent; it continues the item's session unless fresh: true),
-#   # run (a command as a list, or a built-in action by name: noop) and
-#   # review: true (an AI review, see below).
+#   # status, or only the on_enter one; types: for which item types) and
+#   # hooks (on_enter: run by itself, once, when an item enters that status).
+#   # Each has exactly one of prompt (an agent; it continues the item's
+#   # session unless fresh: true), run (a command as a list, or a built-in
+#   # action by name: noop), review: true (an AI review, see below) and
+#   # split: true (an AI split, see below).
 #   # Prompt placeholders as above plus {pr}, {status}, {base}, {action},
 #   # {news}; command placeholders {id} {title} {branch} {pr} {status}
 #   # {worktree} {path} {backlog} {base} {action}.
@@ -706,6 +707,12 @@ claims:
 #     - name: Tests
 #       statuses: [review]
 #       run: [sh, -c, "mise run check"]   # in the item's worktree; result as a note in the discussion
+#     # AI split: split: true has an agent (new session) propose the tasks of
+#     # an epic or story as drafts under it (kanban-ai new --draft --parent);
+#     # a person approves or discards them in the item's detail.
+#     - name: Split
+#       split: true
+#       # types: [epic, story]   # the default for a split
 #     # With a deploy status (category active) after review:
 #     # - name: Merge
 #     #   on_enter: deploy  # merges when an item is moved to deploy

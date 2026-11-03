@@ -103,6 +103,7 @@ appearance:
         'Address PR comments',
         'AI review',
         'Tests',
+        'Split',
       ]);
       expect(parseWorkflowYaml(uncommented).dispatcher!.merge.check!.arguments, ['mise', 'run', 'check']);
     });
