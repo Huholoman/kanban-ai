@@ -6,11 +6,12 @@ import '../../../../app/app_scope.dart';
 import '../../../../app/appearance_controller.dart';
 import '../../../../shared/tokens.dart';
 import '../../../../shared/ui/ui.dart';
+import '../../../projects/presentation/commands_menu.dart';
 import '../../application/board_controller.dart';
 import 'view_navigation.dart';
 
 /// Top bar of the main area: the filter toolbar takes the space, compact
-/// actions (columns, theme, reload) sit at the right end. With [compact]
+/// actions (columns, theme, reload, the server's commands) sit at the right end. With [compact]
 /// (phone) the row has the menu button, the view dropdown, a filter toggle
 /// and the actions; the filter toolbar slides down below it while
 /// [filterOpen], so the board keeps the screen otherwise.
@@ -116,6 +117,7 @@ class BoardHeader extends StatelessWidget {
       ),
     if (AppScope.of(context).appearance case final appearance?) _ModeButton(appearance: appearance),
     IconActionButton(tooltip: 'Reload', icon: Icons.refresh, onPressed: () => unawaited(controller.refresh())),
+    if (AppScope.of(context).commands case final commands?) CommandsMenu(controller: commands),
   ];
 }
 

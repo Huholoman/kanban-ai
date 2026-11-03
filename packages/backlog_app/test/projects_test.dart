@@ -1,6 +1,7 @@
 import 'package:backlog_api/backlog_api.dart';
 import 'package:backlog_app/app/backlog_app.dart';
 import 'package:backlog_app/features/board/presentation/view_layouts.dart';
+import 'package:backlog_app/features/projects/application/commands_controller.dart';
 import 'package:backlog_app/features/projects/application/preview_controller.dart';
 import 'package:backlog_app/features/projects/application/project_memory.dart';
 import 'package:backlog_app/features/projects/application/project_route.dart';
@@ -390,6 +391,79 @@ void main() {
       expect(api.backToMainCalls, 1);
       expect(find.byKey(const ValueKey('preview-banner')), findsNothing);
       expect(find.textContaining('The server restarts as kanban-ai-server'), findsOneWidget);
+    });
+  });
+
+  group('commands', () {
+    Future<void> pump(WidgetTester tester, FakeProjectsApi api) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(BacklogApp(projects: api, initialRoute: '/p/a'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('no menu without commands', (tester) async {
+      await pump(tester, threeProjects());
+      expect(find.byKey(const ValueKey('commands')), findsNothing);
+    });
+
+    testWidgets('the menu at the top right runs a command and shows its output and result', (tester) async {
+      final api = threeProjects()
+        ..commandList = const CommandsDto(
+          commands: [
+            ServerCommandDto(name: 'Update', restarts: true),
+            ServerCommandDto(name: 'Status'),
+          ],
+        );
+      await pump(tester, api);
+      await tester.tap(find.byKey(const ValueKey('commands')));
+      await tester.pumpAndSettle();
+      expect(find.text('Update (restarts the server)'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('command-Update')));
+      await tester.pump();
+      await tester.pump();
+      expect(api.ran, ['Update']);
+      expect(find.byKey(const ValueKey('command-run')), findsOneWidget);
+      expect(find.text('Running'), findsOneWidget);
+
+      api.commandList = CommandsDto(
+        commands: api.commandList.commands,
+        run: CommandRunDto(
+          name: 'Update',
+          started: DateTime.utc(2026, 11, 3, 12),
+          finished: DateTime.utc(2026, 11, 3, 12, 1),
+          exitCode: 0,
+          output: 'installed\n',
+          restart: 'kanban-ai-server',
+        ),
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.text('succeeded'), findsOneWidget);
+      expect(find.text('installed\n'), findsOneWidget);
+      expect(find.textContaining('The server restarts as kanban-ai-server'), findsOneWidget);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('commands')));
+      await tester.pumpAndSettle();
+      expect(find.text('Last: Update – succeeded'), findsOneWidget);
+    });
+
+    test('a refused command says why', () async {
+      final api = threeProjects()
+        ..commandList = CommandsDto(
+          commands: const [ServerCommandDto(name: 'Status')],
+          run: CommandRunDto(name: 'Status', started: DateTime.utc(2026, 11, 3)),
+        );
+      final controller = CommandsController(api, every: const Duration(hours: 1));
+      addTearDown(controller.dispose);
+      await controller.start();
+      expect(controller.running, isTrue);
+      expect(await controller.runCommand('Status'), isFalse);
+      expect(controller.error, 'A command is running.');
+      expect(await CommandsController(null).runCommand('Status'), isFalse);
     });
   });
 
