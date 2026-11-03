@@ -173,6 +173,11 @@ final class NewCommand extends BacklogCommand {
       ..addOption('priority', abbr: 'p')
       ..addOption('milestone', abbr: 'm')
       ..addOption('parent')
+      ..addFlag(
+        'draft',
+        negatable: false,
+        help: 'A proposal to approve or discard; with --parent it takes the parent\'s milestone and open status.',
+      )
       ..addMultiOption('depends-on', abbr: 'd', help: 'Repeat or separate by commas.')
       ..addMultiOption('related')
       ..addMultiOption('label', abbr: 'l')
@@ -214,6 +219,7 @@ final class NewCommand extends BacklogCommand {
         type: args.option('type'),
         status: args.option('status'),
         priority: args.option('priority'),
+        draft: args.flag('draft'),
         milestone: args.option('milestone'),
         parent: args.option('parent'),
         dependsOn: args.multiOption('depends-on'),
@@ -430,6 +436,69 @@ final class ArchiveCommand extends BacklogCommand {
   }
 }
 
+/// `kanban-ai approve <id>… | --of <parent>` and `kanban-ai discard …`:
+/// approve drafts (they become ordinary items) or delete them.
+final class DraftCommand extends BacklogCommand {
+  DraftCommand(super.context, {required this.discards}) {
+    argParser.addOption('of', help: 'All drafts whose parent is this item.');
+  }
+
+  /// `discard` instead of `approve`.
+  final bool discards;
+
+  @override
+  String get name => discards ? 'discard' : 'approve';
+
+  @override
+  String get description => discards
+      ? 'Delete drafts (items with draft: true) and the references to them.'
+      : 'Approve drafts (items with draft: true): they become ordinary items.';
+
+  @override
+  String get invocation => 'kanban-ai $name <id> … | --of <parent>';
+
+  @override
+  Future<int> run() async {
+    final backlog = await openBacklog();
+    final references = [...args.rest];
+    if (args.option('of') case final parent?) {
+      final id = (await backlog.items.get(parent)).id;
+      references.addAll([
+        for (final item in await backlog.items.all())
+          if (item.draft && item.parent == id) item.id.value,
+      ]);
+      if (references.isEmpty) {
+        json ? emitJson(const <Object?>[]) : line('$id has no drafts.');
+        return 0;
+      }
+    }
+    if (references.isEmpty) throw UsageException('Name the drafts, or their parent with --of.', usage);
+    if (discards) {
+      final gone = await backlog.items.discard(references);
+      if (json) {
+        emitJson([
+          for (final item in gone) {'id': item.id.value, 'title': item.title},
+        ]);
+      } else {
+        line('Discarded ${gone.length}:');
+        lines([for (final item in gone) '${item.id}  ${item.title}']);
+      }
+      return 0;
+    }
+    final approved = await backlog.items.approve(references);
+    final snapshot = await backlog.planning.snapshot();
+    if (json) {
+      emitJson([
+        for (final item in approved) JsonOutput.item(snapshot[item.id]!, path: await backlog.items.locationOf(item.id)),
+      ]);
+    } else {
+      line('Approved ${approved.length}:');
+      lines(TextOutput.rows([for (final item in approved) snapshot[item.id]!]));
+    }
+    return 0;
+  }
+}
+
 final class SetCommand extends BacklogCommand {
   SetCommand(super.context);
 
@@ -438,7 +507,7 @@ final class SetCommand extends BacklogCommand {
 
   @override
   String get description =>
-      'Change fields: status=review  labels+=infra  depends_on-=T-7f3a  touches+=lib/a/  milestone=  (empty clears).';
+      'Change fields: status=review  draft=false  labels+=infra  depends_on-=T-7f3a  touches+=lib/a/  milestone=  (empty clears).';
 
   @override
   String get invocation => 'kanban-ai set <id> <field=value>...';
